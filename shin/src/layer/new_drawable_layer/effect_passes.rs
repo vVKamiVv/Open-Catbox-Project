@@ -7,12 +7,12 @@ use shin_render::{
     RenderProgramWithArguments, RenderRequestBuilder, StencilFunction, StencilOperation,
     StencilPipelineState, StencilState,
     quad_vertices::build_quad_vertices,
-    shin_orthographic_projection_matrix,
     render_texture::RenderTexture,
     shaders::types::{
         buffer::VertexSource,
         vertices::{MaskVertex, PosColTexVertex, PosTexVertex},
     },
+    shin_orthographic_projection_matrix,
 };
 
 use crate::{
@@ -51,14 +51,27 @@ fn dissolve_intact_triangle(progress: f32, mode: u32) -> Option<[PosColTexVertex
     }
     let size = (progress + 1.0) * 0.5 * DISSOLVE_TRIANGLE_SIZE;
     let canvas = VIRTUAL_CANVAS_SIZE_VEC;
-    let (x0, x1) = if mode & 1 == 0 { (0.0, size) } else { (canvas.x - size, canvas.x) };
-    let (y0, y1) = if mode & 2 == 0 { (canvas.y - size, canvas.y) } else { (0.0, size) };
+    let (x0, x1) = if mode & 1 == 0 {
+        (0.0, size)
+    } else {
+        (canvas.x - size, canvas.x)
+    };
+    let (y0, y1) = if mode & 2 == 0 {
+        (canvas.y - size, canvas.y)
+    } else {
+        (0.0, size)
+    };
     let corner = |x: f32, y: f32| PosColTexVertex {
         position: vec3(x, y, 0.0),
         color: UnormColor::WHITE,
         texture_position: vec2(x, y) / canvas,
     };
-    let quad = [corner(x0, y0), corner(x1, y0), corner(x0, y1), corner(x1, y1)];
+    let quad = [
+        corner(x0, y0),
+        corner(x1, y0),
+        corner(x0, y1),
+        corner(x1, y1),
+    ];
     // the three quad corners that make the triangle around the anchored corner (table at 0x7100170f70)
     let triangle = [[0, 3, 2], [2, 1, 3], [0, 1, 2], [0, 1, 3]][(mode & 3) as usize];
     Some(triangle.map(|i| quad[i]))
@@ -77,8 +90,16 @@ fn dissolve_pieces(progress: f32, mode: u32, seed: u32) -> (Vec<MaskVertex>, Vec
 
     for row in 0..DISSOLVE_ROWS {
         for column in 0..DISSOLVE_COLUMNS {
-            let far_column = if mode & 1 == 0 { DISSOLVE_COLUMNS - column } else { column };
-            let far_row = if mode & 2 == 0 { row } else { DISSOLVE_ROWS - row };
+            let far_column = if mode & 1 == 0 {
+                DISSOLVE_COLUMNS - column
+            } else {
+                column
+            };
+            let far_row = if mode & 2 == 0 {
+                row
+            } else {
+                DISSOLVE_ROWS - row
+            };
             let distance = (far_column + far_row) as f32 / DISSOLVE_DIAGONAL;
             // drawn for every cell, whether it shows or not
             let angle_random = rng.next();
@@ -115,7 +136,10 @@ fn dissolve_pieces(progress: f32, mode: u32, seed: u32) -> (Vec<MaskVertex>, Vec
     (vertices, indices)
 }
 
-fn stencil_against_one(function: StencilFunction, pass_operation: StencilOperation) -> DepthStencilState {
+fn stencil_against_one(
+    function: StencilFunction,
+    pass_operation: StencilOperation,
+) -> DepthStencilState {
     DepthStencilState {
         depth: Default::default(),
         stencil: StencilState {
@@ -189,11 +213,19 @@ pub fn apply_blur(
 ) {
     let quarter = quarter_projection_matrix();
 
-    sprite_copy(context, source, scratch, quarter, 1.0, "NewDrawableLayer/blur_down");
+    sprite_copy(
+        context,
+        source,
+        scratch,
+        quarter,
+        1.0,
+        "NewDrawableLayer/blur_down",
+    );
     std::mem::swap(source, scratch);
 
     for direction in [Vec2::X, Vec2::Y] {
-        let mut pass = context.begin_pass(scratch.as_texture_target(), None, "NewDrawableLayer/blur");
+        let mut pass =
+            context.begin_pass(scratch.as_texture_target(), None, "NewDrawableLayer/blur");
         let vertices = &build_quad_vertices(|t| PosTexVertex {
             position: t * VIRTUAL_CANVAS_SIZE_VEC,
             texture_position: t * 0.5,
@@ -231,7 +263,11 @@ pub fn apply_blur(
 /// `wavelength` property 83 (in thousandths of a doubled uv radius), `phase` the running phase
 fn ripple_params(amplitude: f32, wavelength: f32, phase: f32) -> Vec4 {
     let wavelength = (wavelength as i32) as f32 * 0.001;
-    let frequency = if wavelength != 0.0 { 1.0 / wavelength } else { 0.0 };
+    let frequency = if wavelength != 0.0 {
+        1.0 / wavelength
+    } else {
+        0.0
+    };
     Vec4::new(frequency, amplitude / VIRTUAL_CANVAS_SIZE_VEC.x, phase, 0.0)
 }
 
@@ -264,6 +300,91 @@ pub fn apply_ripple(
     );
 }
 
+/// Program `0x2a`'s parameters for a mosaic of `size` (property 67): blocks of `size + 1` pixels aligned on the
+/// picture centre
+fn mosaic_params(size: i32) -> [Vec4; 2] {
+    let block = (size + 1) as f32 / VIRTUAL_CANVAS_SIZE_VEC;
+    [
+        Vec4::new(block.x, block.y, 1.0 / block.x, 1.0 / block.y),
+        Vec4::new(0.5, 0.5, 0.0, 0.0),
+    ]
+}
+
+/// Program `0x2d`'s parameters: amplitudes (properties 76 and 79) in uv units, waves per uv from the wavelengths
+/// (77 and 80, in pixels; 0 = flat) and the running phases
+fn raster_params(amplitude: Vec2, wavelength: Vec2, phase: Vec2) -> [Vec4; 2] {
+    // the horizontal wave shifts rows, so its wavelength runs along the height, and the other way round
+    let span = Vec2::new(VIRTUAL_CANVAS_SIZE_VEC.y, VIRTUAL_CANVAS_SIZE_VEC.x);
+    let frequency = Vec2::select(wavelength.cmpne(Vec2::ZERO), span / wavelength, Vec2::ZERO);
+    [
+        Vec4::new(
+            amplitude.x / VIRTUAL_CANVAS_SIZE_VEC.x,
+            amplitude.y / VIRTUAL_CANVAS_SIZE_VEC.y,
+            frequency.x,
+            frequency.y,
+        ),
+        phase.extend(0.0).extend(0.0),
+    ]
+}
+
+/// Draws `source` into `target` with one of the full-screen effect programs (mosaic, raster)
+fn apply_full_screen(
+    context: &mut PreRenderContext,
+    target: &mut RenderTexture,
+    label: &str,
+    program: RenderProgramWithArguments,
+) {
+    let mut pass = context.begin_pass(target.as_texture_target(), None, label);
+    pass.run(
+        RenderRequestBuilder::new()
+            .color_blend_type(ColorBlendType::Opaque)
+            .build(program, DrawPrimitive::TrianglesStrip),
+    );
+}
+
+fn full_screen_quad() -> [PosTexVertex; 4] {
+    build_quad_vertices(|t| PosTexVertex {
+        position: t * VIRTUAL_CANVAS_SIZE_VEC,
+        texture_position: t,
+    })
+}
+
+/// Draws `source` as a mosaic of `size` into `target` with program `0x2a`
+pub fn apply_mosaic(
+    context: &mut PreRenderContext,
+    source: &RenderTexture,
+    target: &mut RenderTexture,
+    size: i32,
+) {
+    let vertices = &full_screen_quad();
+    let program = RenderProgramWithArguments::Mosaic {
+        vertices: VertexSource::VertexData { vertices },
+        texture: source.as_texture_source(),
+        transform: top_left_projection_matrix(),
+        params: mosaic_params(size),
+    };
+    apply_full_screen(context, target, "NewDrawableLayer/mosaic", program);
+}
+
+/// Draws `source` waved by the raster effect into `target` with program `0x2d`
+pub fn apply_raster(
+    context: &mut PreRenderContext,
+    source: &RenderTexture,
+    target: &mut RenderTexture,
+    amplitude: Vec2,
+    wavelength: Vec2,
+    phase: Vec2,
+) {
+    let vertices = &full_screen_quad();
+    let program = RenderProgramWithArguments::Raster {
+        vertices: VertexSource::VertexData { vertices },
+        texture: source.as_texture_source(),
+        transform: top_left_projection_matrix(),
+        params: raster_params(amplitude, wavelength, phase),
+    };
+    apply_full_screen(context, target, "NewDrawableLayer/raster", program);
+}
+
 /// Draws `source` dissolved by `intensity` (0..1) into `target`
 pub fn apply_dissolve(
     context: &mut PreRenderContext,
@@ -289,11 +410,16 @@ pub fn apply_dissolve(
         // marks the triangle in the stencil, so the pieces stay outside it
         pass.run(
             RenderRequestBuilder::new()
-                .depth_stencil(stencil_against_one(StencilFunction::Always, StencilOperation::Replace))
+                .depth_stencil(stencil_against_one(
+                    StencilFunction::Always,
+                    StencilOperation::Replace,
+                ))
                 .color_blend_type(ColorBlendType::Opaque)
                 .build(
                     RenderProgramWithArguments::Sprite {
-                        vertices: VertexSource::VertexData { vertices: &vertices },
+                        vertices: VertexSource::VertexData {
+                            vertices: &vertices,
+                        },
                         sprite: source.as_texture_source(),
                         transform,
                     },
@@ -306,7 +432,10 @@ pub fn apply_dissolve(
     if !indices.is_empty() {
         pass.run(
             RenderRequestBuilder::new()
-                .depth_stencil(stencil_against_one(StencilFunction::NotEqual, StencilOperation::Keep))
+                .depth_stencil(stencil_against_one(
+                    StencilFunction::NotEqual,
+                    StencilOperation::Keep,
+                ))
                 .color_blend_type(ColorBlendType::LayerPremultiplied1)
                 .build(
                     RenderProgramWithArguments::Dissolve {
@@ -374,7 +503,9 @@ mod tests {
         assert!(points.contains(&vec2(0.0, 1080.0 - legs)));
         assert!(points.contains(&vec2(legs, 1080.0)));
         // mode 3: top-right corner
-        let points = dissolve_intact_triangle(0.0, 3).unwrap().map(|v| v.position.truncate());
+        let points = dissolve_intact_triangle(0.0, 3)
+            .unwrap()
+            .map(|v| v.position.truncate());
         assert!(points.contains(&vec2(1920.0, 0.0)));
         // the texture is sampled where each corner is
         assert!(triangle.iter().all(|v| {
@@ -394,6 +525,26 @@ mod tests {
         let pixels = Vec4::new(ab.x, ab.z, cd.x, cd.z) * VIRTUAL_CANVAS_SIZE_VEC.x;
         assert!((pixels - Vec4::new(1.0, 3.0, 5.0, 7.0)).abs().max_element() < 1e-4);
         assert_eq!((ab.y, ab.w, cd.y, cd.w), (0.0, 0.0, 0.0, 0.0));
+    }
+
+    #[test]
+    fn mosaic_params_follow_the_original() {
+        // size 9: 10-pixel blocks
+        let [block, centre] = mosaic_params(9);
+        assert!(block.abs_diff_eq(Vec4::new(10.0 / 1920.0, 10.0 / 1080.0, 192.0, 108.0), 1e-4));
+        assert_eq!(centre, Vec4::new(0.5, 0.5, 0.0, 0.0));
+    }
+
+    #[test]
+    fn raster_params_follow_the_original() {
+        let [waves, phases] = raster_params(
+            Vec2::new(19.2, 10.8),
+            Vec2::new(540.0, 0.0),
+            Vec2::new(0.25, 0.5),
+        );
+        // 0x2d: (p76 / 1920, p79 / 1080, 1 / (p77 / 1080), 1 / (p80 / 1920)), a zero wavelength staying 0
+        assert!(waves.abs_diff_eq(Vec4::new(0.01, 0.01, 2.0, 0.0), 1e-6));
+        assert_eq!(phases, Vec4::new(0.25, 0.5, 0.0, 0.0));
     }
 
     #[test]
@@ -425,12 +576,22 @@ mod tests {
             // the offset of each piece is its displacement from the picture patch it shows
             let mean_offset = vertices
                 .chunks(4)
-                .map(|piece| piece[0].position - piece[0].texture_position * VIRTUAL_CANVAS_SIZE_VEC)
+                .map(|piece| {
+                    piece[0].position - piece[0].texture_position * VIRTUAL_CANVAS_SIZE_VEC
+                })
                 .sum::<Vec2>()
                 / (vertices.len() / 4) as f32;
             // bit 0 anchors on the right (pieces go left), bit 1 on the top (pieces go down)
-            assert_eq!(mean_offset.x > 0.0, mode & 1 == 0, "mode {mode}: {mean_offset}");
-            assert_eq!(mean_offset.y < 0.0, mode & 2 == 0, "mode {mode}: {mean_offset}");
+            assert_eq!(
+                mean_offset.x > 0.0,
+                mode & 1 == 0,
+                "mode {mode}: {mean_offset}"
+            );
+            assert_eq!(
+                mean_offset.y < 0.0,
+                mode & 2 == 0,
+                "mode {mode}: {mean_offset}"
+            );
         }
     }
 

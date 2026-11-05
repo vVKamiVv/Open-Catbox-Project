@@ -340,6 +340,33 @@ impl UniformType for BlurUniformParams {
     });
 }
 
+/// Layer effects that take two vec4s of parameters (mosaic, raster), as the original's uniform slot 1
+#[derive(ShaderType)]
+pub struct EffectUniformParams {
+    pub transform: Mat4,
+    pub params: [Vec4; 2],
+}
+
+impl UniformType for EffectUniformParams {
+    const SCHEMA: TypeSchema = TypeSchema::Struct(StructSchema {
+        name: "EffectUniformParams",
+        size: EffectUniformParams::METADATA.min_size.get() as u32,
+        alignment: EffectUniformParams::METADATA.alignment.get() as u32,
+        fields: &[
+            FieldSchema {
+                name: "transform",
+                ty: &<Mat4 as UniformType>::SCHEMA,
+                offset: EffectUniformParams::METADATA.extra.offsets[0] as u32,
+            },
+            FieldSchema {
+                name: "params",
+                ty: &<[Vec4; 2] as UniformType>::SCHEMA,
+                offset: EffectUniformParams::METADATA.extra.offsets[1] as u32,
+            },
+        ],
+    });
+}
+
 #[derive(ShaderType)]
 pub struct WiperMaskUniformParams {
     pub transform: Mat4,

@@ -570,3 +570,21 @@ The phase lives in the layer at `+0x54` and is advanced every frame by `0x710007
 (dt in 1/60 s ticks, skipped when property 84 is 0). The same function advances two raster phases, `+0x4c` by
 `dt / property 78` and `+0x50` by `dt / property 81`. In the port: `NewDrawableLayerState::update`,
 `effect_passes::apply_ripple`, `wgsl/ripple.wgsl`.
+
+### Mosaic **confirmed** (property 67 = block size − 1)
+
+Runs when `int(property 67) > 0`: one opaque full-canvas pass of program `0x2a`. With `n = int(property 67)` the
+uniform block is `((n+1)/1920, (n+1)/1080, 1920/(n+1), 1080/(n+1))` and a centre `(0.5, 0.5)`. Per pixel:
+`block = floor((uv − centre) × (1920, 1080)/(n+1)) + 0.5`, sample at `block × (n+1)/(1920, 1080) + centre`, so
+blocks of `n + 1` pixels aligned on the picture centre, each showing its centre pixel. In the port:
+`effect_passes::apply_mosaic`, `wgsl/mosaic.wgsl`.
+
+### Raster **confirmed** (properties 76–78 horizontal, 79–81 vertical: amplitude, wavelength, period)
+
+Runs when either amplitude is at least `DAT_710015aa98`: one opaque full-canvas pass of program `0x2d`, uniforms
+`(p76/1920, p79/1080, 1080/p77, 1920/p80)` (a zero wavelength gives 0) and the phases `+0x4c`, `+0x50` (advanced as
+described under Ripple). Per pixel:
+`x' = uv.x + p76/1920 × sin(2π (uv.y × 1080/p77 + phase₄c))` and
+`y' = uv.y + p79/1080 × sin(2π (uv.x × 1920/p80 + phase₅₀))`: the first wave shifts rows sideways and runs down the
+picture, the second shifts columns and runs across. This confirms the port's horizontal/vertical property names.
+In the port: `effect_passes::apply_raster`, `wgsl/raster.wgsl`.

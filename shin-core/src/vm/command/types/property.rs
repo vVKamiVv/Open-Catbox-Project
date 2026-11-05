@@ -109,8 +109,7 @@ pub enum LayerProperty {
     RainDirection = 74,
     RainSpeed = 75,
 
-    // "Raster" effect (wavey)
-    // TODO: which one is horizontal and which one is vertical again? Not sure it's named correctly
+    // "Raster" effect (wavey): 76-78 shift rows sideways, 79-81 shift columns (shader program 0x2d)
     RasterHorizontalAmplitude = 76,
     RasterHorizontalLPeriod = 77,
     RasterHorizontalTPeriod = 78,

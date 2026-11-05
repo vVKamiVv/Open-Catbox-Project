@@ -6,14 +6,15 @@ use shin_render_shader_types::{
     uniforms::{
         ClearUniformParams, FillUniformParams, FontBorderUniformParams, FontUniformParams,
         LayerUniformParams, MaskUniformParams, MovieUniformParams, SpriteUniformParams,
-        BlurUniformParams, WiperDefaultUniformParams, WiperMaskUniformParams,
+        BlurUniformParams, EffectUniformParams, WiperDefaultUniformParams, WiperMaskUniformParams,
     },
     vertices::PosVertex,
 };
 use shin_render_shaders::{
     Clear, ClearBindings, Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings,
     Layer, LayerBindings, Mask, MaskBindings, Movie, MovieBindings, Shader, Sprite, SpriteBindings,
-    Blur, BlurBindings, Dissolve, DissolveBindings, Ripple, RippleBindings, WiperDefault,
+    Blur, BlurBindings, Dissolve, DissolveBindings, Mosaic, MosaicBindings, Raster, RasterBindings,
+    Ripple, RippleBindings, WiperDefault,
     WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask, WiperMaskBindings, WiperWhirl,
     WiperWhirlBindings,
 };
@@ -404,6 +405,32 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                         transform,
                         alpha: params,
                     },
+                    source: texture,
+                },
+                vertices,
+            ),
+            RenderProgramWithArguments::Mosaic {
+                vertices,
+                texture,
+                transform,
+                params,
+            } => self.run_impl::<Mosaic>(
+                key,
+                MosaicBindings {
+                    params: &EffectUniformParams { transform, params },
+                    source: texture,
+                },
+                vertices,
+            ),
+            RenderProgramWithArguments::Raster {
+                vertices,
+                texture,
+                transform,
+                params,
+            } => self.run_impl::<Raster>(
+                key,
+                RasterBindings {
+                    params: &EffectUniformParams { transform, params },
                     source: texture,
                 },
                 vertices,

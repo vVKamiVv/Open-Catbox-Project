@@ -108,3 +108,8 @@ struct BlurUniformParams {
     weights: vec4<f32>,
 }
 
+struct EffectUniformParams {
+    transform: mat4x4<f32>,
+    params: array<vec4<f32>, 2>,
+}
+

@@ -1,6 +1,6 @@
 mod effect_passes;
 
-use glam::Vec4;
+use glam::{Vec2, Vec4};
 use shin_core::{
     primitives::color::{FloatColor4, UnormColor},
     vm::command::types::LayerProperty,
@@ -119,6 +119,8 @@ pub struct NewDrawableLayerState {
     dissolve_seed: u32,
     /// Running phase of the ripple waves (the original's `+0x54`)
     ripple_phase: f32,
+    /// Running phases of the horizontal and vertical raster waves (the original's `+0x4c` and `+0x50`)
+    raster_phase: Vec2,
 }
 
 impl NewDrawableLayerState {
@@ -134,6 +136,7 @@ impl NewDrawableLayerState {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(1, |d| d.subsec_nanos()),
             ripple_phase: 0.0,
+            raster_phase: Vec2::ZERO,
         }
     }
 
@@ -148,12 +151,15 @@ impl NewDrawableLayerState {
 
     /// Advances the effects' running phases as the original's `0x7100078780` does: one unit per period, in ticks
     pub fn update(&mut self, context: &AdvUpdateContext, props: &LayerProperties) {
-        // shortcut: the two raster phases (periods in properties 78 and 81) advance the same way; track them once
-        // raster is implemented
-        let period = props.get_value(LayerProperty::RippleTPeriod);
-        if period != 0.0 {
-            self.ripple_phase += context.delta_ticks.as_f32() / period;
-        }
+        let advance = |phase: &mut f32, period: LayerProperty| {
+            let period = props.get_value(period);
+            if period != 0.0 {
+                *phase += context.delta_ticks.as_f32() / period;
+            }
+        };
+        advance(&mut self.ripple_phase, LayerProperty::RippleTPeriod);
+        advance(&mut self.raster_phase.x, LayerProperty::RasterHorizontalTPeriod);
+        advance(&mut self.raster_phase.y, LayerProperty::RasterVerticalTPeriod);
     }
 
     pub fn is_rendered_opaquely<T: NewDrawableLayerNeedsSeparatePass>(
@@ -235,12 +241,26 @@ impl NewDrawableLayerState {
             todo!()
         }
         if mosaic_size > 0 {
-            todo!()
+            let target = scratch_texture(&mut self.render_texture_target, context);
+            effect_passes::apply_mosaic(context, render_texture_src, target, mosaic_size);
+            std::mem::swap(render_texture_src, target);
         }
         if raster_horizontal_amplitude.abs() >= f32::EPSILON
             || raster_vertical_amplitude.abs() >= f32::EPSILON
         {
-            todo!()
+            let target = scratch_texture(&mut self.render_texture_target, context);
+            effect_passes::apply_raster(
+                context,
+                render_texture_src,
+                target,
+                Vec2::new(raster_horizontal_amplitude, raster_vertical_amplitude),
+                Vec2::new(
+                    props.get_value(LayerProperty::RasterHorizontalLPeriod),
+                    props.get_value(LayerProperty::RasterVerticalLPeriod),
+                ),
+                self.raster_phase,
+            );
+            std::mem::swap(render_texture_src, target);
         }
         if ripple_amplitude.abs() >= f32::EPSILON {
             let target = scratch_texture(&mut self.render_texture_target, context);

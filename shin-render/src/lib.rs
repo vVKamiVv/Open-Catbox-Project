@@ -251,7 +251,13 @@ pub enum RenderProgramWithArguments<'a> {
         params: Vec4,
     },
 
-    Mosaic {},
+    /// The mosaic layer effect: (block size in uv, its inverse) and (centre, unused)
+    Mosaic {
+        vertices: VertexSource<'a, PosTexVertex>,
+        texture: TextureSource<'a>,
+        transform: Mat4,
+        params: [Vec4; 2],
+    },
     /// One direction of the blur layer effect
     Blur {
         vertices: VertexSource<'a, PosTexVertex>,
@@ -262,7 +268,13 @@ pub enum RenderProgramWithArguments<'a> {
         weights: Vec4,
     },
     ZoomBlur {},
-    Raster {},
+    /// The raster layer effect: (amplitudes in uv, waves per uv) and (phases, unused)
+    Raster {
+        vertices: VertexSource<'a, PosTexVertex>,
+        texture: TextureSource<'a>,
+        transform: Mat4,
+        params: [Vec4; 2],
+    },
     /// The ripple layer effect
     Ripple {
         vertices: VertexSource<'a, PosTexVertex>,
@@ -298,6 +310,8 @@ impl RenderProgramWithArguments<'_> {
             RenderProgramWithArguments::Dissolve { .. } => ShaderName::Dissolve,
             RenderProgramWithArguments::Blur { .. } => ShaderName::Blur,
             RenderProgramWithArguments::Ripple { .. } => ShaderName::Ripple,
+            RenderProgramWithArguments::Mosaic { .. } => ShaderName::Mosaic,
+            RenderProgramWithArguments::Raster { .. } => ShaderName::Raster,
 
             ref program => todo!("Implement shader for {:?}", program),
         }
