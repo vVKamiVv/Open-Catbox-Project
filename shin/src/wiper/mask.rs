@@ -62,7 +62,8 @@ impl TimedWiper for MaskWiperImpl {
 
         let [mut x1, mut y1] = [0.0, 0.0];
 
-        let [mut x2, mut y2] = if self.flags.contains(MaskFlags::SCALE) {
+        // the wiper's scale flag is bit 3 (`0x71000a1700`), not MASKLOAD's 0x10
+        let [mut x2, mut y2] = if self.flags.bits() & 0x8 != 0 {
             (VIRTUAL_CANVAS_SIZE_VEC / mask_size).to_array()
         } else {
             [1.0, 1.0]

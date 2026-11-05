@@ -238,7 +238,15 @@ pub fn apply_command_state_and_start(
         ($($cmd:ident),*) => {
             match command {
                 $(RuntimeCommand::$cmd(v) => {let info = v.apply_state(vm_state); v.start(context, scenario, vm_state, info, adv_state)},)*
-                _ => todo!(),
+                // the commands Umineko never uses (MSGSYNC, BGMWAIT, VOICESTOP, RESUMESET, RESUME, LAYERSWAP, TRANSSET,
+                // TRANSWAIT, MASKUNLOAD) finish at once instead of stopping the game
+                other => {
+                    tracing::warn!("{:?} is not implemented; skipping it", other);
+                    match other.execute_dummy() {
+                        Some(result) => CommandStartResult::Continue(result),
+                        None => CommandStartResult::Exit,
+                    }
+                }
             }
         };
         () => {};

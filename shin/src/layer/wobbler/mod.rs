@@ -84,7 +84,8 @@ impl Wobbler {
     }
 
     pub fn active(&self) -> bool {
-        self.mode != WobbleMode::Disabled && self.period > Ticks::ZERO
+        // any non-zero period runs; a negative one runs backwards
+        self.mode != WobbleMode::Disabled && self.period != Ticks::ZERO
     }
 
     pub fn value_opt(&self) -> Option<f32> {
@@ -103,11 +104,12 @@ impl Wobbler {
             WobbleMode::Disabled
         });
 
-        if mode != self.mode || period != self.period {
+        // `0x71000c7270`: only a new mode restarts the phase; a new period keeps it
+        if mode != self.mode {
             self.mode = mode;
-            self.period = period;
             self.time = 0.0;
         }
+        self.period = period;
 
         if !self.active() {
             return;

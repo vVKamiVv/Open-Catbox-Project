@@ -23,8 +23,9 @@ fn evaluate_fragment_shader(color: vec3<f32>, operation: u32, param: vec4<f32>) 
         return color;
     } else if operation == 4 {
         // negative
+        // program 12: mix(c, 1 - c, w) * xyz
         let negated = 1 - color;
-        return mix(color, negated, param.w);
+        return mix(color, negated, param.w) * param.xyz;
     } else if operation == 5 {
         // gamma
         return exp2(log2(color) * 1 / param.xyz);

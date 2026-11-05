@@ -126,11 +126,12 @@ impl From<ColorBlendType> for wgpu::BlendState {
                 },
                 alpha: layer_alpha,
             },
+            // blend state 4 (`0x71000ce600`): dst - src * alpha
             ColorBlendType::Layer3 => BlendState {
                 color: wgpu::BlendComponent {
                     src_factor: BlendFactor::SrcAlpha,
                     dst_factor: BlendFactor::One,
-                    operation: BlendOperation::Subtract,
+                    operation: BlendOperation::ReverseSubtract,
                 },
                 alpha: layer_alpha,
             },

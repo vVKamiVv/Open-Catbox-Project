@@ -121,7 +121,7 @@ impl TextBlock {
 
         let vertices = chars
             .iter()
-            .flat_map(|char| char.quad(&lines[char.line_index]))
+            .flat_map(|char| char.quad_with_overdraw(&lines[char.line_index], outline))
             .collect::<Vec<_>>();
         let vertex_buffer = (!vertices.is_empty()).then(|| {
             OwnedVertexBuffer::allocate_vertex(ctx.device, &vertices, Some("TextBlock/vtxbuf"))

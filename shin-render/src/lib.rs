@@ -64,8 +64,9 @@ impl LayerFragmentShader {
             LayerFragmentShader::Default => true,
             LayerFragmentShader::Mono => param == vec4(1.0, 1.0, 1.0, 0.0),
             LayerFragmentShader::Fill => param.w == 0.0,
-            LayerFragmentShader::Fill2 => param.truncate() == Vec3::ZERO,
-            LayerFragmentShader::Negative => false,
+            // program 11 runs the default shader's code (layers audit, fragment shaders)
+            LayerFragmentShader::Fill2 => true,
+            LayerFragmentShader::Negative => param == vec4(1.0, 1.0, 1.0, 0.0),
             LayerFragmentShader::Gamma => param.truncate() == Vec3::ONE,
         }
     }
@@ -84,23 +85,23 @@ impl LayerFragmentShader {
 
         let color = match self {
             LayerFragmentShader::Default => color,
+            // the GPU programs 8-13 (`utils.wgsl`), on the CPU for tiles (`0x71000735a0`)
             LayerFragmentShader::Mono => {
-                let luma = color.truncate().dot(vec3(0.299, 0.587, 0.114));
-
-                Vec3::splat(luma).extend(color.w) * param.truncate().extend(1.0)
+                let rgb = color.truncate();
+                let luma = Vec3::splat(rgb.dot(vec3(0.299, 0.587, 0.114)));
+                (rgb.lerp(luma, param.w) * param.truncate()).extend(color.w)
             }
-            LayerFragmentShader::Fill => {
-                // Vec4::lerp()
-                todo!()
-            }
-            LayerFragmentShader::Fill2 => {
-                todo!()
-            }
+            LayerFragmentShader::Fill => color.truncate().lerp(param.truncate(), param.w).extend(color.w),
+            LayerFragmentShader::Fill2 => color,
             LayerFragmentShader::Negative => {
-                todo!()
+                let rgb = color.truncate();
+                (rgb.lerp(Vec3::ONE - rgb, param.w) * param.truncate()).extend(color.w)
             }
             LayerFragmentShader::Gamma => {
-                todo!()
+                let rgb = color.truncate();
+                let gamma = |c: f32, g: f32| (c.log2() / g).exp2();
+                vec3(gamma(rgb.x, param.x), gamma(rgb.y, param.y), gamma(rgb.z, param.z))
+                    .extend(color.w)
             }
         };
 

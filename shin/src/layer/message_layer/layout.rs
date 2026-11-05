@@ -79,12 +79,18 @@ impl Char {
     }
 
     /// The char's quad (with 2 pixels of overdraw on every side); `line` gives the tint gradient
+    /// The glyph's quad, 2 px larger than the glyph on each side for its outline (the message box)
     pub fn quad(&self, line: &LineInfo) -> [TextVertex; 4] {
+        self.quad_with_overdraw(line, 2.0)
+    }
+
+    /// The glyph's quad, `overdraw` px larger on each side (a text object uses its outline width, `0x7100101360`)
+    pub fn quad_with_overdraw(&self, line: &LineInfo, overdraw: f32) -> [TextVertex; 4] {
         let glyph = self.glyph.info();
         let scaled_size = self.scale() * glyph.actual_size_f32();
 
-        let pos_to_top_left = self.scale() * glyph.bearing_screenspace_f32() - 2.0;
-        let pos_to_bottom_right = pos_to_top_left + scaled_size + 4.0;
+        let pos_to_top_left = self.scale() * glyph.bearing_screenspace_f32() - overdraw;
+        let pos_to_bottom_right = pos_to_top_left + scaled_size + 2.0 * overdraw;
 
         let [screen_left, screen_top] = (self.position + pos_to_top_left).to_array();
         let [screen_right, screen_bottom] = (self.position + pos_to_bottom_right).to_array();
