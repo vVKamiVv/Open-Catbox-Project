@@ -14,18 +14,18 @@ impl StartableCommand for command::runtime::LAYERCTRL {
 
         match self.layer_id.repr() {
             VLayerIdRepr::RootLayerGroup => {
-                layers.root_layer_group.get_property(self.property_id);
+                layers.root_layer_group.set_property(self.property_id, target_value);
             }
             VLayerIdRepr::ScreenLayer => {
-                layers.screen_layer.get_property(self.property_id);
+                layers.screen_layer.set_property(self.property_id, target_value);
             }
             VLayerIdRepr::PageLayer => {
-                layers.page_layer.get_property(self.property_id);
+                layers.page_layer.set_property(self.property_id, target_value);
             }
             VLayerIdRepr::PlaneLayerGroup => {
                 layers.plane_layergroups[layers.current_plane]
                     .properties
-                    .get_property(self.property_id);
+                    .set_property(self.property_id, target_value);
             }
             VLayerIdRepr::Selected => {
                 affected_layers = layers.layerbank_allocator.layers_in_range(
