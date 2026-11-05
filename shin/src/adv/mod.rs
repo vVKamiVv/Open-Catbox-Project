@@ -128,6 +128,9 @@ impl Adv {
 
         if state[AppAction::Enter].is_clicked {
             self.adv_state.message_layer_mut().try_advance();
+            if let Some(ExecutingCommand::WAIT(wait)) = &mut self.current_command {
+                wait.interrupt();
+            }
         }
     }
 

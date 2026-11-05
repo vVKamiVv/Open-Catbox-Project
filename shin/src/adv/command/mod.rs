@@ -84,8 +84,8 @@ use shin_core::{
 
 use self::{
     bgmsync::BGMSYNC, layerload::LAYERLOAD, layerwait::LAYERWAIT, maskload::MASKLOAD,
-    moviewait::MOVIEWAIT, msgset::MSGSET, msgwait::MSGWAIT, seonce::SEONCE, sewait::SEWAIT,
-    voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
+    moviewait::MOVIEWAIT, msgclose::MSGCLOSE, msgset::MSGSET, msgwait::MSGWAIT, seonce::SEONCE,
+    sewait::SEWAIT, voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
 };
 use crate::{
     adv::{AdvState, VmState},
@@ -138,6 +138,8 @@ pub enum ExecutingCommand {
     VOICEWAIT,
     #[derivative(Debug = "transparent")]
     WIPEWAIT,
+    #[derivative(Debug = "transparent")]
+    MSGCLOSE,
 }
 
 pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {

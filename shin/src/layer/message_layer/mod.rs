@@ -288,6 +288,12 @@ impl MessageLayer {
         ));
     }
 
+    /// Whether the message box has finished sliding closed (what MSGCLOSE with waiting polls, `0x71000b19c0`)
+    pub fn is_closed(&self) -> bool {
+        self.natural_slide
+            .is_fully_at(SlideInterpolatorDirection::Decreasing)
+    }
+
     /// Status of the voice player, as VOICEWAIT polls it
     pub fn voice_wait_status(&self) -> AudioWaitStatus {
         self.voice_player.get_wait_status()

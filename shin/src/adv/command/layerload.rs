@@ -42,8 +42,13 @@ impl StartableCommand for command::runtime::LAYERLOAD {
 
         let plane = layers.current_plane;
 
-        // Umineko doesn't use them really, and some of them I don't understand yet
-        assert_eq!(self.flags, LayerLoadFlags::empty());
+        // Umineko uses KEEP_PREVIOUS_PROPERTIES (184 times) and DONT_BLOCK_ANIMATIONS (4), both handled here; the
+        // others (AUTO_WIPE and up) never appear in its script
+        let unsupported = self.flags
+            - (LayerLoadFlags::DONT_BLOCK_ANIMATIONS | LayerLoadFlags::KEEP_PREVIOUS_PROPERTIES);
+        if !unsupported.is_empty() {
+            warn!("LAYERLOAD: ignoring unsupported flags {:?}", unsupported);
+        }
 
         let mut state_info = LayerLoadStateInfo {
             skip_layerloader_creation: true,
