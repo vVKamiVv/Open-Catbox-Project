@@ -13,7 +13,7 @@ use shin_render_shader_types::{
 use shin_render_shaders::{
     Clear, ClearBindings, Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings,
     Layer, LayerBindings, Mask, MaskBindings, Movie, MovieBindings, Shader, Sprite, SpriteBindings,
-    Blur, BlurBindings, Dissolve, DissolveBindings, Mosaic, MosaicBindings, Raster, RasterBindings,
+    Blur, BlurBindings, Button, ButtonBindings, Dissolve, DissolveBindings, Mosaic, MosaicBindings, Raster, RasterBindings,
     Ripple, RippleBindings, WiperDefault,
     WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask, WiperMaskBindings, WiperWhirl,
     WiperWhirlBindings,
@@ -431,6 +431,23 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                 key,
                 RasterBindings {
                     params: &EffectUniformParams { transform, params },
+                    source: texture,
+                },
+                vertices,
+            ),
+            RenderProgramWithArguments::Button {
+                vertices,
+                texture,
+                transform,
+                flash1,
+                flash2,
+            } => self.run_impl::<Button>(
+                key,
+                ButtonBindings {
+                    params: &EffectUniformParams {
+                        transform,
+                        params: [flash1, flash2],
+                    },
                     source: texture,
                 },
                 vertices,

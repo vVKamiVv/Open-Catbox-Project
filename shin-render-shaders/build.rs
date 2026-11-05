@@ -398,6 +398,8 @@ struct ShaderWithDescriptor {
 fn find_entrypoints(wgsl_dir: &Path, wgsl_schema: &WgslSchema) -> Vec<ShaderWithDescriptor> {
     let mut sources = HashMap::new();
 
+    // watching the directory too makes cargo rebuild when a shader is added or removed
+    println!("cargo:rerun-if-changed={}", wgsl_dir.display());
     for entry in std::fs::read_dir(wgsl_dir).unwrap() {
         let entry = entry.unwrap();
 

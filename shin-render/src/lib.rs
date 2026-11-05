@@ -157,8 +157,8 @@ pub enum RenderProgramWithArguments<'a> {
         vertices: VertexSource<'a, PosColTexVertex>,
         texture: TextureSource<'a>,
         transform: Mat4,
-        // IDK what is the difference between those, seems like they do the same thing repeatedly?
-        // higurashi and dc4 only have one of those
+        /// The texture's colour is mixed toward `flash1.rgb` by `flash1.a`, then toward `flash2.rgb` by `flash2.a`
+        /// (the original's program 5)
         flash1: Vec4,
         flash2: Vec4,
     },
@@ -312,6 +312,7 @@ impl RenderProgramWithArguments<'_> {
             RenderProgramWithArguments::Ripple { .. } => ShaderName::Ripple,
             RenderProgramWithArguments::Mosaic { .. } => ShaderName::Mosaic,
             RenderProgramWithArguments::Raster { .. } => ShaderName::Raster,
+            RenderProgramWithArguments::Button { .. } => ShaderName::Button,
 
             ref program => todo!("Implement shader for {:?}", program),
         }
