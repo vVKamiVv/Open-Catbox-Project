@@ -57,6 +57,7 @@ All scripts write their result to the file named by their last argument.
 | `Refs.java` | `<addr>... <out>` | References to an address plus the 8-byte pointers around it (for walking typeinfo and vtables) |
 | `FindPtr.java` | `<hex value>... <out>` | Every place memory stores a pointer value (e.g. all vtables pointing at a typeinfo) |
 | `DumpData.java` | `<addr>... <out>` | 16 bytes at each address as hex, floats, ints and string (constants, tables) |
+| `DumpBytes.java` | `<addr> <length> <out>` | Raw bytes of a range to a binary file (tables too big for `DumpData`); game data, keep it out of the repository. Run it as the only `-postScript` of a Ghidra run |
 | `RttiInventory.java` | `<out>` | Every RTTI class with typeinfo, base, vtables and virtual methods (TSV) |
 | `ApplySymbols.java` | `<symbols.csv>` | Names functions and data from the symbol file, in C++ namespaces |
 | `tools/re/make_symbols.py` | `<re dir>` | Builds `re/symbols.csv` from the RTTI inventory plus `re/manual_symbols.csv` |

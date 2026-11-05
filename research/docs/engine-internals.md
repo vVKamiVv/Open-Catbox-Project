@@ -62,8 +62,8 @@ The executable contains 284 classes with RTTI, 282 of them in namespace `shin`:
 
 | Area | Original | shin | Missing or stubbed in shin |
 |---|---|---|---|
-| Script commands | 61 | 49 implemented | Missing: SELECT, QUIZ (both used, see §10), TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET, NOP (unused). Stubs: AUTOSAVE, CHARS, EVBEGIN, EVEND, NOTIFYSET, TIPSGET, TROPHY, UNLOCK; SYSCALL 0's fade; EXIT stops the script instead of returning to the menus |
-| Layer types | 10 | 6 | Animation (4), Effect (5), FocusLine (7), Quiz (9) |
+| Script commands | 61 | 51 implemented | Missing: TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET, NOP (unused). Stubs: AUTOSAVE, CHARS, EVBEGIN, EVEND, NOTIFYSET, TIPSGET, TROPHY, UNLOCK; SYSCALL 0's fade; EXIT stops the script instead of returning to the menus |
+| Layer types | 10 | 7 | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's testimony texts are missing (they live in the executable) |
 | Wipers | 11 | 5 (Whirl and Glass added) | Ripple, Scanline, Scroll, Turn, Wave, Zoom (none used by Umineko) |
 | Systems | all menus and modes | adventure screen only | title, save/load, config, backlog, galleries, tips, characters, manual, scenario select, chapter titles |
 
@@ -475,11 +475,9 @@ voice status (`0x710011a980`) is 3 if any voice is in state 0, otherwise 2 if an
 
 ### Still missing, in rough order of impact
 
-1. Layer effects: mosaic, raster and property 70 (the render-to-texture path, dissolve, blur and ripple are done,
-   see §11); shin stops at `todo!` as soon as one of the others is set.
-2. `SELECT` (story choices) and the quiz: `QUIZ` command plus the quiz layer type 9.
-3. Voice playback (shin's voice player is a stub, so `VOICEWAIT` currently never waits).
-4. Menus, so that `EXIT` can return somewhere.
+1. Voice playback (shin's voice player is a stub, so `VOICEWAIT` currently never waits).
+2. Menus, so that `EXIT` can return somewhere.
+3. The culprit game's testimony and evidence texts (§13), which are strings in the executable.
 
 ---
 
@@ -634,3 +632,157 @@ Layout parameters `(width, size, ?, outline mode)`: outline mode 1 draws a 3 px 
 3 px on every side (mode 2: 1.5 px, as in the message box); horizontal font scale 1.0. Unlike the message box,
 the first line is not a speaker's name. In the port: `layer/text_block.rs` (`TextBlock`), `layer/select_layer.rs`,
 `adv/command/select.rs`.
+
+## 13. The quiz and the other minigames **confirmed** (behaviour from the code; not yet compared on screen)
+
+### Layer type 9 is a family of minigames
+
+The quiz layer loader (`shin::QuizLayerLoader`, build `0x7100084900`) switches on the first load parameter:
+
+| Kind | Class | Constructor | Uses in main8 |
+|---|---|---|---|
+| 0 | `QuizLayer` | `0x71000c7640` → `0x71000c76a0` | 16 questions (`0xa49444`–`0xa6f189`), mask from `$v29` |
+| 1 | `CakeLayer` | `0x7100043ef0` → `0x7100043f40` | once, `0xa44d3b` (the answer is ignored) |
+| 2 | `MurdererLayer` | `0x710009a890` → `0x710009a8f0` | at `0xa96b4d`, parameter `$v36`; the answer indexes a jump table of scenes and the script loads it again, counting attempts in `$v37` and leaving after 100 (`0xaaa67e`) |
+| 3 | `LastLayer` | `0x710006d280` → `0x710006d2d0` | once, `0xb59125`; the script branches on answer 0 |
+
+Each comes with an `*OverlayLayer` that takes the input while a `QUIZ` command waits on it. The script always
+loads them at layer 17, runs `QUIZ $v1, 17`, then `PAGEBACK` and `LAYERUNLOAD 17`.
+
+`LAYERLOAD` (`0x7100008770`) treats a quiz-type layer loaded over another quiz-type layer as "already the same"
+whatever the parameters, and clears the layerbank's completed flag (`+0x3f84`); the script unloads the layer
+between questions anyway.
+
+### The command (`shin::ADV::QUIZ`, constructor `0x710000dcc0`, vtable `0x71001d3700`)
+
+- The argument is a layer id on the current plane (resolved to a layerbank by `0x71000201f0`).
+- Execute (`0x710000e020`): on the first run it finds the layer, `dynamic_cast`s it to the quiz layer base and
+  installs the layer's overlay (vfunc `0x78`) as the input handler, takes a save snapshot (`0x710000f720`) and
+  clears an ADV flag (`+0x480`). Every run after, it asks the layer for its result (vfunc `0x80`: a done flag and
+  a value). Once done it writes the value to `dest`, records it in the save's command history (`+0x2da0`, 6-bit
+  entries), stores it with a completed flag in the layerbank (`+0x3f84`/`+0x3f88`) and sets the ADV flag again.
+- Replay: when a save made before the quiz is loaded, the command reads the recorded answer from the history
+  instead of asking (`0x710000df50`, until the command counter `+0x2db0` catches up with the save's).
+
+### The quiz (`shin::QuizLayer`, kind 0)
+
+- **Textures:** `/quiz.txa` with `button` (256 × 384, answers A–F as 64 px rows) and `consult` (768 × 176, the
+  "Ask Auntie Eva!" button in two 368 px frames side by side). The English patch replaces the archive.
+- **Buttons:** a static table (`0x710022d108`, filled by `0x71000c9710`) of 7 entries `(texture, u, v, w, h)`:
+  rows 0–5 of `button`, then `consult`. Load parameter 2 is a mask; bit `i` shows entry `i`, and the quiz answers
+  with that bit index (0–5 = A–F, 6 = Ask).
+- **Layout** (constructor): a running top starting at y 288 (`0x710015aa58`); each visible button is centred at
+  x 240 (`0x710015a640`) with its top 4 px below the running top, which then moves down by its height + 8.
+  Coordinates are 1920 × 1080 top-left, drawn through the layer's transform after a (−960, −540) translation.
+- **Draw** (`0x71000c8130`): blend 2, one quad per button with program 5 (below), vertex colour white, first tint
+  white at alpha hover × 0.5, second tint white at alpha flash. While the blink phase is ≥ 0.5, the consult
+  button shows its second frame (u + w).
+- **Update** (`0x71000c8070`): advances each button's two tweeners; the blink phase advances by
+  frames / 60 (`0x710015a778`), so the frames swap every half second. Once picked and the flash tween has ended,
+  the state becomes done.
+- **Input** (`QuizOverlayLayer`, keys `0x71000c8910`, only while waiting): the cursor starts on the first button
+  with its hover at 1. Up/down move it with wrap-around and the system sound `move`; the old hover fades to 0 in
+  0.05 s (`0x710015a704`), the new one to 1 in 0.25 s. Confirm plays `decide`, flashes the button to 0.7 and back
+  in 0.2 s each (`0x710015a584`, `0x710015a954`) and marks it picked. Touch/mouse (`0x71000c8ad0`–`0x71000c8e00`):
+  a press on a button moves the cursor there and flashes it up, releasing on it picks it, leaving cancels the
+  flash.
+- **Result** (`0x71000c85d0`): the picked entry's bit index, done when the state is done.
+
+### Program 5
+
+Fragment: `mix(mix(texture.rgb, tint1.rgb, tint1.a), tint2.rgb, tint2.a) × vertex.rgb`, alpha
+`texture.a × vertex.a`. shin had declared it as `Button` without a shader; the port's is
+`shin-render-shaders/wgsl/button.wgsl`.
+
+In the port: `layer/user/quiz_layer.rs`, `adv/command/quiz.rs`, with what the minigames share in
+`layer/user/minigame.rs`. Mouse input is not wired yet (as for the choices).
+
+### What the minigames share
+
+- Each has an `*OverlayLayer` input handler that reads the controller state (`0x71000c4900`) once per frame: held
+  directions in byte 0 (bits 0–3 up, down, left, right), confirm in byte 7 bit 4, repeating direction presses in
+  byte 11 (bits 0–3), the left stick at `+0x10`/`+0x14`.
+- They draw with blend 2 and `setLayerDepthStencil(ref, 1, 0)`: the second argument lets equal stencil values pass,
+  so their overlapping sprites all draw (with the strict test only the first sprite of each spot survives).
+- The pick flash is shared: to 0.7 and back in 0.2 s each, through program 5's tint.
+
+### The cake game (`shin::CakeLayer`, kind 1) **confirmed** (seen in the port, not yet compared with the original)
+
+- **Textures:** `/cake.txa` (not replaced by the English patch, so its banner stays Japanese): `base` (the whole
+  cake, drawn at (360, 0)–(1560, 1080)), slices `00`–`14`, `msg` (the "choose a cake" banner, (616, 920)–(1304, 1016))
+  and `finger` (96 × 96, drawn at the pointer − 16).
+- **Slices:** a static table (`0x710022cbd8`, filled by `0x7100046c40`) of 15 entries `(name, x, y, w, h)`; each
+  slice's sprite is drawn at (360 + x, y), w × h, only while its hover alpha is above 0, with alpha = hover and the
+  pick flash as tint. Slice 11's table width (432) is smaller than its texture (480): the sprite is squeezed.
+- **Pointer:** starts at (1440, 900); 8 px per frame per held direction plus the stick × 12; clamped to x 28–1863,
+  y 38–1015. The finger and banner share one alpha tweener (starts at 1).
+- **Hit test** (`0x7100044fe0`): a 4-bit map of 240 × 240 cells of 4 px (`0x71001675e9`) over x 480–1440, y 0–960;
+  each cell holds slice + 1 (0 = none). The map is hand-made (wedges on the top, the sides below), not the sprites'
+  alpha: the port rebuilds it from the sprites' opaque pixels with later slices on top, which matches 98.5 % of the
+  cells (the rest are edges).
+- **Input** (`0x7100045da0`): moving changes the hovered slice (old hover → 0 in 0.05 s, new → 1 in 0.25 s).
+  Confirm on a slice plays `decide`, flashes it and fades the finger and banner in 0.1 s; confirm on nothing plays
+  `error`. The answer is the slice's index (`0x7100045250`), once the flash is over.
+
+### The last choice (`shin::LastLayer`, kind 3) **confirmed** (seen in the port, not yet compared with the original)
+
+- **Textures:** `/last.txa` (English patch): `bg`, `front`, `select`, `back`, `shadow`, `plate`, `flash_door`, `obi`.
+  Everything is drawn in centred coordinates, shifted horizontally by a pan tweener.
+- **Front view:** `front` (full screen) with the two `select` halves at (−688, 276)–(−64, 452) and (64, 276)–(688, 452)
+  and `obi` beyond the screen edges, all at the front view's alpha; each `select` half has its own flash.
+- **Door views:** `bg` covers −1920…1920 (uvs 0–2, repeating, in the opaque pass). With the pan above 0 (left door):
+  `back` right half at (−504, 276)–(−24, 452) with the back flash, `shadow` and the left half of `plate` at
+  (−1248, 340)–(−624, 516) with the plate flash, and `flash_door` at (−1424, −492)–(−506, 352) twice: at alpha
+  (sin(2π·phase) × 0.2 + 0.2) × door alpha (phase advances 0.01 per frame, `0x710015a928`), then at the plate flash.
+  The right door mirrors all of it (x negated, uvs swapped).
+- **Input** (`0x710006ff60`, only while the pan and the front fade are idle): on the front view, left/right plays
+  `move`, flashes that plate and starts the pan to ±960 (20 frames, sine-out), the front view's fade to 0 and the
+  door view's to 1 (20 frames, linear). On a door view, confirm plays `decide`, fades the door view in 5 frames and
+  flashes the plate; the opposite direction flashes `back` and returns to the front view. The pan and fades wait
+  while a select or back flash runs.
+- **Answer** (`0x710006f870`): 0 for the left door, 1 for the right, once the plate flash is over.
+
+In the port: `layer/user/cake_layer.rs`, `layer/user/last_layer.rs`.
+
+### The culprit game (`shin::MurdererLayer`, kind 2) **confirmed** (seen in the port, not yet compared with the original)
+
+A small application of six screens (`shin::MurdererLayer::{TopMenu, ReplayMenu, Rule, HintMenu, Check, Select}`),
+all drawn from `/murderer.txa` in 1920 × 1080 top-left space. The load parameter (`$v36`) is the number of wrong
+answers so far; the script loads the game again after each scene it answers with.
+
+- **Layer** (constructor `0x710009a8f0`, update `0x710009b090`): the current screen draws into a render texture in
+  two passes (background, then foreground; `0x710009b240`), cleared to opaque black, with the layer's transform
+  applied inside. A screen hands over through `beginTransition` (`0x710008cac0`): it renders itself into a second
+  texture as the snapshot, installs a wiper and names the next screen, which replaces it at the start of the next
+  update. The wipers are the engine's own: `DefaultWiper` (a linear `mix(old, new, p)` crossfade, program `0x24`)
+  for 30 frames between screens, 10 frames for the face changes, and the 60-frame `GlassWiper` (§7) into the
+  culprit choice. Keys reach no screen while a wiper runs.
+- **Answer** (`0x710009b6e0`): a replayed episode 0–5, a hint 6–26, or the culprit choice: 27 when right,
+  28 + min(attempts, 20) when wrong. The layer's restore (`0x710009b700`, for save data) maps the same ranges back to
+  the ReplayMenu, HintMenu and Select screens.
+- **TopMenu** (`0x710008be00`, argument = cursor): Beatrice in four pieces on the left (her face changes before the
+  culprit choice) and six plates at (1000, 441 + 96i), 704 × 94, coloured from (0.2157, 0.1059, 0.1059) to
+  (1, 0.1608, 0.1608) by the hover, labels from `topmenu` rows; the pick flash whitens the plate untextured (program
+  1). Up/down wrap. Items: re-read the story, the rules, purple statements by person, by chapter, hints, and the
+  culprit choice (which plays `execute` and shatters into Select).
+- **ReplayMenu** (`0x710008dad0`): six `thumb_*_s` in a 3 × 2 grid from (124, 193), 564 × 326 apart, wrapping in both
+  directions; a pick holds 30 frames, then zooms the thumbnail to full screen over 60 frames (sine-out) while
+  crossfading to the large `thumb_*` (program 6), and answers its index.
+- **Rule** (`0x710008f8c0`): `rule_text` in a nine-slice `right` frame; only cancel (back) responds.
+- **HintMenu** (`0x71000906b0`): hints 0…attempts in rows 90 px apart, clipped to (280, 180)–(1640, 900); the newest
+  shows "??????????" (`hint_text` row 0), the cursor starts on it; up/down without wrap, scrolling the row into view
+  over 4 frames; a pick answers index + 6 after 60 frames. The scroll bar is the engine's (`0x71000ef580`, the
+  `scroll` texture of `systex.txa`).
+- **Check** (`0x7100093420`, argument = mode): a viewer, never answers. Mode 0 is the family tree (the table at
+  `0x710017224b`: line tiles and people with culprit and victim bits); victims are tinted 0xffff0f0f and skipped by
+  the cursor; picking a person shows `/chars/m_<name>.txa` at 25 % and their testimony. Mode 1 lists 23 pieces of
+  evidence under six chapter headers that stick to the top. The cursor moves in 2D by the lowest |D| / cos⁴ to the
+  candidates (no wrap). The testimony and evidence texts are strings in the executable (Japanese in the original,
+  and the English patch replaces the executable): the port has no source for them and leaves the text panel empty.
+- **Select** (`0x7100097930`): the tree with every person (28 × 30 cells), Battler on the right in three poses.
+  Confirm toggles a person as a culprit (the `murderer` mark), and "Confirm" (`tokutei`) submits with `attack`: a
+  white flash fading over 30 frames, 60 frames, and when wrong `ahaha`, a 10-frame crossfade to Battler's troubled
+  face and 60 more frames. The answer is right only when exactly Rudolf, Kyrie and Battler are marked.
+
+In the port: `layer/user/murderer/` (one file per screen, `tree.rs` for the table and the 2D cursor). Debug
+fast-forwarding goes straight to Select and marks the right answer.

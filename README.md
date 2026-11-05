@@ -30,10 +30,11 @@ with no emulator. Development and testing happen on Windows.
 | Movies | Working |
 | Rain, snow, petals and golden snow | Working |
 | Screen transitions (crossfade, mask, whirl, glass shatter) | Working; whirl and glass not yet compared with the original on screen |
-| Every script command the game uses, except the quiz | Working |
+| Every script command the game uses | Working |
 | Layer effects | Dissolve, blur, ripple, mosaic and raster working (not yet compared with the original on screen); zoom blur and ghosting next |
 | Story choices | Working (compared with the original on screen); keyboard and click, mouse hover planned |
-| The quiz | Planned |
+| The quiz | Working (not yet compared with the original); keyboard and click, mouse hover planned |
+| The cake, culprit and last minigames (main8) | Working (not yet compared with the original); keyboard only; the culprit game's testimony texts are missing |
 | Voices | Planned |
 | Title screen, save/load, settings, backlog and other menus | Planned |
 
