@@ -58,6 +58,9 @@ pub trait NewDrawableLayer: NewDrawableLayerNeedsSeparatePass {
         stencil_ref: u8,
         pass_kind: PassKind,
     );
+
+    /// Called by [`NewDrawableLayerWrapper`] after its properties were updated, for layers driven by them (e.g. rain)
+    fn update_from_props(&mut self, _props: &LayerProperties) {}
 }
 
 pub trait NewDrawableLayerFastForward {
@@ -338,11 +341,12 @@ impl<T: NewDrawableLayer> NewDrawableLayerWrapper<T> {
     }
 }
 
-impl<T: AdvUpdatable> AdvUpdatable for NewDrawableLayerWrapper<T> {
+impl<T: AdvUpdatable + NewDrawableLayer> AdvUpdatable for NewDrawableLayerWrapper<T> {
     fn update(&mut self, context: &AdvUpdateContext) {
         self.inner_layer.update(context);
         self.state.update(context);
         self.props.update(context);
+        self.inner_layer.update_from_props(&self.props);
     }
 }
 

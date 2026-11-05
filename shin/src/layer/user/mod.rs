@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use derivative::Derivative;
 use from_variants::FromVariants;
 use glam::vec4;
@@ -12,7 +14,7 @@ use shin_core::{
     vm::command::types::{LayerType, Volume},
 };
 use shin_render::{PassKind, render_pass::RenderPass, shaders::types::RenderClone};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::{
     asset::{
@@ -35,12 +37,14 @@ mod bustup_layer;
 mod movie_layer;
 mod null_layer;
 mod picture_layer;
+mod rain_layer;
 mod tile_layer;
 
 pub use self::{
     bustup_layer::BustupLayer, movie_layer::MovieLayer, null_layer::NullLayer,
-    picture_layer::PictureLayer, tile_layer::TileLayer,
+    picture_layer::PictureLayer, rain_layer::RainLayer, tile_layer::TileLayer,
 };
+use self::rain_layer::EffectTextures;
 
 #[derive(Derivative, RenderClone, FromVariants)]
 #[derivative(Debug)]
@@ -55,13 +59,15 @@ pub enum UserLayer {
     Tile(#[render_clone(needs_render)] TileLayer),
     #[derivative(Debug = "transparent")]
     Movie(#[render_clone(needs_render)] MovieLayer),
+    #[derivative(Debug = "transparent")]
+    Rain(#[render_clone(needs_render)] RainLayer),
 }
 
 impl UserLayer {
     pub async fn load(
         device: &wgpu::Device,
         asset_server: &AssetServer,
-        audio_manager: &AudioManager,
+        audio_manager: &Arc<AudioManager>,
         scenario: &Scenario,
         layer_ty: LayerType,
         params: UntypedNumberArray,
@@ -153,14 +159,25 @@ impl UserLayer {
                     repeat: repeat & 1 != 0,
                 };
 
-                MovieLayer::new(device, audio_manager, movie, args, still_picture).into()
+                // MovieLayer::new blocks until ffmpeg yields the first frame, and the ffmpeg pipe
+                // tasks run on the async-io pool we are on now, so build it on the compute pool
+                let (device, audio_manager) = (device.clone(), audio_manager.clone());
+                shin_tasks::compute::spawn(move || {
+                    MovieLayer::new(&device, &audio_manager, movie, args, still_picture)
+                })
+                .await
+                .into()
             }
             LayerType::Rain => {
-                let (_always_zero, _min_distance, _max_distance, ..): TypedNumberArray =
+                // kind: 0 rain, 1 petals, 2 snow, 3 gold snow
+                let (kind, min_distance, max_distance, ..): TypedNumberArray =
                     lower_number_array(params);
+                let textures = asset_server
+                    .load::<EffectTextures, _>("/effects.txa")
+                    .await
+                    .expect("Failed to load effects.txa");
 
-                warn!("Loading NullLayer instead of RainLayer");
-                NullLayer::new().into()
+                RainLayer::new(textures, kind, min_distance, max_distance).into()
             }
             _ => {
                 todo!("Layer type not implemented: {:?}", layer_ty);
@@ -177,6 +194,7 @@ impl AdvUpdatable for UserLayer {
             Self::Bustup(layer) => layer.update(context),
             Self::Tile(layer) => layer.update(context),
             Self::Movie(layer) => layer.update(context),
+            Self::Rain(layer) => layer.update(context),
         }
     }
 }
@@ -189,6 +207,7 @@ impl DrawableLayer for UserLayer {
             Self::Bustup(layer) => layer.properties(),
             Self::Tile(layer) => layer.properties(),
             Self::Movie(layer) => layer.properties(),
+            Self::Rain(layer) => layer.properties(),
         }
     }
 
@@ -199,6 +218,7 @@ impl DrawableLayer for UserLayer {
             Self::Bustup(layer) => layer.properties_mut(),
             Self::Tile(layer) => layer.properties_mut(),
             Self::Movie(layer) => layer.properties_mut(),
+            Self::Rain(layer) => layer.properties_mut(),
         }
     }
 }
@@ -211,6 +231,7 @@ impl Layer for UserLayer {
             Self::Bustup(layer) => layer.fast_forward(),
             Self::Tile(layer) => layer.fast_forward(),
             Self::Movie(layer) => layer.fast_forward(),
+            Self::Rain(layer) => layer.fast_forward(),
         }
     }
 
@@ -221,6 +242,7 @@ impl Layer for UserLayer {
             Self::Bustup(layer) => layer.get_stencil_bump(),
             Self::Tile(layer) => layer.get_stencil_bump(),
             Self::Movie(layer) => layer.get_stencil_bump(),
+            Self::Rain(layer) => layer.get_stencil_bump(),
         }
     }
 
@@ -231,6 +253,7 @@ impl Layer for UserLayer {
             Self::Bustup(layer) => layer.pre_render(context, transform),
             Self::Tile(layer) => layer.pre_render(context, transform),
             Self::Movie(layer) => layer.pre_render(context, transform),
+            Self::Rain(layer) => layer.pre_render(context, transform),
         }
     }
 
@@ -247,6 +270,7 @@ impl Layer for UserLayer {
             Self::Bustup(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
             Self::Tile(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
             Self::Movie(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
+            Self::Rain(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
         }
     }
 }
