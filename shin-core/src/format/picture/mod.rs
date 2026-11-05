@@ -332,6 +332,25 @@ fn decode_dict(
     }
 }
 
+/// Row 0 is stored as plain RGBA; every following row stores per-channel deltas from the row above (wrapping).
+fn decode_differential(image: &mut RgbaImage, data: &[u8], width: usize, stride: usize) {
+    let row_len = width * 4;
+    let height = image.height() as usize;
+    let out: &mut [u8] = image;
+    for (y, src) in data[..stride * height].chunks_exact(stride).enumerate() {
+        let (done, rest) = out.split_at_mut(y * row_len);
+        let dst = &mut rest[..row_len];
+        if y == 0 {
+            dst.copy_from_slice(&src[..row_len]);
+        } else {
+            let above = &done[(y - 1) * row_len..];
+            for ((d, &s), &a) in dst.iter_mut().zip(&src[..row_len]).zip(above) {
+                *d = a.wrapping_add(s);
+            }
+        }
+    }
+}
+
 pub fn read_texture(
     data: &[u8],
     compressed_size: usize,
@@ -400,7 +419,26 @@ pub fn read_texture(
             stride,
         )
     } else {
-        todo!("decode differential")
+        decode_differential(target_image, &data, width as usize, differential_stride)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn differential_rows_add_to_row_above() {
+        // 2x2 image, stride padded to 16 bytes; row 1 has deltas including a wrap-around (0x01 - 0x02)
+        let mut data = vec![0u8; 32];
+        data[..8].copy_from_slice(&[0x10, 0x20, 0x30, 0xff, 0x01, 0x02, 0x03, 0xff]);
+        data[16..24].copy_from_slice(&[0x01, 0x00, 0xff, 0x00, 0xfe, 0x00, 0x00, 0x00]);
+        let mut image = RgbaImage::new(2, 2);
+        read_texture(&data, 0, &mut image, false, true);
+        assert_eq!(image.get_pixel(0, 0).0, [0x10, 0x20, 0x30, 0xff]);
+        assert_eq!(image.get_pixel(1, 0).0, [0x01, 0x02, 0x03, 0xff]);
+        assert_eq!(image.get_pixel(0, 1).0, [0x11, 0x20, 0x2f, 0xff]);
+        assert_eq!(image.get_pixel(1, 1).0, [0xff, 0x02, 0x03, 0xff]);
     }
 }
 
