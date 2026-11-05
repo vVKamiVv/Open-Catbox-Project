@@ -79,9 +79,9 @@ impl super::H264DecoderTrait for SpawnFfmpegH264Decoder {
         // send the decoded frames from ffmpeg to the game
         let (frame_sender, frame_receiver) = std::sync::mpsc::sync_channel(60);
         // send the frame timings from the mp4 stream to the game (without passing through ffmpeg)
-        // this has a bit more delay than other chans because it goes around ffmpeg and ffmpeg has its own delay of several frames
-        // hence the larger capacity (otherwise we might deadlock)
-        let (frame_timing_sender, frame_timing_receiver) = std::sync::mpsc::sync_channel(10);
+        // unbounded: ffmpeg's decode delay grows with its thread count, and a blocking send here would
+        // stall the async-io thread before ffmpeg emits its first frame (deadlock). Entries are tiny.
+        let (frame_timing_sender, frame_timing_receiver) = std::sync::mpsc::channel();
 
         let frame_sender_task = shin_tasks::async_io::spawn(async move {
             let mut decoder = match y4m::Decoder::new(stdout).await {
@@ -160,6 +160,11 @@ impl super::H264DecoderTrait for SpawnFfmpegH264Decoder {
                     }
                     Ok(None) => {
                         debug!("EOF from mp4, stopping sending to ffmpeg");
+                        // stdin writes go through a buffered background thread; dropping it unflushed loses the
+                        // tail of the stream (whole movies when the machine is busy), so close it explicitly
+                        if let Err(e) = stdin.close().await {
+                            error!("Error closing ffmpeg's stdin: {}", e);
+                        }
                         break;
                     }
                     Err(e) => {
@@ -250,6 +255,46 @@ impl Drop for SpawnFfmpegH264Decoder {
     fn drop(&mut self) {
         if let Err(e) = self.process.kill() {
             warn!("Error killing ffmpeg: {:?}", e);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{h264_decoder::H264DecoderTrait, mp4::Mp4};
+
+    fn count_frames(path: &str) -> usize {
+        let mp4 = Mp4::new(std::fs::File::open(path).unwrap()).unwrap();
+        let mut decoder = SpawnFfmpegH264Decoder::new(mp4.video_track).unwrap();
+        std::iter::from_fn(|| decoder.read_frame().unwrap()).count()
+    }
+
+    /// Decodes the movie at `SHIN_TEST_MOVIE` many times, several at once like the game does, and checks every
+    /// run yields every frame. Needs a movie from the user's own dump, so it only runs on request:
+    /// `SHIN_TEST_MOVIE=<path> cargo test -p shin-video -- --ignored`
+    #[test]
+    #[ignore]
+    fn concurrent_decodes_yield_every_frame() {
+        let path = std::env::var("SHIN_TEST_MOVIE").expect("set SHIN_TEST_MOVIE to an mp4 path");
+        shin_tasks::create_task_pools();
+
+        let expected = count_frames(&path);
+        assert!(expected > 0);
+        for round in 0..10 {
+            let counts: Vec<usize> = (0..4)
+                .map(|_| {
+                    let path = path.clone();
+                    std::thread::spawn(move || count_frames(&path))
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|t| t.join().unwrap())
+                .collect();
+            assert!(
+                counts.iter().all(|&c| c == expected),
+                "round {round}: frame counts {counts:?}, expected {expected}"
+            );
         }
     }
 }
