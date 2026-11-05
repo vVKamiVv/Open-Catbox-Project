@@ -37,7 +37,7 @@ pub struct MaskTextureVertexOffsets {
     pub transparent_count: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum MaskVertexKind {
     Black,
     White,
@@ -91,7 +91,9 @@ impl MaskTexture {
         flags: MaskRenderFlags,
     ) {
         let mut render_impl = |required_flags, vertex_kind| {
-            if flags.contains(required_flags) {
+            // a mask may have no rects of a kind (test2.msk), and wgpu rejects empty slices
+            let (_, count) = self.offsets.get_offset_and_count(vertex_kind);
+            if flags.contains(required_flags) && count > 0 {
                 pass.push_debug(&format!("{}/{:?}", self.label, vertex_kind));
                 let vertices = self.offsets.slice_vertex_and_index(
                     &self.vertex_buffer,
