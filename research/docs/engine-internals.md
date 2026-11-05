@@ -588,3 +588,49 @@ described under Ripple). Per pixel:
 `y' = uv.y + p79/1080 × sin(2π (uv.x × 1920/p80 + phase₅₀))`: the first wave shifts rows sideways and runs down the
 picture, the second shifts columns and runs across. This confirms the port's horizontal/vertical property names.
 In the port: `effect_passes::apply_raster`, `wgsl/raster.wgsl`.
+
+## 12. Story choices **confirmed** (compared with the original on screen)
+
+### The command
+
+`shin::ADV::SELECT` is built by the ADV's listener slot 14 (`0x7100000d90`) and executed by `0x7100005ba0`. On its
+first run it collects the option strings, builds a mask of options picked before (bit `i` set when bit
+`choice_set_base + i` of the global seen-choices set at `PTR_DAT_71002264f0 + 0x38` is set) and creates a
+`SelectLayer` (`0x71000f0070` → `0x71000f00f0`) with `choice_visibility_mask` and that mask. Every frame after, once
+the layer has reported a pick, it sets that seen bit, stores `pick + 1` at `choice_index` of the choice table
+(`+0x50`), writes the pick to `dest` and finishes. The 5 story choices (§10) use `choice_visibility_mask` 4095 or the
+register `$v38`.
+
+### The layer (`shin::SelectLayer`, vtable `0x7100222e58`)
+
+- **Options:** one per set bit of the visibility mask, at most 12; bit 12 shuffles them (minstd_rand from
+  `shin::randomSeed`). Each is a text object (below) laid out 1000 px wide at size 48 with a 3 px outline, and
+  tinted (0.75, 0.75, 1, 1) when picked before, white otherwise.
+- **Layout:** bar height = text block height + 16 (the block includes the outline on both sides); bars stacked
+  32 px apart; the stack starts at `(1080 − total) × 0.35`. Text: anchored at its top centre at x = 960, 8 px below
+  the bar's top.
+- **Bar** (`0x71000f1280`): the `select` texture of `msgtex.txa` (1200 × 80) from x 360 to 1560, in three slices: an
+  8 px cap from v 0–0.1 above the bar, the body (v 0.1–0.9) and an 8 px cap (v 0.9–1) below, drawn with blend 2 in
+  white at the option's alpha. The highlight and the pick flash draw the same shape with `select_cur`, at
+  alpha × hover × 0.5 and at the flash value.
+- **Animation** (update `0x71000f0eb0`, states through a jump table at `0x710017504a`): the whole menu fades in by
+  0.1 per frame, then (state 0) each option, 4 frames after the previous one, slides from x −300 to 0 (sine-out)
+  and fades in over 20 frames, with the system sound `select`; state 1 waits for that; state 2 takes input. After
+  a pick (state 3, once the flash is over) the other options slide to +300 (sine-in) and fade over 20 frames,
+  4 frames apart, and the picked one fades over 30 frames after them; state 4 waits, then the pick is reported.
+- **Input** (`0x71000f1740`, only in state 2 with the menu fully shown): up/down move the cursor with
+  wrap-around and the sound `move`; the old highlight fades out in 0.1 s, the new one in in 0.25 s. Confirm plays
+  `seldecide` and flashes the option to 0.7 and back in 0.2 s each; with no cursor it plays `error`. Touch/mouse:
+  a bar is hit between x 460 and 1460 (`0x71000f1940`); hovering moves the cursor and starts the flash, releasing
+  picks (`0x71000f19e0`, `0x71000f1aa0`). The menu starts without a cursor unless a flag (`+0x79` bit 7) is set;
+  played with a controller in Eden it starts without one.
+- Tween easing codes as elsewhere (0 linear, 1 sine-in, 2 sine-out); `0x80` holds the current value for the
+  duration (a delay); `0x40` gives the duration in seconds instead of frames.
+
+### The text object (constructor `0x7100100ea0`, layout `0x71001011d0` → `0x7100101360`, draw `0x7100101a90`)
+
+Position, anchor (fraction of its size; the menu uses (0.5, 0)), scale, two text colours and an outline colour.
+Layout parameters `(width, size, ?, outline mode)`: outline mode 1 draws a 3 px outline and pads the block by
+3 px on every side (mode 2: 1.5 px, as in the message box); horizontal font scale 1.0. Unlike the message box,
+the first line is not a speaker's name. In the port: `layer/text_block.rs` (`TextBlock`), `layer/select_layer.rs`,
+`adv/command/select.rs`.

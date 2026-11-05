@@ -1,6 +1,8 @@
 mod either;
 mod layer_group;
 pub mod message_layer;
+pub mod select_layer;
+mod text_block;
 mod new_drawable_layer;
 mod page_layer;
 mod properties;

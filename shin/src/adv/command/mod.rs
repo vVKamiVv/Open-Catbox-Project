@@ -52,6 +52,7 @@ mod pageback;
 mod planeclear;
 mod planeselect;
 mod saveinfo;
+mod select;
 mod seonce;
 mod sepan;
 mod seplay;
@@ -85,7 +86,7 @@ use shin_core::{
 use self::{
     bgmsync::BGMSYNC, layerload::LAYERLOAD, layerwait::LAYERWAIT, maskload::MASKLOAD,
     moviewait::MOVIEWAIT, msgclose::MSGCLOSE, msgset::MSGSET, msgwait::MSGWAIT, seonce::SEONCE,
-    sewait::SEWAIT, voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
+    select::SELECT, sewait::SEWAIT, voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
 };
 use crate::{
     adv::{AdvState, VmState},
@@ -140,6 +141,8 @@ pub enum ExecutingCommand {
     WIPEWAIT,
     #[derivative(Debug = "transparent")]
     MSGCLOSE,
+    #[derivative(Debug = "transparent")]
+    SELECT,
 }
 
 pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
@@ -154,6 +157,7 @@ pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
 
     impl_apply_state!(
         EXIT,
+        SELECT,
         SGET,
         SSET,
         WAIT,
@@ -235,6 +239,7 @@ pub fn apply_command_state_and_start(
 
     impl_apply_state!(
         EXIT,
+        SELECT,
         SGET,
         SSET,
         WAIT,

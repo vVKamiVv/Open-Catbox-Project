@@ -34,13 +34,16 @@ pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
 
 use crate::{
-    adv::assets::AdvAssets,
+    adv::assets::{AdvAssets, AdvFonts},
     app::AppAction,
-    audio::{BgmPlayer, SePlayer, VoicePlayer},
+    audio::{BgmPlayer, SePlayer, VoicePlayer, play_sys_se},
     capture::CaptureTargets,
     layer::{
         AnyLayer, AnyLayerMut, Layer as _, LayerGroup, PageLayer, RootLayerGroup, ScreenLayer,
-        message_layer::MessageLayer, render_layer_without_bg, render_params::TransformParams,
+        message_layer::{MessageLayer, MessageboxTextures},
+        render_layer_without_bg,
+        render_params::TransformParams,
+        select_layer::{SelectInput, SelectLayer},
         user::UserLayer,
     },
     render::{
@@ -160,6 +163,20 @@ impl Adv {
             return;
         }
 
+        if let Some(select_layer) = &mut self.adv_state.select_layer {
+            for (action, input) in [
+                (AppAction::AnyUp, SelectInput::Up),
+                (AppAction::AnyDown, SelectInput::Down),
+                (AppAction::Enter, SelectInput::Confirm),
+                (AppAction::Act, SelectInput::Confirm),
+            ] {
+                if state[action].is_clicked {
+                    select_layer.handle_input(input);
+                }
+            }
+            return;
+        }
+
         if state[AppAction::Enter].is_clicked {
             self.adv_state.message_layer_mut().try_advance();
             if let Some(ExecutingCommand::WAIT(wait)) = &mut self.current_command {
@@ -211,6 +228,9 @@ impl Adv {
             }
 
             let is_fast_forwarding = self.is_fast_forwarding(fast_forward_button_held);
+            // only debug fast-forwarding picks choices itself; it can end mid-frame at its breakpoint
+            self.adv_state.auto_choose = self.fast_forward_to_bp.is_some()
+                || self.capture.as_ref().is_some_and(CaptureTargets::is_seeking);
 
             // TODO: maybe yield if spent too much time in this loop?
             let runtime_command = if let Some(command) = &mut self.current_command {
@@ -262,7 +282,13 @@ impl Adv {
         self.adv_state.update(context);
 
         if let Some(capture) = &mut self.capture {
-            let waiting = self.adv_state.message_layer().is_waiting_for_click();
+            // a question line before a choice does not wait for a click: the menu waits instead
+            let waiting = self.adv_state.message_layer().is_waiting_for_click()
+                || self
+                    .adv_state
+                    .select_layer
+                    .as_ref()
+                    .is_some_and(SelectLayer::is_interactive);
             capture.update(context.delta_ticks, waiting);
         }
     }
@@ -352,6 +378,12 @@ pub struct AdvState {
     pub bgm_player: BgmPlayer,
     pub se_player: SePlayer,
     pub allow_running_animations: bool,
+    pub fonts: AdvFonts,
+    pub messagebox_textures: Arc<MessageboxTextures>,
+    /// The choice menu while a SELECT runs
+    pub select_layer: Option<SelectLayer>,
+    /// Set while the script is fast-forwarded for debugging: SELECT then picks the first option itself
+    pub auto_choose: bool,
 }
 
 impl AdvState {
@@ -367,6 +399,10 @@ impl AdvState {
             bgm_player: BgmPlayer::new(audio_manager.clone()),
             se_player: SePlayer::new(audio_manager),
             allow_running_animations: true,
+            fonts: assets.fonts.clone(),
+            messagebox_textures: assets.messagebox_textures.clone(),
+            select_layer: None,
+            auto_choose: false,
         }
     }
 
@@ -428,7 +464,10 @@ impl AdvState {
     #[tracing::instrument(skip_all)]
     pub fn render(&self, pass: &mut RenderPass) {
         pass.clear(Some(UnormColor::BLACK), Some(0), Some(1.0));
-        render_layer_without_bg(pass, &TransformParams::default(), &self.root_layer_group, 0)
+        render_layer_without_bg(pass, &TransformParams::default(), &self.root_layer_group, 0);
+        if let Some(select_layer) = &self.select_layer {
+            select_layer.render(pass, &self.messagebox_textures);
+        }
     }
 }
 
@@ -455,5 +494,17 @@ impl Updatable for AdvState {
 
         self.root_layer_group
             .pre_render(context.pre_render, &transform);
+
+        if let Some(select_layer) = &mut self.select_layer {
+            select_layer.update(context.delta_ticks);
+            for sound in select_layer.take_sounds() {
+                play_sys_se(
+                    &self.audio_manager,
+                    context.asset_server,
+                    sound,
+                    shin_core::vm::command::types::Volume::default(),
+                );
+            }
+        }
     }
 }
