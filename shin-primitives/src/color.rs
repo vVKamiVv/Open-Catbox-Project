@@ -22,11 +22,12 @@ impl UnormColor {
             }
         }
 
+        // the digits are red, green, blue: `@c649` is (170, 113, 255), the purple of the original
         let rgb = rgb.clamp(0, 999);
         Self::from_rgba(
-            decimal_to_8bit((rgb % 10) as u8),
-            decimal_to_8bit(((rgb / 10) % 10) as u8),
             decimal_to_8bit(((rgb / 100) % 10) as u8),
+            decimal_to_8bit(((rgb / 10) % 10) as u8),
+            decimal_to_8bit((rgb % 10) as u8),
             0xff,
         )
     }
@@ -133,5 +134,16 @@ impl std::ops::Mul<FloatColor4> for FloatColor4 {
 
     fn mul(self, rhs: FloatColor4) -> Self::Output {
         Self::from_vec4(self.into_vec4() * rhs.into_vec4())
+    }
+}
+
+#[cfg(test)]
+mod decimal_rgb_tests {
+    use super::UnormColor;
+
+    #[test]
+    fn digits_are_red_green_blue() {
+        assert_eq!(UnormColor::from_decimal_rgb(649), UnormColor::from_rgba(0xaa, 0x71, 0xff, 0xff));
+        assert_eq!(UnormColor::from_decimal_rgb(999), UnormColor::from_rgba(0xff, 0xff, 0xff, 0xff));
     }
 }
