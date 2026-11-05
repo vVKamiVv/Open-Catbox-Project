@@ -60,6 +60,8 @@ The executable contains 284 classes with RTTI, 282 of them in namespace `shin`:
 
 ### What the reimplementation still lacks (as of this writing)
 
+The full, prioritised list from the November 2026 audit is in [alignment-plan.md](alignment-plan.md).
+
 | Area | Original | shin | Missing or stubbed in shin |
 |---|---|---|---|
 | Script commands | 61 | 51 implemented | Missing: TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET, NOP (unused). Stubs: CHARS, NOTIFYSET, TIPSGET, TROPHY, UNLOCK; AUTOSAVE's scene-title banner; SYSCALL 0's fade; EXIT stops the script instead of returning to the menus |
