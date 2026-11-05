@@ -1,12 +1,12 @@
 mod blocks;
 mod interpolators;
-mod layout;
+pub mod layout;
 mod messagebox;
 
 use std::sync::Arc;
 
 use bitflags::bitflags;
-use glam::{Mat4, Vec2, vec2, vec3, vec4};
+use glam::{Mat4, Vec2, vec2, vec3};
 use interpolators::{Countdown, HeightInterpolator, SlideInterpolator, SlideInterpolatorDirection};
 use itertools::{Either, Itertools};
 use shin_core::{
@@ -222,63 +222,7 @@ impl MessageLayer {
         let mut vertices = Vec::with_capacity(VERTICES_PER_CHARACTER * self.chars.len());
 
         for char in &self.chars {
-            let glyph = char.glyph.info();
-
-            let scaled_size = char.scale() * glyph.actual_size_f32();
-
-            // this adds an overdraw of 2 pixels on all sides of the character
-            let pos_to_top_left = char.scale() * glyph.bearing_screenspace_f32() - 2.0;
-            let pos_to_bottom_right = pos_to_top_left + scaled_size + 4.0;
-
-            let [screen_left, screen_top] = (char.position + pos_to_top_left).to_array();
-            let [screen_right, screen_bottom] = (char.position + pos_to_bottom_right).to_array();
-
-            let tex_overdraw_ratio =
-                ((pos_to_bottom_right - pos_to_top_left) / scaled_size - 1.0) / 2.0;
-
-            let [tex_left, tex_top] =
-                (-glyph.actual_size_normalized() * tex_overdraw_ratio).to_array();
-            let [tex_right, tex_bottom] =
-                (glyph.actual_size_normalized() * (tex_overdraw_ratio + 1.0)).to_array();
-
-            let (color_top, color_bottom) = if char.is_rubi {
-                (0.0, 0.0)
-            } else {
-                let line = &self.lines[char.line_index];
-                // I don't think the formulas in the original engine are right (it doesn't take scale into account),
-                // but umineko doesn't rely on this feature (both tints are set to the same color),
-                // so I ain't gonna fix it
-
-                // NB: this bearing is NOT in screenspace, so we need to flip the Y
-                let effective_ascent = line.baseline_ascent - glyph.bearing_y as f32;
-                let effective_descent = effective_ascent + glyph.actual_height as f32;
-
-                (
-                    effective_ascent / line.line_height,
-                    effective_descent / line.line_height,
-                )
-            };
-
-            let char_vertices: [_; VERTICES_PER_CHARACTER] = [
-                TextVertex {
-                    position: vec4(screen_left, screen_top, tex_left, tex_top),
-                    color: color_top,
-                },
-                TextVertex {
-                    position: vec4(screen_right, screen_top, tex_right, tex_top),
-                    color: color_top,
-                },
-                TextVertex {
-                    position: vec4(screen_left, screen_bottom, tex_left, tex_bottom),
-                    color: color_bottom,
-                },
-                TextVertex {
-                    position: vec4(screen_right, screen_bottom, tex_right, tex_bottom),
-                    color: color_bottom,
-                },
-            ];
-
-            vertices.extend(char_vertices);
+            vertices.extend(char.quad(&self.lines[char.line_index]));
         }
 
         self.vertex_buffer = Some(OwnedVertexBuffer::allocate_vertex(
@@ -517,37 +461,8 @@ impl MessageLayer {
                     };
                     let info = glyph.info();
 
-                    // TODO: maybe support v8=1 setting, which changes the shape of the outline
-
-                    let v_distance = 1.5 / char.scale / info.actual_height as f32
-                        * info.actual_size_normalized().y;
-                    let h_distance = 1.5 / char.horizontal_scale / info.actual_width as f32
-                        * info.actual_size_normalized().x;
-
-                    // prepare a set of 8 displacements for font outline border shader
-                    // they go in a circle, just in a weird order:
-                    //
-                    //         |
-                    //         2
-                    //      1  |  3
-                    // ---4---------5---> x
-                    //      6  |  8
-                    //         7
-                    //         |
-                    //        \/  y
-                    #[rustfmt::skip]
-                    let border_distances = [
-                        /* 1 */ vec2(-1.0, -1.0),
-                        /* 2 */ vec2( 0.0, -1.0),
-                        /* 3 */ vec2( 1.0, -1.0),
-                        /* 4 */ vec2(-1.0,  0.0),
-                        /* 5 */ vec2( 1.0,  0.0),
-                        /* 6 */ vec2(-1.0,  1.0),
-                        /* 7 */ vec2( 0.0,  1.0),
-                        /* 8 */ vec2( 1.0,  1.0),
-                    ]
-                    .map(|v| v / v.length()) // normalize the length
-                    .map(|v| v * vec2(h_distance, v_distance)); // apply the scaling for each axis
+                    let border_distances =
+                        layout::Char::border_distances(info, char.horizontal_scale, char.scale, 1.5);
 
                     if !char.is_rubi {
                         wait_auto_delay += 0.05;

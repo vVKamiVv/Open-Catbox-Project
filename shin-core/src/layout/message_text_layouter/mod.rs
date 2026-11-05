@@ -29,6 +29,7 @@ pub struct LineInfo {
     pub rubi_height: f32,
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct LayoutParams {
     pub layout_width: f32,
     pub text_alignment: MessageTextLayout,
