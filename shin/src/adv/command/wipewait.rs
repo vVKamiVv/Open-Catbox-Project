@@ -16,7 +16,7 @@ impl StartableCommand for command::runtime::WIPEWAIT {
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         _state_info: (),
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -34,7 +34,7 @@ impl UpdatableCommand for WIPEWAIT {
         &mut self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         adv_state: &mut AdvState,
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {

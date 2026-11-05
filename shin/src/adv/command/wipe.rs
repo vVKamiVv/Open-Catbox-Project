@@ -36,7 +36,7 @@ impl StartableCommand for command::runtime::WIPE {
         self,
         context: &mut UpdateContext,
         scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         needs_wipe: bool,
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -83,7 +83,7 @@ impl UpdatableCommand for WIPE {
         &mut self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         adv_state: &mut AdvState,
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {

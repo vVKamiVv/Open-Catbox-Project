@@ -9,15 +9,18 @@ pub struct MSGWAIT {
 
 impl StartableCommand for command::runtime::MSGWAIT {
     type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {
-        // nothing to do
+    /// `0x71000008b0`: waiting for the whole line lets the next MSGCLOSE clear it
+    fn apply_state(&self, state: &mut VmState) {
+        if self.signal_num < 0 {
+            state.save.message_pending = false;
+        }
     }
 
     fn start(
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         _state_info: (),
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -36,7 +39,7 @@ impl UpdatableCommand for MSGWAIT {
         &mut self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         adv_state: &mut AdvState,
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {

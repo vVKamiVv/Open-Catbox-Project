@@ -17,6 +17,7 @@ shin-audio = { path = "../shin-audio" }
 shin-input = { path = "../shin-input" }
 shin-video = { path = "../shin-video" }
 shin-window = { path = "../shin-window" }
+chrono = "0.4.38"
 
 anyhow = { workspace = true }
 futures = "0.3.30"

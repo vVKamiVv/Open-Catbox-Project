@@ -13,13 +13,17 @@ impl StartableCommand for command::runtime::MSGCLOSE {
     fn apply_state(&self, state: &mut VmState) {
         state.messagebox_state.messagebox_shown = false;
         state.messagebox_state.text = None;
+        // `0x7100000c10`
+        if !state.save.message_pending {
+            state.save.message_current = false;
+        }
     }
 
     fn start(
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         _state_info: (),
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -42,7 +46,7 @@ impl UpdatableCommand for MSGCLOSE {
         &mut self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         adv_state: &mut AdvState,
         is_fast_forwarding: bool,
     ) -> Option<CommandResult> {

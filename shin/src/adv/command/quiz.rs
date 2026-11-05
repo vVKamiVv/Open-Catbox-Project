@@ -1,6 +1,9 @@
 use std::fmt::{Debug, Formatter};
 
-use shin_core::vm::command::types::{LayerId, Volume};
+use shin_core::{
+    format::save::RouteData,
+    vm::command::types::{LayerId, Volume},
+};
 use shin_input::Pointer;
 use tracing::{debug, info};
 
@@ -37,18 +40,28 @@ impl QUIZ {
 }
 
 impl StartableCommand for command::runtime::QUIZ {
-    type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {}
+    /// Whether the minigame is a save point
+    type StateInfo = bool;
+
+    /// `0x710000dcc0`: like SELECT, a save point unless a line is still shown
+    fn apply_state(&self, state: &mut VmState) -> bool {
+        let save_point = !state.save.message_current;
+        if save_point {
+            state.save.save_point(&mut state.global.persist_data);
+        }
+        save_point
+    }
 
     fn start(
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
-        _state_info: (),
+        vm_state: &mut VmState,
+        _save_point: bool,
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        // shortcut: there is no save data yet, so answers are neither replayed from nor recorded in it
+        // shortcut: the original snapshots once the minigame's input handler is installed, a frame or so later
+        vm_state.save.snapshot(&mut vm_state.global);
         Yield(
             QUIZ {
                 token: Some(self.token),
@@ -68,7 +81,7 @@ impl UpdatableCommand for QUIZ {
         &mut self,
         context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        vm_state: &VmState,
+        vm_state: &mut VmState,
         adv_state: &mut AdvState,
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {
@@ -122,6 +135,10 @@ impl UpdatableCommand for QUIZ {
             );
         }
         let answer = answer?;
+        // `0x710000e020`: the answer is a save point in the route
+        // TODO: the original also keeps it in the layer bank, for a loaded scene to restore the minigame's state
+        vm_state.save.record_answer(RouteData::QUIZ_BITS, answer);
+        vm_state.save.snapshot(&mut vm_state.global);
         Some(self.token.take().unwrap().finish(answer))
     }
 }

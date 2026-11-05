@@ -1,8 +1,13 @@
 pub mod audio;
 pub mod layers;
+pub mod save;
 
 use layers::LayersState;
-use shin_core::{format::save::PersistData, vm::command::types::MessageboxStyle};
+use save::SaveState;
+use shin_core::{
+    format::save::{GameDataEntry, SaveData},
+    vm::command::types::MessageboxStyle,
+};
 
 use crate::adv::vm_state::audio::AudioState;
 
@@ -41,19 +46,22 @@ impl MessageState {
 pub struct VmState {
     pub save_info: SaveInfo,
     pub messagebox_state: MessageState,
-    pub persist: PersistData,
+    /// The save file's contents (persistent data, slots, settings); it outlives this state across loads
+    pub global: SaveData,
+    pub save: SaveState,
     pub layers: LayersState,
     pub audio: AudioState,
 }
 
 impl VmState {
-    pub fn new() -> Self {
+    pub fn new(global: SaveData, entry: GameDataEntry) -> Self {
         Self {
             save_info: SaveInfo {
                 info: ["", "", "", ""].map(|v| v.to_string()),
             },
             messagebox_state: MessageState::new(),
-            persist: PersistData::new(),
+            global,
+            save: SaveState::new(entry),
             layers: LayersState::new(),
             audio: AudioState::new(),
         }

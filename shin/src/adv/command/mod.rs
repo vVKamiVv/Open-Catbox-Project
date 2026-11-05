@@ -101,7 +101,7 @@ pub trait UpdatableCommand {
         &mut self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         adv_state: &mut AdvState,
         is_fast_forwarding: bool,
     ) -> Option<CommandResult>;
@@ -148,79 +148,83 @@ pub enum ExecutingCommand {
     QUIZ,
 }
 
-pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
-    macro_rules! impl_apply_state {
-        ($($cmd:ident),*) => {
-            match command {
-                $(RuntimeCommand::$cmd(v) => {v.apply_state(state);},)*
-                _ => todo!(),
-            }
-        };
-    }
+/// What a command does while a save is loaded (its replay slot, vtable slot 2)
+pub enum ReplayStep {
+    /// The command has been skipped (its effect on the scene model applied); the VM goes on with this result
+    Continue(CommandResult),
+    /// The replay stops before this command, which is then started live
+    Stop(RuntimeCommand),
+    /// A replayed choice reached the save point: the VM goes on live with this result
+    Done(CommandResult),
+}
 
-    impl_apply_state!(
-        EXIT,
-        SELECT,
-        SGET,
-        SSET,
-        WAIT,
-        MSGINIT,
-        MSGSET,
-        MSGWAIT,
-        MSGSIGNAL,
-        // MSGSYNC,
-        MSGCLOSE,
-        // SELECT,
-        WIPE,
-        WIPEWAIT,
-        BGMPLAY,
-        BGMSTOP,
-        BGMVOL,
-        // BGMWAIT,
-        BGMSYNC,
-        SEPLAY,
-        SESTOP,
-        SESTOPALL,
-        SEVOL,
-        SEPAN,
-        SEWAIT,
-        SEONCE,
-        VOICEPLAY,
-        // VOICESTOP,
-        VOICEWAIT,
-        SYSSE,
-        SAVEINFO,
-        AUTOSAVE,
-        EVBEGIN,
-        EVEND,
-        // RESUMESET,
-        // RESUME,
-        // SYSCALL,
-        TROPHY,
-        UNLOCK,
-        LAYERINIT,
-        LAYERLOAD,
-        LAYERUNLOAD,
-        LAYERCTRL,
-        LAYERWAIT,
-        // LAYERSWAP,
-        LAYERSELECT,
-        MOVIEWAIT,
-        // TRANSSET,
-        // TRANSWAIT,
-        PAGEBACK,
-        PLANESELECT,
-        PLANECLEAR,
-        // MASKLOAD,
-        // MASKUNLOAD,
-        CHARS,
-        TIPSGET,
-        QUIZ,
-        SHOWCHARS,
-        NOTIFYSET,
-        DEBUGOUT,
-        SYSCALL
-    );
+/// Replays `command` towards the save point (`0x710000ee70` with each command's slot 2): nothing is shown or played;
+/// SGET, SELECT and QUIZ take their results from the route, and the save-point commands stop once the counter
+/// reaches the save point
+pub fn replay_command(command: RuntimeCommand, state: &mut VmState) -> ReplayStep {
+    use shin_core::format::save::RouteData;
+
+    let save = &state.save;
+    // the counter after a save-point command that would start now
+    let stops_at = |counted: bool| save.counter + counted as u32 >= save.target;
+    match command {
+        RuntimeCommand::MSGSET(_) if stops_at(save.event.is_none()) => ReplayStep::Stop(command),
+        RuntimeCommand::AUTOSAVE(_) | RuntimeCommand::EVBEGIN(_) | RuntimeCommand::EVEND(_)
+            if stops_at(true) =>
+        {
+            ReplayStep::Stop(command)
+        }
+        RuntimeCommand::SELECT(_) | RuntimeCommand::QUIZ(_) if !save.message_current && stops_at(true) => {
+            ReplayStep::Stop(command)
+        }
+        RuntimeCommand::EXIT(_) | RuntimeCommand::RESUME(_) => ReplayStep::Stop(command),
+        RuntimeCommand::SELECT(v) => {
+            v.apply_state(state);
+            let pick = state.save.replay_answer(RouteData::SELECT_BITS);
+            answered(state, v.token.finish(pick))
+        }
+        RuntimeCommand::QUIZ(v) => {
+            v.apply_state(state);
+            let answer = state.save.replay_answer(RouteData::QUIZ_BITS);
+            answered(state, v.token.finish(answer))
+        }
+        RuntimeCommand::SGET(v) => ReplayStep::Continue(v.token.finish(state.save.replay_sget())),
+        RuntimeCommand::SSET(v) => {
+            state.save.sset(v.slot_number, v.value);
+            ReplayStep::Continue(v.token.finish())
+        }
+        command => {
+            macro_rules! apply_state {
+                ($($cmd:ident),*) => {
+                    match &command {
+                        $(RuntimeCommand::$cmd(v) => {v.apply_state(state);},)*
+                        _ => {}
+                    }
+                };
+            }
+            apply_state!(
+                WAIT, MSGINIT, MSGSET, MSGWAIT, MSGSIGNAL, MSGCLOSE, WIPE, WIPEWAIT, BGMPLAY, BGMSTOP, BGMVOL,
+                BGMSYNC, SEPLAY, SESTOP, SESTOPALL, SEVOL, SEPAN, SEWAIT, SEONCE, VOICEPLAY, VOICEWAIT, SYSSE,
+                SAVEINFO, AUTOSAVE, EVBEGIN, EVEND, TROPHY, UNLOCK, LAYERINIT, LAYERLOAD, LAYERUNLOAD, LAYERCTRL,
+                LAYERWAIT, LAYERSELECT, MOVIEWAIT, PAGEBACK, PLANESELECT, PLANECLEAR, MASKLOAD, CHARS, TIPSGET,
+                SHOWCHARS, NOTIFYSET, DEBUGOUT, SYSCALL
+            );
+            ReplayStep::Continue(
+                command
+                    .execute_dummy()
+                    .expect("BUG: only EXIT ends a dummy execution"),
+            )
+        }
+    }
+}
+
+/// A replayed SELECT or QUIZ answer counts as a save point; reaching the save point there ends the replay
+fn answered(state: &VmState, result: CommandResult) -> ReplayStep {
+    if state.save.is_replaying() {
+        ReplayStep::Continue(result)
+    } else {
+        ReplayStep::Done(result)
+    }
 }
 
 pub fn apply_command_state_and_start(
@@ -340,7 +344,7 @@ pub trait StartableCommand {
         self,
         context: &mut UpdateContext,
         scenario: &Arc<Scenario>,
-        vm_state: &VmState,
+        vm_state: &mut VmState,
         state_info: Self::StateInfo,
         adv_state: &mut AdvState,
     ) -> CommandStartResult;

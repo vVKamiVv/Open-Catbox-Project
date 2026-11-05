@@ -14,16 +14,25 @@ impl StartableCommand for command::runtime::MSGSET {
         // TODO: think about async messages (those where you would use MSGWAIT)
         state.messagebox_state.text = Some(self.text.clone());
         state.messagebox_state.messagebox_shown = true;
+
+        // `0x7100005140`: a line is a save point unless an event is playing
+        if state.save.event.is_none() {
+            state.save.save_point(&mut state.global.persist_data);
+        }
+        state.save.message_current = true;
+        state.save.message_pending = !self.auto_wait;
     }
 
     fn start(
         self,
         context: &mut UpdateContext,
         scenario: &Arc<Scenario>,
-        vm_state: &VmState,
+        vm_state: &mut VmState,
         _state_info: (),
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
+        // shortcut: the original snapshots on the first frame after the text reached the message layer; the same frame
+        vm_state.save.snapshot(&mut vm_state.global);
         adv_state.root_layer_group.message_layer_mut().on_msgset(
             context.pre_render,
             scenario,
@@ -67,7 +76,7 @@ impl UpdatableCommand for MSGSET {
         &mut self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         adv_state: &mut AdvState,
         // TODO: I think we __should__ somehow to react to fast-forwarding here
         // rn it's kludged in the ADV update function though

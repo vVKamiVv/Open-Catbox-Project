@@ -486,4 +486,13 @@ impl LayerPropertiesState {
     pub fn set_property(&mut self, property: LayerProperty, value: i32) {
         self.properties[property] = value;
     }
+
+    /// Sets `properties` to these values at once (a loaded scene starts settled)
+    pub fn restore(&self, properties: &mut LayerProperties) {
+        for (property, &value) in &self.properties {
+            properties
+                .property_tweener_mut(property)
+                .fast_forward_to(value as f32);
+        }
+    }
 }

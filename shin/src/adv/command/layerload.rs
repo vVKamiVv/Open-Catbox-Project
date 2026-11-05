@@ -141,7 +141,7 @@ impl StartableCommand for command::runtime::LAYERLOAD {
         self,
         context: &mut UpdateContext,
         scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         state_info: LayerLoadStateInfo,
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -184,7 +184,7 @@ impl UpdatableCommand for LAYERLOAD {
         &mut self,
         context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         adv_state: &mut AdvState,
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {

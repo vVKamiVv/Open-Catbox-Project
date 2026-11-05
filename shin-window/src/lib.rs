@@ -69,6 +69,9 @@ pub trait ShinApp: Sized {
     // can't pass context here because `RenderPass` borrows a bunch of stuff from there
     // let's hope it won't be an issue ;)
     fn render(&mut self, context: RenderContext, pass: &mut RenderPass);
+
+    /// The window is being closed
+    fn exiting(&mut self) {}
 }
 
 #[derive_where(Clone)]
@@ -500,7 +503,12 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
         }
 
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if let WinitAppState::Operational { app, .. } = self {
+                    app.exiting();
+                }
+                event_loop.exit()
+            }
             WindowEvent::Resized(physical_size) => {
                 winit
                     .resize_source

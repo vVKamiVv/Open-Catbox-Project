@@ -10,6 +10,7 @@ use crate::{crc32, format::save::index_set::IndexSet};
 
 pub mod index_set;
 mod obfuscation;
+pub mod route;
 
 const GAME_KEY: u32 = SaveData::obfuscation_key_from_seed("うみねこのなく頃に咲");
 
@@ -64,6 +65,12 @@ impl SaveData {
     }
 
     pub fn decode_raw(deobfuscated_data: Vec<u8>) -> Result<Self> {
+        // the leading version byte: 0 is a fresh save, newer than 1 is refused (`0x71000d4890`)
+        match deobfuscated_data.first() {
+            Some(0) => return Ok(Self::new()),
+            Some(version) if *version > 1 => anyhow::bail!("unsupported save version {version}"),
+            _ => {}
+        }
         let mut reader = BitBuffer::with_data(deobfuscated_data, 0);
         Ok(Self::read(&mut reader)?)
     }
@@ -84,6 +91,19 @@ impl SaveData {
         self.write(&mut writer);
         let (deobfuscated_data, _) = writer.into_data();
         deobfuscated_data
+    }
+
+    /// A fresh save: no progress, the default settings (`0x71000d2380`, `0x71000d2110`)
+    pub fn new() -> Self {
+        Self {
+            save_menu_position: 0,
+            play_seconds: 0,
+            persist_data: PersistData::new(),
+            save_vectors: SaveVectors::new(),
+            settings: Settings::default(),
+            auto_save_slot: None,
+            manual_save_slots: std::array::from_fn(|_| None),
+        }
     }
 
     fn read(reader: &mut BitBuffer) -> Result<Self, BitReadError> {
@@ -207,6 +227,17 @@ pub struct SaveVectors {
 }
 
 impl SaveVectors {
+    pub fn new() -> Self {
+        Self {
+            seen_messages: IndexSet::new(),
+            select_seen_choices: IndexSet::new(),
+            select_last_choices: Vec::new(),
+            unlocked_cgs: IndexSet::new(),
+            unlocked_bgms: IndexSet::new(),
+            unlocked_movies: IndexSet::new(),
+        }
+    }
+
     fn read(reader: &mut BitBuffer) -> bit_read::Result<Self> {
         reader.align();
 
@@ -282,6 +313,34 @@ pub struct Settings {
     /// Unknown: config item 12; the ADV sets a float to 55.0 from it (`0x71000fc3b0`)
     pub v18: bool,
     pub v19: u32,
+}
+
+impl Default for Settings {
+    /// `0x71000d2110`
+    fn default() -> Self {
+        Self {
+            v0_bgmvol: 70,
+            v1_sfxvol: 70,
+            v2_voicevol: 90,
+            v3_sysvol: 55,
+            v4_voicefocus: false,
+            v5_voicepanapot: true,
+            v6: false,
+            v7: 0,
+            v8: 0,
+            v9_msgspeed: 50,
+            v10_skipspeed: 50,
+            v11_disallowskipunread: true,
+            v12: true,
+            v13_msgwinalpha: 85,
+            v14_showscenetitle: true,
+            v15_showsongtitle: true,
+            v16: true,
+            v17_showtoucheffect: true,
+            v18: false,
+            v19: u32::MAX,
+        }
+    }
 }
 
 impl Settings {
@@ -477,8 +536,8 @@ impl GameDataEntry {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RouteData(Vec<u8>);
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct RouteData(pub Vec<u8>);
 
 impl RouteData {
     fn read(reader: &mut BitBuffer) -> bit_read::Result<Self> {
@@ -505,6 +564,18 @@ mod tests {
         let savedata = SaveData::decode(TEST_CLEAN_SAVE).unwrap();
 
         assert_ron_snapshot!("decoded, clean save", savedata);
+    }
+
+    #[test]
+    fn a_fresh_save_round_trips() {
+        let mut save = SaveData::new();
+        save.persist_data.set(64, 3);
+        assert_eq!(save.persist_data.0.len(), 128);
+        let decoded = SaveData::decode(&save.encode()).unwrap();
+        assert_eq!(decoded.persist_data.get(64), 3);
+        assert_eq!(decoded.settings.v13_msgwinalpha, 85);
+        // version 0 means a fresh save
+        assert!(SaveData::decode_raw(vec![0]).unwrap().auto_save_slot.is_none());
     }
 
     #[test]

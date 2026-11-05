@@ -34,7 +34,7 @@ impl StartableCommand for command::runtime::PLANECLEAR {
         self,
         context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         state_info: PlaneId,
         adv_state: &mut AdvState,
     ) -> CommandStartResult {

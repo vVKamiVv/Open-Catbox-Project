@@ -52,7 +52,7 @@ impl StartableCommand for command::runtime::LAYERWAIT {
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        vm_state: &VmState,
+        vm_state: &mut VmState,
         affected_layers: LayerOperationTargetList,
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -74,7 +74,7 @@ impl UpdatableCommand for LAYERWAIT {
         &mut self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        vm_state: &VmState,
+        vm_state: &mut VmState,
         adv_state: &mut AdvState,
         #[expect(unused)] is_fast_forwarding: bool,
     ) -> Option<CommandResult> {

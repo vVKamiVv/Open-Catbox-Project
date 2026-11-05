@@ -18,7 +18,7 @@ impl StartableCommand for command::runtime::PAGEBACK {
         self,
         context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         needs_page_back: bool,
         adv_state: &mut AdvState,
     ) -> CommandStartResult {

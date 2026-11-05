@@ -11,13 +11,18 @@ use super::prelude::*;
 /// menu.
 impl StartableCommand for command::runtime::EXIT {
     type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {}
+    /// `0x7100000230`
+    fn apply_state(&self, state: &mut VmState) {
+        if self.arg1 == 0 {
+            state.save.exit_seen = true;
+        }
+    }
 
     fn start(
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        vm_state: &mut VmState,
         _state_info: (),
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -26,6 +31,8 @@ impl StartableCommand for command::runtime::EXIT {
         }
 
         adv_state.se_player.stop_all(Tween::linear(Ticks::ZERO));
+        // `0x710000fab0`: the pending SSETs are written; leaving the adventure screen then writes the save file
+        vm_state.save.checkpoint(&mut vm_state.global.persist_data);
 
         // shortcut: there are no menus to return to yet, so the adventure screen just stops running the script
         // (see `Adv::update`); the layer clearing and the voice stop happen with the menus once they exist

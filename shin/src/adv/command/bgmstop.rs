@@ -12,7 +12,7 @@ impl StartableCommand for command::runtime::BGMSTOP {
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &VmState,
+        _vm_state: &mut VmState,
         _state_info: (),
         adv_state: &mut AdvState,
     ) -> CommandStartResult {

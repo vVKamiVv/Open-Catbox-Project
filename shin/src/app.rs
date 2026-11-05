@@ -4,13 +4,17 @@ use anyhow::Context;
 use enum_map::{Enum, EnumMap};
 use shin_audio::AudioManager;
 use shin_core::{
-    format::scenario::instruction_elements::CodeAddress, primitives::update::FrameId, time::Ticks,
-    vm::Scripter,
+    format::{
+        save::{GameDataEntry, RouteData, SaveData},
+        scenario::instruction_elements::CodeAddress,
+    },
+    primitives::update::FrameId,
+    time::Ticks,
 };
 use shin_input::{Action, ActionState, Pointer, RawInputState, inputs::MouseButton};
 use shin_render::render_pass::RenderPass;
 use shin_window::{AppContext, RenderContext, ShinApp};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
 use crate::{
@@ -20,6 +24,7 @@ use crate::{
     cli::Cli,
     layer::user::EffectTextures,
     render::PreRenderContext,
+    savedata,
     update::UpdateContext,
 };
 
@@ -36,6 +41,8 @@ pub enum AppAction {
     PageUp,
     PageDown,
     HoldSkip,
+    /// shortcut: the port has no save menu yet, so F5 saves to the slot the menu would open at
+    Save,
 }
 
 impl Action for AppAction {
@@ -58,6 +65,7 @@ impl Action for AppAction {
             AppAction::PageUp => raw_input_state.keyboard.contains(&KeyCode::PageUp),
             AppAction::PageDown => raw_input_state.keyboard.contains(&KeyCode::PageDown),
             AppAction::HoldSkip => raw_input_state.keyboard.contains(&KeyCode::ControlLeft),
+            AppAction::Save => raw_input_state.keyboard.contains(&KeyCode::F5),
         })
     }
 }
@@ -72,6 +80,8 @@ pub struct App {
     capture_dir: PathBuf,
     /// A captured frame queued for readback; saved on the next update, after the GPU has run the copy
     pending_capture: Option<PendingCapture>,
+    /// Where the save file is written; `None` when no location is known
+    savedata_path: Option<PathBuf>,
 }
 
 impl ShinApp for App {
@@ -107,15 +117,38 @@ impl ShinApp for App {
         // TODO: do not block the game loop (?)
         let adv_assets = shin_tasks::block_on(AdvAssets::load(&asset_server)).unwrap();
 
-        let mut scripter = Scripter::new(&adv_assets.scenario, 0, 42);
-
-        if let Some(addr) = cli.unsafe_entry_point {
-            debug!("Starting execution from 0x{:x}", addr);
-            scripter.unsafe_set_position(CodeAddress(addr));
-        }
+        let mut savedata_path = cli.savedata.clone().or_else(savedata::default_path);
+        let save = match savedata_path.as_deref().map(savedata::load) {
+            Some(Ok(save)) => save,
+            Some(Err(e)) => {
+                // never overwrite a save that could not be read
+                error!("{e:?}; nothing will be saved this time");
+                savedata_path = None;
+                SaveData::new()
+            }
+            None => SaveData::new(),
+        };
+        let entry = match cli.load {
+            Some(slot) => slot
+                .entry(&save)
+                .with_context(|| format!("the save file has nothing in {slot:?}"))?,
+            None => GameDataEntry {
+                // scenario 0: the first episode
+                scenario_id: 0,
+                random_seed: new_game_seed(&cli),
+                save_position: 0,
+                route_data: RouteData::default(),
+            },
+        };
 
         let effect_textures = adv_assets.effect_textures.clone();
-        let mut adv = Adv::new(audio_manager.clone(), adv_assets, scripter);
+        let mut adv = Adv::new(
+            audio_manager.clone(),
+            adv_assets,
+            save,
+            entry,
+            cli.unsafe_entry_point.map(CodeAddress),
+        );
 
         if let Some(addr) = cli.fast_forward_to {
             debug!("Fast forwarding to 0x{:x}", addr);
@@ -208,6 +241,7 @@ impl ShinApp for App {
             adv,
             capture_dir: cli.capture_dir,
             pending_capture: None,
+            savedata_path,
         })
     }
 
@@ -272,6 +306,14 @@ impl ShinApp for App {
 
         self.adv.update(&mut update_context, input, pointer);
 
+        if input[AppAction::Save].is_clicked {
+            let slot = self.adv.save_data().save_menu_position as usize;
+            self.adv.save_to_slot(slot.min(99));
+            self.write_save();
+        }
+        if self.adv.take_write_request() {
+            self.write_save();
+        }
 
         if self.pending_capture.is_none() {
             if let Some(message_id) = self.adv.capture_due() {
@@ -319,6 +361,11 @@ impl ShinApp for App {
         self.frame_id.advance();
     }
 
+    /// The original writes the file when returning to the title; closing the window is the port's way back
+    fn exiting(&mut self) {
+        self.write_save();
+    }
+
     #[tracing::instrument(skip_all)]
     fn render(&mut self, _context: RenderContext, pass: &mut RenderPass) {
         self.adv.render(pass);
@@ -327,3 +374,24 @@ impl ShinApp for App {
     }
 }
 
+impl App {
+    fn write_save(&self) {
+        let Some(path) = &self.savedata_path else {
+            warn!("No location for the save file; not saving");
+            return;
+        };
+        if let Err(e) = savedata::write(path, self.adv.save_data()) {
+            error!("Saving failed: {e:?}");
+        }
+    }
+}
+
+/// The original draws a random seed for each new game (`0x71000fc2c0`); debug runs that seek lines keep a fixed one
+/// so they repeat
+fn new_game_seed(cli: &Cli) -> u32 {
+    use std::hash::BuildHasher;
+    if cli.fast_forward_to.is_some() || !cli.capture_messages.is_empty() {
+        return 42;
+    }
+    std::collections::hash_map::RandomState::new().hash_one(0u8) as u32
+}

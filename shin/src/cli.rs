@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use shin_core::format::save::{GameDataEntry, SaveData};
 use clap_num::maybe_hex;
 
 #[derive(Parser, Debug)]
@@ -36,8 +37,42 @@ pub struct Cli {
     /// Where `--capture-messages` saves its PNGs
     #[clap(long, default_value = "captures/port")]
     pub capture_dir: PathBuf,
+    /// The save file (the Switch's `SAVEDATA` format); by default `SAVEDATA` in the user's data directory
+    /// (`%APPDATA%\\shin` on Windows)
+    #[clap(long)]
+    pub savedata: Option<PathBuf>,
+    /// Load a save instead of starting a new game: `auto` for the auto slot, or a slot number (1-100)
+    #[clap(long, value_parser = parse_slot)]
+    pub load: Option<LoadSlot>,
     /// Seconds to wait after a captured line has typed out, so animations settle
     #[clap(long, default_value_t = 4.0)]
     pub capture_settle: f32,
 }
 
+/// A save slot to load
+#[derive(Debug, Clone, Copy)]
+pub enum LoadSlot {
+    Auto,
+    /// 0-based
+    Manual(usize),
+}
+
+impl LoadSlot {
+    pub fn entry(self, save: &SaveData) -> Option<GameDataEntry> {
+        match self {
+            LoadSlot::Auto => save.auto_save_slot.as_ref(),
+            LoadSlot::Manual(slot) => save.manual_save_slots[slot].as_ref(),
+        }
+        .map(|game| game.entry.clone())
+    }
+}
+
+fn parse_slot(slot: &str) -> Result<LoadSlot, String> {
+    if slot.eq_ignore_ascii_case("auto") {
+        return Ok(LoadSlot::Auto);
+    }
+    match slot.parse::<usize>() {
+        Ok(n @ 1..=100) => Ok(LoadSlot::Manual(n - 1)),
+        _ => Err(format!("`{slot}` is neither `auto` nor a slot number from 1 to 100")),
+    }
+}

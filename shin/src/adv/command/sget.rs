@@ -13,11 +13,14 @@ impl StartableCommand for command::runtime::SGET {
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        vm_state: &VmState,
+        vm_state: &mut VmState,
         _state_info: (),
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        let value = vm_state.persist.get(self.slot_number.try_into().unwrap());
+        // recorded in the route, so loading a save gets the same value back
+        let value = vm_state
+            .save
+            .sget(&vm_state.global.persist_data, self.slot_number);
         self.token.finish(value).into()
     }
 }

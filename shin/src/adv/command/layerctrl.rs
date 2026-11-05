@@ -56,7 +56,7 @@ impl StartableCommand for command::runtime::LAYERCTRL {
         self,
         context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        vm_state: &VmState,
+        vm_state: &mut VmState,
         affected_layers: LayerOperationTargetList,
         adv_state: &mut AdvState,
     ) -> CommandStartResult {

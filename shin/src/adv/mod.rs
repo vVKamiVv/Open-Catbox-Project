@@ -1,17 +1,22 @@
 pub mod assets;
 mod command;
+mod restore;
 mod vm_state;
 
 use std::{borrow::Cow, sync::Arc};
 
 pub use command::{CommandStartResult, ExecutingCommand, StartableCommand, UpdatableCommand};
+use command::ReplayStep;
 use egui::Window;
 use enum_map::{Enum, EnumMap, enum_map};
 use glam::Mat4;
 use itertools::Itertools;
 use shin_audio::AudioManager;
 use shin_core::{
-    format::scenario::{Scenario, instruction_elements::CodeAddress},
+    format::{
+        save::{GameData, GameDataEntry, SaveData},
+        scenario::{Scenario, instruction_elements::CodeAddress},
+    },
     primitives::color::UnormColor,
     vm::{
         Scripter,
@@ -100,12 +105,40 @@ pub struct Adv {
     script_exited: bool,
     /// `--capture-messages`: fast-forwards to these lines and holds each for saving
     capture: Option<CaptureTargets>,
+    /// Set by a load until the scene has been rebuilt from the replay
+    load: Option<LoadState>,
+    /// The play time in 60 Hz frames (`*0x71002267d0`), counted into the save's play seconds
+    play_frames: f64,
+    /// The save file should be written (the original writes it when leaving the adventure screen)
+    write_requested: bool,
+}
+
+/// Where a load's replay left the script
+enum LoadEnd {
+    /// Before this command, which starts live once the scene is rebuilt
+    Stopped(RuntimeCommand),
+    /// After a replayed choice; the VM goes on with this result
+    Resume(CommandResult),
+}
+
+enum LoadState {
+    Replayed(LoadEnd),
+    Restoring(restore::SceneRestore, LoadEnd),
 }
 
 impl Adv {
-    pub fn new(audio_manager: Arc<AudioManager>, assets: AdvAssets, scripter: Scripter) -> Self {
+    /// Starts `entry`: a new game when its save position is 0, else a load, which replays the script to the save
+    /// point first (`0x7100019930`, the replay job `0x710001b340`)
+    pub fn new(
+        audio_manager: Arc<AudioManager>,
+        assets: AdvAssets,
+        global: SaveData,
+        entry: GameDataEntry,
+        entry_point: Option<CodeAddress>,
+    ) -> Self {
         let scenario = assets.scenario.clone();
-        let vm_state = VmState::new();
+        let play_frames = global.play_seconds as f64 * 60.0;
+        let (scripter, vm_state, load) = replay(&scenario, global, entry, entry_point);
         let adv_state = AdvState::new(audio_manager, assets);
 
         Self {
@@ -118,7 +151,36 @@ impl Adv {
             fast_forward_to_bp: None,
             script_exited: false,
             capture: None,
+            load: load.map(LoadState::Replayed),
+            play_frames,
+            write_requested: false,
         }
+    }
+
+    /// The save file's contents
+    pub fn save_data(&self) -> &SaveData {
+        &self.vm_state.global
+    }
+
+    /// Whether the save file should be written now; clears the request
+    pub fn take_write_request(&mut self) -> bool {
+        std::mem::take(&mut self.write_requested)
+    }
+
+    /// A manual save (`0x71000da920`): the last save point goes to `slot` (0-based), which the save menu then
+    /// opens at; the caller writes the file
+    pub fn save_to_slot(&mut self, slot: usize) {
+        let global = &mut self.vm_state.global;
+        global.manual_save_slots[slot] = Some(GameData {
+            date_time: chrono::Local::now().naive_local(),
+            entry: self.vm_state.save.entry.clone(),
+        });
+        global.save_menu_position = slot as u8;
+        info!(
+            "Saved to slot {} at save point {}",
+            slot + 1,
+            self.vm_state.save.entry.save_position
+        );
     }
 
     pub fn fast_forward_to(&mut self, addr: CodeAddress) {
@@ -248,7 +310,53 @@ impl Adv {
             }
         }
 
+        // `0x7100026d50`: the play time counts every frame
+        self.play_frames += context.delta_ticks.as_f32() as f64;
+        self.vm_state.global.play_seconds = (self.play_frames / 60.0).min(u32::MAX as f64) as u32;
+
         let mut result = CommandResult::None;
+        match self.load.take() {
+            None => {}
+            Some(LoadState::Replayed(end)) => {
+                let restore = restore::SceneRestore::start(
+                    context,
+                    &self.scenario,
+                    &self.vm_state,
+                    &mut self.adv_state,
+                );
+                self.load = Some(LoadState::Restoring(restore, end));
+                self.adv_state.update(context);
+                return;
+            }
+            Some(LoadState::Restoring(mut restore, end)) => {
+                if !restore.poll(&mut self.adv_state) {
+                    self.load = Some(LoadState::Restoring(restore, end));
+                    self.adv_state.update(context);
+                    return;
+                }
+                info!("Loaded; playing from {:?}", self.scripter.position());
+                match end {
+                    LoadEnd::Resume(resume) => result = resume,
+                    LoadEnd::Stopped(command) => match command::apply_command_state_and_start(
+                        command,
+                        context,
+                        &self.scenario,
+                        &mut self.vm_state,
+                        &mut self.adv_state,
+                    ) {
+                        CommandStartResult::Continue(r) => result = r,
+                        CommandStartResult::Yield(executing_command) => {
+                            self.current_command = Some(executing_command);
+                        }
+                        CommandStartResult::Exit => {
+                            self.write_requested = true;
+                            self.script_exited = true;
+                        }
+                    },
+                }
+            }
+        }
+
         while !self.script_exited {
             // check the fast-forward breakpoint; delete if hit
             if self
@@ -270,7 +378,7 @@ impl Adv {
                 match command.update(
                     context,
                     &self.scenario,
-                    &self.vm_state,
+                    &mut self.vm_state,
                     &mut self.adv_state,
                     is_fast_forwarding,
                 ) {
@@ -302,6 +410,7 @@ impl Adv {
                     self.current_command = Some(executing_command);
                 }
                 CommandStartResult::Exit => {
+                    self.write_requested = true;
                     // the original returns to the menus here, which the port does not have yet
                     info!(
                         "Script reached EXIT at {:?}; no menus to return to, so the script stops here",
@@ -324,6 +433,75 @@ impl Adv {
                     .is_some_and(SelectLayer::is_interactive);
             capture.update(context.delta_ticks, waiting);
         }
+    }
+}
+
+/// Replays the script of `entry` to its save point (`0x710001b340`); for a new game just sets the VM up
+fn replay(
+    scenario: &Scenario,
+    mut global: SaveData,
+    entry: GameDataEntry,
+    entry_point: Option<CodeAddress>,
+) -> (Scripter, VmState, Option<LoadEnd>) {
+    let mut target = entry.save_position;
+    let mut sset_threshold = target;
+    loop {
+        let mut scripter = Scripter::new(scenario, entry.scenario_id, entry.random_seed);
+        if let Some(address) = entry_point {
+            debug!("Starting execution from {:?}", address);
+            scripter.unsafe_set_position(address);
+        }
+        let mut vm_state = VmState::new(
+            global,
+            GameDataEntry {
+                save_position: target,
+                ..entry.clone()
+            },
+        );
+        vm_state.save.sset_threshold = sset_threshold;
+        if !vm_state.save.is_replaying() {
+            return (scripter, vm_state, None);
+        }
+
+        let started = std::time::Instant::now();
+        let mut result = CommandResult::None;
+        let end = loop {
+            let command = scripter.run(result).expect("scripter run failed");
+            match command::replay_command(command, &mut vm_state) {
+                ReplayStep::Continue(r) => result = r,
+                ReplayStep::Stop(command) => break LoadEnd::Stopped(command),
+                ReplayStep::Done(r) => break LoadEnd::Resume(r),
+            }
+        };
+        let save = &vm_state.save;
+        info!(
+            "Replayed to save point {} of {} at {:?} in {:?}",
+            save.counter,
+            target,
+            scripter.position(),
+            started.elapsed()
+        );
+
+        // a save made inside an event, or a replay that ran into the end, resumes at the last save point before it
+        // (`0x710000f210`)
+        let (in_event, exited) = match &end {
+            LoadEnd::Stopped(RuntimeCommand::EVBEGIN(_)) => (true, save.exit_seen),
+            LoadEnd::Stopped(RuntimeCommand::EVEND(_)) => (false, save.exit_seen),
+            LoadEnd::Stopped(RuntimeCommand::EXIT(exit)) => {
+                (save.event.is_some(), save.exit_seen || exit.arg1 == 0)
+            }
+            _ => (save.event.is_some(), save.exit_seen),
+        };
+        let fallback = save.last_save_point;
+        if !(in_event || exited) || fallback >= target {
+            return (scripter, vm_state, Some(end));
+        }
+        warn!(
+            "The save point is inside an event or past the end; loading the save point before it ({fallback})"
+        );
+        sset_threshold = save.counter;
+        target = fallback;
+        global = vm_state.global;
     }
 }
 
