@@ -188,9 +188,7 @@ impl UpdatableCommand for LAYERLOAD {
         adv_state: &mut AdvState,
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {
-        let Some(layer) = self.load_task.poll_naive() else {
-            return None;
-        };
+        let layer = self.load_task.poll_naive()?;
 
         // NB: here the game also loads a wiper, but we don't support `LayerGroup`-level wiping
 

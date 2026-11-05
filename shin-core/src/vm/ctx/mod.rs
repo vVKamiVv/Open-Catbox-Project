@@ -391,7 +391,7 @@ impl VmCtx {
         if a == b {
             a
         } else {
-            let useful_state = (state >> 8 & 0xffff) as i32;
+            let useful_state = ((state >> 8) & 0xffff) as i32;
             let interval_size = (b - a).abs() + 1;
             let lower_bound = a.min(b);
 

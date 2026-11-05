@@ -3,7 +3,7 @@ pub fn main(root_path: String) {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "bup"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "bup"))
         .for_each(|e| {
             let path = e.path();
             let file = std::fs::File::open(path).unwrap();

@@ -70,7 +70,6 @@ use std::{
 /// for any value. This is a parallel with the fact that
 /// `&` and `&mut` references together can be thought of as a _compile-time_
 /// version of a read-write lock.
-
 #[doc(alias = "SyncWrapper")]
 #[doc(alias = "SyncCell")]
 #[doc(alias = "Unique")]

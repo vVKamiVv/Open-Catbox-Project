@@ -214,7 +214,7 @@ impl NewDrawableLayerState {
         } else {
             std::mem::swap(
                 &mut self.render_texture_prev_frame,
-                &mut self.render_texture_src.as_inner_mut(),
+                self.render_texture_src.as_inner_mut(),
             );
         }
 

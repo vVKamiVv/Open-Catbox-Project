@@ -157,7 +157,7 @@ impl VideoPlayerHandle {
                 // if the next frame is not ready for display yet...
                 if next_frame
                     .as_ref()
-                    .map_or(true, |(timing, _)| timing.start_time > current_time)
+                    .is_none_or(|(timing, _)| timing.start_time > current_time)
                 {
                     if skipped_frames > 0 {
                         warn!("Skipped {} frames", skipped_frames);
@@ -194,9 +194,7 @@ impl VideoPlayerHandle {
 
         // TODO: actually, this will eat the last frame of the video
         // we need to provide another mechanism for determining how long to display the last frame
-        if read_guard.pending_frame.is_none() {
-            return None;
-        }
+        read_guard.pending_frame.as_ref()?;
 
         Some(VideoPlayerFrameHandle { guard: read_guard })
     }
@@ -206,7 +204,7 @@ pub struct VideoPlayerFrameHandle<'a> {
     guard: RwLockReadGuard<'a, VideoPlayerInner>,
 }
 
-impl<'a> VideoPlayerFrameHandle<'a> {
+impl VideoPlayerFrameHandle<'_> {
     pub fn get_frame(&self) -> &VideoFrameTexture {
         &self.guard.video_texture
     }

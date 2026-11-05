@@ -328,10 +328,7 @@ impl<'a> Iterator for Traverse<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (_, iter) = match self.stack.last_mut() {
-                Some(v) => v,
-                None => return None,
-            };
+            let (_, iter) = self.stack.last_mut()?;
 
             match iter.next() {
                 Some((entry_name, entry)) => {

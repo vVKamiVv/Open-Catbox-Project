@@ -68,7 +68,7 @@ impl BinRead for UntypedNumberSpec {
                 }
                 3 => Self::Register(Register::from_regular_register(k as u16)),
                 4 => Self::Register(Register::from_regular_register(
-                    u8::read_options(reader, endian, ())? as u16 | (k as u16) << 8,
+                    u8::read_options(reader, endian, ())? as u16 | ((k as u16) << 8),
                 )),
                 5 => Self::Register(Register::from_argument(k as u16)),
                 _ => {

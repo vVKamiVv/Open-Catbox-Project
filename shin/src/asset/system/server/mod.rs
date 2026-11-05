@@ -107,7 +107,7 @@ impl AssetServer {
         let context = self.context.clone();
 
         // just await the task
-        let asset = T::load(&context, args, &path, data)
+        let asset = T::load(&context, args, path, data)
             .await
             .with_context(|| format!("Loading asset {:?}", path))?;
         let asset = Arc::new(asset);

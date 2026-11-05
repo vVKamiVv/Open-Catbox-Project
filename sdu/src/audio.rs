@@ -30,7 +30,7 @@ struct OpusOggWriter<'writer, W: io::Write> {
     frame_samples: usize,
 }
 
-impl<'writer, W: io::Write> OpusOggWriter<'writer, W> {
+impl<W: io::Write> OpusOggWriter<'_, W> {
     const SERIAL: u32 = 42;
 
     pub fn new(inner: W, audio_info: &AudioInfo) -> io::Result<Self> {

@@ -3,7 +3,7 @@
 /// Implement one step of mersenne twister
 #[inline]
 fn twist_one(state: u32, i: u32) -> u32 {
-    i.wrapping_add((state ^ state >> 30).wrapping_mul(0x6c078965))
+    i.wrapping_add((state ^ (state >> 30)).wrapping_mul(0x6c078965))
         .wrapping_add(1)
 }
 

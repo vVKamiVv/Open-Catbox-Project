@@ -28,7 +28,7 @@ bitflags! {
 }
 
 #[derive(Clone)]
-struct MaskTextureVertexOffsets {
+pub struct MaskTextureVertexOffsets {
     pub black_offset: usize,
     pub black_count: usize,
     pub white_offset: usize,
@@ -38,7 +38,7 @@ struct MaskTextureVertexOffsets {
 }
 
 #[derive(Debug)]
-enum MaskVertexKind {
+pub enum MaskVertexKind {
     Black,
     White,
     Transparent,

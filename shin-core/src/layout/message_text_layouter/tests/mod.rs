@@ -45,7 +45,7 @@ pub fn make_snapshot(
     text: &str,
 ) -> (Vec<Command>, Vec<LineInfo>, Vec2) {
     // share fonts between invocations in the same process
-    static FONTS: LazyLock<TestFonts> = LazyLock::new(|| read_fonts());
+    static FONTS: LazyLock<TestFonts> = LazyLock::new(read_fonts);
 
     let normal = &FONTS.normal_font;
     let bold = &FONTS.bold_font;

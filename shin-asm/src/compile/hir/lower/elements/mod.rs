@@ -6,11 +6,10 @@ mod prelude {
             hir::{
                 lower::{
                     from_hir::{FromHirBlockCtx, FromHirCollectors},
-                    FromHirExpr, HirDiagnosticCollectorWithBlock,
+                    FromHirExpr,
                 },
                 ExprId,
             },
-            HirBlockBody, ResolveContext,
         },
         syntax::ast,
     };
