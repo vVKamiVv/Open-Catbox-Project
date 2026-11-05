@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use enum_map::{Enum, EnumMap};
@@ -10,14 +10,15 @@ use shin_core::{
 use shin_input::{Action, ActionState, RawInputState, inputs::MouseButton};
 use shin_render::render_pass::RenderPass;
 use shin_window::{AppContext, RenderContext, ShinApp};
-use tracing::debug;
-use winit::keyboard::KeyCode;
+use tracing::{debug, error, info};
+use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
 use crate::{
     adv::{Adv, assets::AdvAssets},
-    layer::user::EffectTextures,
     asset::system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
+    capture::{self, CaptureTargets, PendingCapture},
     cli::Cli,
+    layer::user::EffectTextures,
     render::PreRenderContext,
     update::UpdateContext,
 };
@@ -58,6 +59,9 @@ pub struct App {
     asset_server: Arc<AssetServer>,
     effect_textures: Arc<EffectTextures>,
     adv: Adv,
+    capture_dir: PathBuf,
+    /// A captured frame queued for readback; saved on the next update, after the GPU has run the copy
+    pending_capture: Option<PendingCapture>,
 }
 
 impl ShinApp for App {
@@ -94,6 +98,20 @@ impl ShinApp for App {
         if let Some(addr) = cli.fast_forward_to {
             debug!("Fast forwarding to 0x{:x}", addr);
             adv.fast_forward_to(CodeAddress(addr));
+        }
+
+        if !cli.capture_messages.is_empty() {
+            std::fs::create_dir_all(&cli.capture_dir)
+                .with_context(|| format!("creating {}", cli.capture_dir.display()))?;
+            adv.capture_messages(CaptureTargets::new(
+                cli.capture_messages.clone(),
+                cli.capture_settle,
+            ));
+            // captures have the canvas size: ask for the original's 1920x1080
+            let _ = context
+                .winit
+                .window
+                .request_inner_size(PhysicalSize::new(1920, 1080));
         }
 
         // let picture_name = "/picture/text001.pic";
@@ -166,6 +184,8 @@ impl ShinApp for App {
             asset_server,
             effect_textures,
             adv,
+            capture_dir: cli.capture_dir,
+            pending_capture: None,
         })
     }
 
@@ -182,6 +202,17 @@ impl ShinApp for App {
     ) {
         if input[AppAction::ToggleFullscreen].is_clicked {
             context.winit.toggle_fullscreen();
+        }
+
+        if let Some(pending) = self.pending_capture.take() {
+            match pending.save(&context.wgpu.device, &self.capture_dir) {
+                Ok(path) => info!("Captured {}", path.display()),
+                Err(e) => error!("Saving a capture failed: {e:?}"),
+            }
+            if !self.adv.capture_saved() {
+                info!("All requested lines are captured");
+                context.event_loop.exit();
+            }
         }
 
         // if input[AppAction::Act].is_clicked {
@@ -217,6 +248,16 @@ impl ShinApp for App {
         };
 
         self.adv.update(&mut update_context, input);
+
+        if self.pending_capture.is_none() {
+            if let Some(message_id) = self.adv.capture_due() {
+                self.pending_capture = Some(capture::render(
+                    &mut pre_render_context,
+                    &self.adv,
+                    message_id,
+                ));
+            }
+        }
 
         // let update_context = AdvUpdateContext {
         //     delta_time: Ticks::from_duration(elapsed_time),

@@ -124,3 +124,20 @@ rewrites `types.wgsl` on each run.)
 - **Original (emulator):** title → *Start* → episode (never *Continue*, which jumps to the latest save), then the
   in-game chapter jump (*Plus*: next chapter, *Minus*: previous/current chapter start; confirm with *Yes*) and
   *R* to toggle text skip. Chapter starts are reliable sync points between the two.
+
+### Capturing the same line of text in both
+
+Lines of text are exact sync points: give both sides the script's message ids (as `sdu scenario disassemble` prints
+them, `MSGSET { msg_id: 301, ... }`) and each saves a PNG per line once it has typed out and settled for 4 s.
+
+- **Port:** `shin --capture-messages 297,301,420 --capture-dir captures/port` fast-forwards from the start, stops
+  at each line, saves `<id>.png` at the canvas size (1920x1080 on a 100% scaled display) and quits after the last.
+- **Original (Eden):** enable Settings > Debug > *Enable GDB Stub* (port 6543), then run
+  `python -I research/tools/compare/eden_capture.py --messages 297,301,420 --out captures/original`, start
+  Episode 1 (title → *Start*; the title cursor starts on *Continue*) and turn on skip (*R*). The tool breaks on the
+  MSGSET constructor, turns skip off a few lines before each target, steps line by line, and saves Eden's own
+  screenshot (5760x3240 at 3x scale). Restart Eden before each run. How it works around Eden's debugger is
+  described in the script.
+
+The game passes the script's message id minus one internally (engine-internals §10); both tools take and print the
+script's ids. Expect differences from animation timing (blinks, the pulsing wait arrow) as well as real ones.

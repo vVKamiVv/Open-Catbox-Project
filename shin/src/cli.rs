@@ -22,4 +22,17 @@ pub struct Cli {
     /// But in lieu of proper scene loading this helps a lot with testing later parts of the episodes.
     #[clap(long, value_parser=maybe_hex::<u32>)]
     pub unsafe_entry_point: Option<u32>,
+    /// Fast-forward to each of these message ids (comma-separated, in script order), save the screen as
+    /// `<capture-dir>/<id>.png` once the line has typed out, and quit after the last one
+    ///
+    /// For comparing with the original captured by `research/tools/compare/eden_capture.py`. The PNG has the canvas
+    /// size, so use a display at 100% scale for 1920x1080.
+    #[clap(long, value_delimiter = ',')]
+    pub capture_messages: Vec<u32>,
+    /// Where `--capture-messages` saves its PNGs
+    #[clap(long, default_value = "captures/port")]
+    pub capture_dir: PathBuf,
+    /// Seconds to wait after a captured line has typed out, so animations settle
+    #[clap(long, default_value_t = 4.0)]
+    pub capture_settle: f32,
 }

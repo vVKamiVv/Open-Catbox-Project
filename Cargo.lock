@@ -5404,6 +5404,7 @@ dependencies = [
  "futures",
  "glam 0.29.2",
  "heapless",
+ "image",
  "indexmap 2.7.1",
  "itertools 0.14.0",
  "kira",

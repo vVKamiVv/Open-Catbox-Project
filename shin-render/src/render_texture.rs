@@ -62,6 +62,11 @@ impl RenderTexture {
         }
     }
 
+    /// The texture as last rendered into (for copying it out)
+    pub fn texture(&self) -> &wgpu::Texture {
+        self.inner_texture.get_texture()
+    }
+
     pub fn as_texture_target(&mut self) -> TextureTarget {
         TextureTarget {
             kind: TextureTargetKind::RenderTexture,

@@ -11,6 +11,7 @@ mod adv;
 mod app;
 mod asset;
 mod audio;
+mod capture;
 mod cli;
 #[expect(unused)]
 mod fps_counter;

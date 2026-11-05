@@ -294,6 +294,11 @@ impl MessageLayer {
             .is_fully_at(SlideInterpolatorDirection::Decreasing)
     }
 
+    /// Whether the text has typed out up to a click wait (the end of the line or a mid-line `@k`)
+    pub fn is_waiting_for_click(&self) -> bool {
+        self.wait_kind.is_some()
+    }
+
     /// Status of the voice player, as VOICEWAIT polls it
     pub fn voice_wait_status(&self) -> AudioWaitStatus {
         self.voice_player.get_wait_status()

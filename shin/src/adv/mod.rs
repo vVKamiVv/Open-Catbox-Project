@@ -17,7 +17,7 @@ use shin_core::{
         Scripter,
         breakpoint::BreakpointObserver,
         command::{
-            CommandResult,
+            CommandResult, RuntimeCommand,
             types::{LayerId, PLANES_COUNT, PlaneId, VLayerId, VLayerIdRepr},
         },
     },
@@ -37,6 +37,7 @@ use crate::{
     adv::assets::AdvAssets,
     app::AppAction,
     audio::{BgmPlayer, SePlayer, VoicePlayer},
+    capture::CaptureTargets,
     layer::{
         AnyLayer, AnyLayerMut, Layer as _, LayerGroup, PageLayer, RootLayerGroup, ScreenLayer,
         message_layer::MessageLayer, render_layer_without_bg, render_params::TransformParams,
@@ -91,6 +92,8 @@ pub struct Adv {
     fast_forward_to_bp: Option<BreakpointObserver>,
     /// Set by `EXIT`; the script then stops running while the screen keeps updating
     script_exited: bool,
+    /// `--capture-messages`: fast-forwards to these lines and holds each for saving
+    capture: Option<CaptureTargets>,
 }
 
 impl Adv {
@@ -107,12 +110,43 @@ impl Adv {
             current_command: None,
             fast_forward_to_bp: None,
             script_exited: false,
+            capture: None,
         }
     }
 
     pub fn fast_forward_to(&mut self, addr: CodeAddress) {
         assert!(self.fast_forward_to_bp.is_none());
         self.fast_forward_to_bp = Some(self.scripter.add_breakpoint(addr).into());
+    }
+
+    pub fn capture_messages(&mut self, targets: CaptureTargets) {
+        self.capture = Some(targets);
+    }
+
+    /// The captured line whose frame should be saved now, if any
+    pub fn capture_due(&self) -> Option<u32> {
+        self.capture.as_ref().and_then(CaptureTargets::due)
+    }
+
+    /// Moves on to the next line to capture; false when the saved one was the last
+    pub fn capture_saved(&mut self) -> bool {
+        let more = self
+            .capture
+            .as_mut()
+            .is_some_and(CaptureTargets::finish_due);
+        if more {
+            self.adv_state.message_layer_mut().try_advance();
+        }
+        more
+    }
+
+    fn is_fast_forwarding(&self, button_held: bool) -> bool {
+        button_held
+            || self.fast_forward_to_bp.is_some()
+            || self
+                .capture
+                .as_ref()
+                .is_some_and(CaptureTargets::is_seeking)
     }
 
     // TODO: impl Scene for Adv
@@ -157,7 +191,7 @@ impl Adv {
         // TODO: tasks from task pool can steal focus
         self.handle_input(input_state, true);
 
-        if fast_forward_button_held || self.fast_forward_to_bp.is_some() {
+        if self.is_fast_forwarding(fast_forward_button_held) {
             self.adv_state.root_layer_group_mut().fast_forward();
             if let Some(back_layer_group) = &mut self.adv_state.back_layer_group {
                 back_layer_group.fast_forward();
@@ -176,7 +210,7 @@ impl Adv {
                 self.fast_forward_to_bp = None;
             }
 
-            let is_fast_forwarding = fast_forward_button_held || self.fast_forward_to_bp.is_some();
+            let is_fast_forwarding = self.is_fast_forwarding(fast_forward_button_held);
 
             // TODO: maybe yield if spent too much time in this loop?
             let runtime_command = if let Some(command) = &mut self.current_command {
@@ -196,6 +230,12 @@ impl Adv {
             } else {
                 self.scripter.run(result).expect("scripter run failed")
             };
+
+            if let (Some(capture), RuntimeCommand::MSGSET(msgset)) =
+                (&mut self.capture, &runtime_command)
+            {
+                capture.on_line(msgset.msg_id.0);
+            }
 
             match command::apply_command_state_and_start(
                 runtime_command,
@@ -220,6 +260,11 @@ impl Adv {
         }
 
         self.adv_state.update(context);
+
+        if let Some(capture) = &mut self.capture {
+            let waiting = self.adv_state.message_layer().is_waiting_for_click();
+            capture.update(context.delta_ticks, waiting);
+        }
     }
 }
 

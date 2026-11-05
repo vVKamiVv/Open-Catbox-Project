@@ -36,6 +36,8 @@ dirs-next = "2.0.0"
 
 winit = { workspace = true }
 wgpu = { workspace = true }
+# PNG output of `--capture-messages`
+image = { workspace = true, features = ["png"] }
 
 glam = { workspace = true, features = [
     # "scalar-math" disables the 16-byte alignment requirement for some types
