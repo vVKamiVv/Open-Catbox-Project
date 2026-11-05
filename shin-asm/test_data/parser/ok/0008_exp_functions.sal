@@ -1,0 +1,1 @@
+exp $v2, min($v2, 0) + max($v3, MAX_V3) mod 4

@@ -1,0 +1,32 @@
+[package]
+name = "sdu"
+version = "0.8.1"
+edition = "2024"
+description = "Cli tool for working with shin-specific file formats"
+repository = "https://github.com/DCNick3/shin"
+license = "MPL-2.0"
+authors = ["DCNick3"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+shin-core = { path = "../shin-core" }
+shin-asm = { path = "../shin-asm" }
+
+anyhow = { workspace = true }
+binrw = { workspace = true }
+camino = "1.1.7"
+clap = { version = "4.5.9", features = ["derive"] }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+image = { workspace = true, features = ["png"] }
+bytes = { workspace = true }
+itertools = { workspace = true }
+clap_complete = "4.5.7"
+counter = "0.6.0"
+hound = "3.5.1"
+ron = "0.8.1"
+
+ogg = "0.9.1"
+
+[lints]
+workspace = true
+

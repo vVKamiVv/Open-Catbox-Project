@@ -1,0 +1,29 @@
+[package]
+name = "shin-tasks"
+version = "0.8.1"
+edition = "2024"
+description = "A task executor for Shin Engine (based on bevy)"
+repository = "https://github.com/DCNick3/shin"
+license = "MIT OR Apache-2.0"
+authors = ["DCNick3"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+futures-lite = "2.3.0"
+async-executor = "1.12.0"
+async-task = "4.7.1"
+tracing = { workspace = true }
+
+wasm_thread = "0.3.3"
+oneshot = "0.1.10"
+rayon-core = { workspace = true }
+
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+pin-project = "1"
+futures-channel = "0.3"
+
+[lints]
+workspace = true

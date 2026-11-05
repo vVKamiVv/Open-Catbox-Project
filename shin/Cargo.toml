@@ -1,0 +1,89 @@
+[package]
+name = "shin"
+version = "0.8.1"
+edition = "2024"
+description = "A visual novel engine used by some entergram games"
+repository = "https://github.com/DCNick3/shin"
+license = "MPL-2.0"
+authors = ["DCNick3"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+shin-core = { path = "../shin-core" }
+shin-render = { path = "../shin-render" }
+shin-derive = { path = "../shin-derive" }
+shin-tasks = { path = "../shin-tasks" }
+shin-audio = { path = "../shin-audio" }
+shin-input = { path = "../shin-input" }
+shin-video = { path = "../shin-video" }
+shin-window = { path = "../shin-window" }
+
+anyhow = { workspace = true }
+futures = "0.3.30"
+
+# various non-allocating/SSO containers
+# TODO: consolidate
+smallvec = { workspace = true }
+heapless = { workspace = true }
+
+indexmap = { workspace = true }
+
+tracing = { workspace = true } # NOTE: enabling `release_max_level_off` increases perf a lot
+
+clap = { version = "4.5.9", features = ["derive"] }
+clap-num = "1.1.1"
+dirs-next = "2.0.0"
+
+winit = { workspace = true }
+wgpu = { workspace = true }
+
+glam = { workspace = true, features = [
+    # "scalar-math" disables the 16-byte alignment requirement for some types
+    # this is required for bytemuck to work
+    "bytemuck",
+    # "scalar-math"
+] }
+
+# Theese part of bevy does not depend on ECS or the reflection, so it's not a big problem to use them
+bevy_utils = { workspace = true }
+
+# just one more macro crate and rust will be perfect
+num-derive = "0.4.2"
+num-traits = "0.2.19"
+enum-map = { workspace = true }
+derive_more = { version = "2.0.1", features = ["from"] }
+enum_dispatch = "0.3.13"
+anymap3 = "1.0.1"
+derivative = "2.2.0"
+from_variants = "1.0.2"
+cfg-if = "1.0.0"
+
+itertools = { workspace = true }
+once_cell = "1.19.0"
+
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+
+# kira for audio output
+kira = { workspace = true }
+bitflags = "2.6.0"
+
+drop_bomb = "0.1.5"
+
+rayon = { workspace = true }
+parking_lot = { workspace = true }
+
+replace_with = { workspace = true }
+
+[features]
+default = []
+gstreamer-video = ["shin-video/gstreamer"]
+tracy = ["shin-window/tracy"]
+
+[lints]
+workspace = true
+
+[package.metadata.release]
+# this crate is not ready for publishing yet
+# (it has git dependencies)
+publish = false

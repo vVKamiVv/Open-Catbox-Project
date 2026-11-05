@@ -1,0 +1,39 @@
+[package]
+name = "shin-render"
+version = "0.8.1"
+edition = "2024"
+description = "Common rendering utilities for the Shin engine"
+repository = "https://github.com/DCNick3/shin"
+license = "MPL-2.0"
+authors = ["DCNick3"]
+
+[dependencies]
+shin-primitives = { path = "../shin-primitives" }
+shin-render-shader-types = { path = "../shin-render-shader-types" }
+shin-render-shaders = { path = "../shin-render-shaders" }
+
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+dpi = "0.1.1"
+wgpu = { workspace = true }
+
+glam = { workspace = true, features = [
+    # "scalar-math" disables the 16-byte alignment requirement for some types
+    # this is required for bytemuck to work
+    "bytemuck",
+    "scalar-math"
+] }
+bytemuck = { workspace = true, features = ["derive"] }
+
+rustc-hash = "2.0.0"
+image = { workspace = true, default-features = false }
+
+enum-iterator = { workspace = true }
+
+sketches-ddsketch = "0.3.0"
+log = "0.4.26"
+
+[lints]
+workspace = true
+

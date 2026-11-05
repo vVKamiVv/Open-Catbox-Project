@@ -1,0 +1,58 @@
+[package]
+name = "shin-window"
+version = "0.8.1"
+edition = "2024"
+
+[dependencies]
+shin-primitives = { path = "../shin-primitives" }
+shin-tasks = { path = "../shin-tasks" }
+shin-input = { path = "../shin-input" }
+shin-render = { path = "../shin-render" }
+
+tracing = { workspace = true }
+
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-tracy = { version = "0.11.4", default-features = false, features = [
+    "system-tracing",
+    "context-switch-tracing",
+    "sampling",
+    "code-transfer",
+    "broadcast",
+    "callstack-inlines",
+] }
+tracy-client = { version = "0.18.0", default-features = false, features = [
+    "system-tracing",
+    "context-switch-tracing",
+    "sampling",
+    "code-transfer",
+    "broadcast",
+    "callstack-inlines",
+] }
+
+cfg-if = "1.0.0"
+
+enum-map = { workspace = true }
+
+winit = { workspace = true, features = ["android-native-activity"] }
+wgpu = { workspace = true }
+
+anyhow = { workspace = true }
+derive-where = "1.2.7"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3.70", features = ["Document"] }
+
+[features]
+tracy = ["tracing-tracy/enable"]
+
+[dev-dependencies]
+dpi = { workspace = true }
+glam = { workspace = true }
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+console_error_panic_hook = "0.1.6"
+tracing-wasm = { version = "0.2.1" }
+
+[lints]
+workspace = true

@@ -1,0 +1,25 @@
+[package]
+name = "shin-audio"
+version = "0.8.1"
+edition = "2024"
+description = "Kira audio sources for Shin Engine"
+repository = "https://github.com/DCNick3/shin"
+license = "MPL-2.0"
+authors = ["DCNick3"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shin-core = { path = "../shin-core" }
+
+anyhow = { workspace = true }
+tracing = { workspace = true }
+
+kira = { workspace = true, features = ["cpal"] }
+ringbuf = "0.4.1"
+
+parking_lot = { workspace = true }
+
+[lints]
+workspace = true
+
