@@ -402,6 +402,16 @@ ADV loop calls it every frame until it returns true (done), so waiting commands 
 `+0x8` the ADV context, `+0x10` the scene/system context, arguments from `+0x18` in declaration order. Slot 3 returns
 1 for every command looked at except `EXIT` (0); its meaning is **open**.
 
+The VM hands each command to the ADV through a listener interface; the ADV constructs the command object in place at
+ADV `+0x25a0`, stores it as the current command at `+0x2590` and destroys the previous one through `+0x2598`. For
+MSGSET the listener entry is `0x71000007b0` (primary vtable slot 9), but the game calls it through the thunk
+`0x7100000830` (this − 8, ADV's secondary base); both call the constructor `0x7100005140(cmd, vm, adv, args)`. Its
+arguments: `+0` auto_wait (byte), `+4` message id (u32), `+0x10` text pointer. **Confirmed in Eden:** the message id
+the game passes is the script's id **minus one** (the script's 109, "Nanjo: ......You've...", arrives as 108, and so
+on for every line checked). The constructor checks that id against the read-message set (`0x71000d19f0`, at
+`PTR_DAT_71002264f0 + 0x20`) to decide whether skip may pass the line, so read flags in save data are indexed by the
+script's id − 1; mind this when the port reads or writes them.
+
 ### Static inventory of the English `main.snr` **confirmed**
 
 Counted over the whole script (`sdu scenario disassemble`, 49 command types used), so missing features can be listed
