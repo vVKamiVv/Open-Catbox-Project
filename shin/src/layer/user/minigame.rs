@@ -111,12 +111,12 @@ pub trait Minigame: PointerTarget {
 
 /// Raises a flash and keeps it there while the pointer is held
 pub fn raise(tweener: &mut Tweener) {
-    tweener.enqueue_now(FLASH_PEAK, seconds(FLASH_SECONDS));
+    tween_now(tweener, FLASH_PEAK, FLASH_RATE);
 }
 
 /// Drops a raised flash
 pub fn lower(tweener: &mut Tweener) {
-    tweener.enqueue_now(0.0, seconds(FLASH_SECONDS));
+    tween_now(tweener, 0.0, FLASH_RATE);
 }
 
 /// `rect` (left, top, right, bottom) contains `point`, edges as the original tests them
@@ -128,15 +128,23 @@ pub const SOUND_MOVE: &str = "move";
 pub const SOUND_DECIDE: &str = "decide";
 pub const SOUND_ERROR: &str = "error";
 
-/// The pick flash the minigames share: to 0.7 and back in 0.2 s each (`0x710015a584`, `0x710015a954`)
+/// The pick flash the minigames share: to 0.7 and back at 0.2 per frame (`0x710015a584`, `0x710015a954`)
 pub const FLASH_PEAK: f32 = 0.7;
-pub const FLASH_SECONDS: f32 = 0.2;
+pub const FLASH_RATE: f32 = 0.2;
 
-pub fn seconds(seconds: f32) -> Tween {
+/// A linear tween from `from` to `to` at `rate` per frame: the original's tween flag 0x40, where the duration is
+/// `|to - from| / rate` (`0x71000bb620`)
+pub fn at_rate(from: f32, to: f32, rate: f32) -> Tween {
     Tween {
-        duration: Ticks::from_seconds(seconds),
+        duration: Ticks::from_f32((to - from).abs() / rate),
         easing: Easing::Linear,
     }
+}
+
+/// Moves `tweener` from its current value to `target` at `rate` per frame, starting now
+pub fn tween_now(tweener: &mut Tweener, target: f32, rate: f32) {
+    let tween = at_rate(tweener.value(), target, rate);
+    tweener.enqueue_now(target, tween);
 }
 
 pub fn frames(frames: f32, easing: Easing) -> Tween {
@@ -148,8 +156,8 @@ pub fn frames(frames: f32, easing: Easing) -> Tween {
 
 /// Starts the shared pick flash on `tweener`
 pub fn flash(tweener: &mut Tweener) {
-    tweener.enqueue_now(FLASH_PEAK, seconds(FLASH_SECONDS));
-    tweener.enqueue(0.0, seconds(FLASH_SECONDS));
+    tween_now(tweener, FLASH_PEAK, FLASH_RATE);
+    tweener.enqueue(0.0, at_rate(FLASH_PEAK, 0.0, FLASH_RATE));
 }
 
 /// A textured quad as the minigames draw it (`0x71000c6c10` rect, `0x71000c6c60` uvs, `0x71000c6c90` vertex colour),

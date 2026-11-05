@@ -52,7 +52,7 @@ use crate::{
         LayerProperties, NewDrawableLayer, NewDrawableLayerWrapper,
         new_drawable_layer::{NewDrawableLayerFastForward, NewDrawableLayerNeedsSeparatePass},
         render_params::{DrawableClipParams, DrawableParams, TransformParams},
-        user::minigame::{Minigame, MinigameInput, PointerTarget, seconds},
+        user::minigame::{self, Minigame, MinigameInput, PointerTarget},
     },
     layer::text_block::TextBlock,
     render::PreRenderContext,
@@ -123,8 +123,9 @@ fn move_highlight<T>(
     new: usize,
     highlight: impl Fn(&mut T) -> &mut Tweener,
 ) {
-    highlight(&mut items[old]).enqueue_now(0.0, seconds(0.1));
-    highlight(&mut items[new]).enqueue_now(1.0, seconds(0.25));
+    // at 0.1 and 0.25 per frame (tween flag 0x40)
+    minigame::tween_now(highlight(&mut items[old]), 0.0, 0.1);
+    minigame::tween_now(highlight(&mut items[new]), 1.0, 0.25);
 }
 
 pub const SOUND_CANCEL: &str = "cancel";

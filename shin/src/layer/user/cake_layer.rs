@@ -29,7 +29,7 @@ use crate::{
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
         user::minigame::{
             self, Minigame, MinigameInput, PointerTarget, SOUND_DECIDE, SOUND_ERROR, Sprite,
-            from_top_left, seconds,
+            from_top_left,
         },
     },
     update::{AdvUpdatable, AdvUpdateContext},
@@ -73,9 +73,10 @@ const HIT_SIZE: usize = 960;
 const HIT_CELL: usize = 4;
 const HIT_CELLS: usize = HIT_SIZE / HIT_CELL;
 
-const HOVER_IN_SECONDS: f32 = 0.25;
-const HOVER_OUT_SECONDS: f32 = 0.05;
-const POINTER_FADE_SECONDS: f32 = 0.1;
+/// Highlight and flash speeds per frame (tween flag 0x40: the duration is the distance over the rate)
+const HOVER_IN_RATE: f32 = 0.25;
+const HOVER_OUT_RATE: f32 = 0.05;
+const POINTER_FADE_RATE: f32 = 0.1;
 
 /// `/cake.txa`, plus the slice hit map built from its sprites
 pub struct CakeAssets {
@@ -233,14 +234,10 @@ impl CakeLayerImpl {
             return;
         }
         if let Some(old) = self.hovered {
-            self.slices[old]
-                .hover
-                .enqueue_now(0.0, seconds(HOVER_OUT_SECONDS));
+            minigame::tween_now(&mut self.slices[old].hover, 0.0, HOVER_OUT_RATE);
         }
         if let Some(new) = target {
-            self.slices[new]
-                .hover
-                .enqueue_now(1.0, seconds(HOVER_IN_SECONDS));
+            minigame::tween_now(&mut self.slices[new].hover, 1.0, HOVER_IN_RATE);
         }
         self.hovered = target;
     }
@@ -248,8 +245,7 @@ impl CakeLayerImpl {
     fn pick(&mut self, slice: usize) {
         self.sounds.push(SOUND_DECIDE);
         minigame::flash(&mut self.slices[slice].flash);
-        self.pointer_alpha
-            .enqueue_now(0.0, seconds(POINTER_FADE_SECONDS));
+        minigame::tween_now(&mut self.pointer_alpha, 0.0, POINTER_FADE_RATE);
         self.state = State::Picked;
     }
 }

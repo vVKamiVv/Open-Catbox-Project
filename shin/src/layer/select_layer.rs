@@ -21,7 +21,8 @@ use shin_render::{
 use crate::{
     adv::assets::AdvFonts,
     layer::{
-        message_layer::MessageboxTextures, text_block::TextBlock, user::minigame::PointerTarget,
+        message_layer::MessageboxTextures, text_block::TextBlock,
+        user::minigame::{PointerTarget, at_rate, tween_now},
     },
     random::MinStdRand,
     render::{PreRenderContext, top_left_projection_matrix},
@@ -58,10 +59,11 @@ const PICKED_FADE_FRAMES: f32 = 30.0;
 /// Fade speed of the whole menu, per frame
 const MENU_FADE_PER_FRAME: f32 = 0.1;
 
-const HOVER_IN_SECONDS: f32 = 0.25;
-const HOVER_OUT_SECONDS: f32 = 0.1;
+/// Highlight and flash speeds per frame (tween flag 0x40: the duration is the distance over the rate)
+const HOVER_IN_RATE: f32 = 0.25;
+const HOVER_OUT_RATE: f32 = 0.1;
 const FLASH_PEAK: f32 = 0.7;
-const FLASH_SECONDS: f32 = 0.2;
+const FLASH_RATE: f32 = 0.2;
 
 /// Already chosen options are tinted light blue
 const SEEN_COLOR: FloatColor4 = FloatColor4::from_rgba(0.75, 0.75, 1.0, 1.0);
@@ -249,13 +251,9 @@ impl SelectLayer {
         }
         self.sounds.push(SOUND_MOVE);
         if let Some(from) = self.cursor {
-            self.choices[from]
-                .hover
-                .enqueue_now(0.0, Tween::linear(Ticks::from_seconds(HOVER_OUT_SECONDS)));
+            tween_now(&mut self.choices[from].hover, 0.0, HOVER_OUT_RATE);
         }
-        self.choices[to]
-            .hover
-            .enqueue_now(1.0, Tween::linear(Ticks::from_seconds(HOVER_IN_SECONDS)));
+        tween_now(&mut self.choices[to].hover, 1.0, HOVER_IN_RATE);
         self.cursor = Some(to);
     }
 
@@ -292,13 +290,9 @@ impl SelectLayer {
             return;
         }
         if let Some(from) = self.cursor {
-            self.choices[from]
-                .hover
-                .enqueue_now(0.0, Tween::linear(Ticks::from_seconds(HOVER_OUT_SECONDS)));
+            tween_now(&mut self.choices[from].hover, 0.0, HOVER_OUT_RATE);
         }
-        self.choices[to]
-            .hover
-            .enqueue_now(1.0, Tween::linear(Ticks::from_seconds(HOVER_IN_SECONDS)));
+        tween_now(&mut self.choices[to].hover, 1.0, HOVER_IN_RATE);
         self.cursor = Some(to);
     }
 
@@ -314,9 +308,8 @@ impl SelectLayer {
         self.sounds.push(SOUND_DECIDE);
         self.cursor = Some(index);
         let flash = &mut self.choices[index].flash;
-        let duration = Ticks::from_seconds(FLASH_SECONDS);
-        flash.enqueue_now(FLASH_PEAK, Tween::linear(duration));
-        flash.enqueue(0.0, Tween::linear(duration));
+        tween_now(flash, FLASH_PEAK, FLASH_RATE);
+        flash.enqueue(0.0, at_rate(FLASH_PEAK, 0.0, FLASH_RATE));
         self.state = State::Picked;
     }
 
@@ -472,9 +465,7 @@ impl PointerTarget for SelectLayer {
             return;
         };
         self.point_at(hovered);
-        self.choices[hovered]
-            .flash
-            .enqueue_now(FLASH_PEAK, Tween::linear(Ticks::from_seconds(FLASH_SECONDS)));
+        tween_now(&mut self.choices[hovered].flash, FLASH_PEAK, FLASH_RATE);
         self.pointer_pressed = Some(hovered);
     }
 
@@ -488,9 +479,7 @@ impl PointerTarget for SelectLayer {
 
     fn pointer_cancel(&mut self) {
         if let Some(pressed) = self.pointer_pressed.take() {
-            self.choices[pressed]
-                .flash
-                .enqueue_now(0.0, Tween::linear(Ticks::from_seconds(FLASH_SECONDS)));
+            tween_now(&mut self.choices[pressed].flash, 0.0, FLASH_RATE);
         }
     }
 }

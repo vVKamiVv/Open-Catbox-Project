@@ -628,13 +628,16 @@ register `$v38`.
   a pick (state 3, once the flash is over) the other options slide to +300 (sine-in) and fade over 20 frames,
   4 frames apart, and the picked one fades over 30 frames after them; state 4 waits, then the pick is reported.
 - **Input** (`0x71000f1740`, only in state 2 with the menu fully shown): up/down move the cursor with
-  wrap-around and the sound `move`; the old highlight fades out in 0.1 s, the new one in in 0.25 s. Confirm plays
-  `seldecide` and flashes the option to 0.7 and back in 0.2 s each; with no cursor it plays `error`. Touch/mouse:
+  wrap-around and the sound `move`; the old highlight fades out at 0.1 per frame (10 frames), the new one in at 0.25 (4 frames). Confirm plays
+  `seldecide` and flashes the option to 0.7 and back at 0.2 per frame (3.5 frames each way); with no cursor it plays `error`. Touch/mouse:
   a bar is hit between x 460 and 1460 (`0x71000f1940`); pressing on it moves the cursor and raises the flash,
   releasing over it picks, releasing elsewhere drops the flash (`0x71000f19e0`, `0x71000f1aa0`). The menu starts without a cursor unless a flag (`+0x79` bit 7) is set;
   played with a controller in Eden it starts without one.
 - Tween easing codes as elsewhere (0 linear, 1 sine-in, 2 sine-out); `0x80` holds the current value for the
-  duration (a delay); `0x40` gives the duration in seconds instead of frames.
+  duration (a delay); `0x40` makes the duration argument a rate per frame: the step lasts |target − start| / rate frames
+  (`0x71000bb620`; corrected November 2026, it was read as seconds before). The low 6 bits of the flags pick the
+  easing; `0x80` makes the target relative (target 0 is a hold), `0x100` restarts from the current value, `0x1000`
+  marks a point where skipping stops fast-forwarding.
 
 ### The text object (constructor `0x7100100ea0`, layout `0x71001011d0` → `0x7100101360`, draw `0x7100101a90`)
 
@@ -693,8 +696,8 @@ between questions anyway.
   the state becomes done.
 - **Input** (`QuizOverlayLayer`, keys `0x71000c8910`, only while waiting): the cursor starts on the first button
   with its hover at 1. Up/down move it with wrap-around and the system sound `move`; the old hover fades to 0 in
-  0.05 s (`0x710015a704`), the new one to 1 in 0.25 s. Confirm plays `decide`, flashes the button to 0.7 and back
-  in 0.2 s each (`0x710015a584`, `0x710015a954`) and marks it picked. Touch/mouse (`0x71000c8ad0`–`0x71000c8e00`):
+  0.05 per frame (`0x710015a704`, 20 frames), the new one to 1 at 0.25 (4 frames). Confirm plays `decide`, flashes the button to 0.7 and back
+  at 0.2 per frame (`0x710015a584`, `0x710015a954`; 3.5 frames each way) and marks it picked. Touch/mouse (`0x71000c8ad0`–`0x71000c8e00`):
   a press on a button moves the cursor there and flashes it up, releasing on it picks it, leaving cancels the
   flash.
 - **Result** (`0x71000c85d0`): the picked entry's bit index, done when the state is done.
@@ -715,7 +718,7 @@ In the port: `layer/user/quiz_layer.rs`, `adv/command/quiz.rs`, with what the mi
   byte 11 (bits 0–3), the left stick at `+0x10`/`+0x14`.
 - They draw with blend 2 and `setLayerDepthStencil(ref, 1, 0)`: the second argument lets equal stencil values pass,
   so their overlapping sprites all draw (with the strict test only the first sprite of each spot survives).
-- The pick flash is shared: to 0.7 and back in 0.2 s each, through program 5's tint.
+- The pick flash is shared: to 0.7 and back at 0.2 per frame, through program 5's tint.
 
 ### The cake game (`shin::CakeLayer`, kind 1) **confirmed** (seen in the port, not yet compared with the original)
 
@@ -731,8 +734,8 @@ In the port: `layer/user/quiz_layer.rs`, `adv/command/quiz.rs`, with what the mi
   each cell holds slice + 1 (0 = none). The map is hand-made (wedges on the top, the sides below), not the sprites'
   alpha: the port rebuilds it from the sprites' opaque pixels with later slices on top, which matches 98.5 % of the
   cells (the rest are edges).
-- **Input** (`0x7100045da0`): moving changes the hovered slice (old hover → 0 in 0.05 s, new → 1 in 0.25 s).
-  Confirm on a slice plays `decide`, flashes it and fades the finger and banner in 0.1 s; confirm on nothing plays
+- **Input** (`0x7100045da0`): moving changes the hovered slice (old hover → 0 at 0.05 per frame, new → 1 at 0.25).
+  Confirm on a slice plays `decide`, flashes it and fades the finger and banner at 0.1 per frame; confirm on nothing plays
   `error`. The answer is the slice's index (`0x7100045250`), once the flash is over.
 
 ### The last choice (`shin::LastLayer`, kind 3) **confirmed** (seen in the port, not yet compared with the original)

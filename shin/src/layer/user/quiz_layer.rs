@@ -27,7 +27,7 @@ use crate::{
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
         user::minigame::{
             self, Minigame, MinigameInput, PointerTarget, SOUND_DECIDE, SOUND_MOVE, Sprite, contains,
-            from_top_left, seconds,
+            from_top_left,
         },
     },
     update::{AdvUpdatable, AdvUpdateContext},
@@ -92,8 +92,9 @@ const STACK_TOP: f32 = 288.0;
 const BUTTON_TOP: f32 = 4.0;
 const BUTTON_GAP: f32 = 8.0;
 
-const HOVER_IN_SECONDS: f32 = 0.25;
-const HOVER_OUT_SECONDS: f32 = 0.05;
+/// Highlight and flash speeds per frame (tween flag 0x40: the duration is the distance over the rate)
+const HOVER_IN_RATE: f32 = 0.25;
+const HOVER_OUT_RATE: f32 = 0.05;
 /// The consult sheet's two frames alternate every half of this many frames
 const BLINK_PERIOD_FRAMES: f32 = 60.0;
 
@@ -172,13 +173,9 @@ impl QuizLayerImpl {
             return;
         }
         self.sounds.push(SOUND_MOVE);
-        self.buttons[self.cursor]
-            .hover
-            .enqueue_now(0.0, seconds(HOVER_OUT_SECONDS));
+        minigame::tween_now(&mut self.buttons[self.cursor].hover, 0.0, HOVER_OUT_RATE);
         self.cursor = target;
-        self.buttons[target]
-            .hover
-            .enqueue_now(1.0, seconds(HOVER_IN_SECONDS));
+        minigame::tween_now(&mut self.buttons[target].hover, 1.0, HOVER_IN_RATE);
     }
 
     fn pick(&mut self) {
@@ -211,13 +208,9 @@ impl PointerTarget for QuizLayerImpl {
         let Some(hovered) = self.hovered else { return };
         minigame::raise(&mut self.buttons[hovered].flash);
         if hovered != self.cursor {
-            self.buttons[self.cursor]
-                .hover
-                .enqueue_now(0.0, seconds(HOVER_OUT_SECONDS));
+            minigame::tween_now(&mut self.buttons[self.cursor].hover, 0.0, HOVER_OUT_RATE);
             self.cursor = hovered;
-            self.buttons[hovered]
-                .hover
-                .enqueue_now(1.0, seconds(HOVER_IN_SECONDS));
+            minigame::tween_now(&mut self.buttons[hovered].hover, 1.0, HOVER_IN_RATE);
         }
         self.pressed = Some(hovered);
     }
