@@ -266,11 +266,14 @@ def main():
     try:
         capture_loop(gdb, args, breakpoint_address, remaining)
     finally:
-        gdb.interrupt(timeout=1.0)
-        print("remove breakpoint:", gdb.ask(f"z0,{breakpoint_address:x},4"))
-        if gdb.register(PC) == breakpoint_address:
-            pass_breakpoint(gdb, breakpoint_address)
-        gdb.send("c")
+        try:
+            gdb.interrupt(timeout=1.0)
+            print("remove breakpoint:", gdb.ask(f"z0,{breakpoint_address:x},4"))
+            if gdb.register(PC) == breakpoint_address:
+                pass_breakpoint(gdb, breakpoint_address)
+            gdb.send("c")
+        except (OSError, SystemExit):
+            print("Eden is gone; nothing to clean up")
         gdb.sock.close()
     print("done; restart Eden before the next run")
 
