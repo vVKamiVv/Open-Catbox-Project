@@ -446,17 +446,117 @@ voice status (`0x710011a980`) is 3 if any voice is in state 0, otherwise 2 if an
 - `WIPEWAIT` (`0x7100006b30`): done when the page layer has no running transition (`0x71000e66e0`).
 - `SYSSE` (`0x71000077d0`): id 0 plays the built-in sound named "horror" (string at `0x710015d64e`) from `sysse.bin`
   at the given volume (`0x71000272b0`); any other id does nothing; never waits.
-- `EXIT` (`0x7100004b10`): first frame: the SYSCALL 0 fade, clear the layer banks, stop the voice, fade and stop all
-  sound effects, fade the music out over 30 frames (`0x71000138d0`). Then it waits for the music, the fade and the
-  task pool, and leaves for the menus (`0x710000fab0`, `0x71000147e0`). The port does the audio part and then stops
-  the script, as it has no menus yet.
+- `EXIT` (`0x7100004b10`): first frame: the SYSCALL 0 fade, clear the layer banks, close the message box, stop the
+  voice, fade and stop all sound effects, and start a 30-frame uninterruptible wait (`0x71000138d0`). Then, once the
+  wait, the fade and the task pool are done, it leaves for the menus (`0x710000fab0`, `0x71000147e0`). The music is
+  not stopped. The port stops the sound effects and then the script, as it has no menus yet. (An earlier version of
+  these notes read the 30-frame wait as a music fade-out.)
+- The **ADV wait timer** (context `+0x490` interruptible flag, `+0x494` frames left as a float): `0x71000138d0`
+  starts it with `(interruptible, frames)`, `0x71000138f0` cancels it (skip mode), `0x7100013900` reports it active
+  while frames > 0. `WAIT` (`0x7100005090`) is just "start it, cancel it while skipping, done when inactive"; `EXIT`
+  uses it for its pause. Where the interruptible flag is read, i.e. what ends such a wait early, is **open**; the port
+  ends interruptible waits on the advance input.
+- `MSGCLOSE` (`0x7100005880`): closes the message box with its animation unless skipping (`0x71000b13a0`); with
+  `wait_for_close` it stays until the close animation is over (`0x71000b19c0`).
+- `LAYERLOAD` flags used by Umineko: 2 ("keep previous properties", 180 uses) and 2 + 1 ("don't block animations",
+  4); shin already handled both but asserted that no flag was ever set.
 - Related: `SESTOPALL` (`0x7100007020`) uses the same skip test and drops its fade-out to 0 in skip mode; its
   stop-all (`0x71000f2d20`) also stops the automatic channels.
 
 ### Still missing, in rough order of impact
 
-1. Layer effects (dissolve, blur, ripple, mosaic, raster), plus the indirect (render-to-texture) path they need for
-   picture, bustup and movie layers; shin stops at `todo!` as soon as one is set.
+1. Layer effects: mosaic, raster and property 70 (the render-to-texture path, dissolve, blur and ripple are done,
+   see §11); shin stops at `todo!` as soon as one of the others is set.
 2. `SELECT` (story choices) and the quiz: `QUIZ` command plus the quiz layer type 9.
 3. Voice playback (shin's voice player is a stub, so `VOICEWAIT` currently never waits).
 4. Menus, so that `EXIT` can return somewhere.
+
+---
+
+## 11. Layer effects
+
+### The effect chain **confirmed** (`0x71000762e0`, shared by every drawable layer)
+
+Each frame, before drawing, a drawable layer (picture, bustup, movie, …) reads eight properties: blur radius (66),
+property 70, mosaic size (67), raster amplitudes (76, 79), ripple amplitude (82), dissolve intensity (68) and ghosting
+alpha (56). They are tweeners at `properties + 0x28 + id × 0x58`; the float ones are scaled by 0.001. If all are zero
+and the layer doesn't otherwise need a separate pass, it is drawn directly. Otherwise:
+
+1. It renders itself into an offscreen texture (virtual slot 16; for `shin::PictureLayer` `0x71000c6040`): bind the
+   texture (`0x71000cf250`), clear colour to transparent black and stencil to 0 (`0x71000d0380(1.0, 5, 0, 0)`), and
+   draw with **neutral** parameters (`0x7100072360`: both opaque and transparent picture blocks, colour (1, 1, 1, 1),
+   blend type 1, default fragment shader) and stencil reference 1 (`0x71000731a0`). The layer's own colour, alpha,
+   blend type and fragment shader are applied once, when the finished texture is composited. It returns the pass the
+   composite belongs in: opaque only if the picture is fully opaque and its transformed rectangle covers all four
+   screen corners (`0x7100072c80`), transparent otherwise.
+2. Effects run on that texture in this order, each into a second texture that is then swapped with the first:
+   blur (program `0x2b`, drawn twice), property 70 (`0x2c`), mosaic (`0x2a`), raster (`0x2d`), ripple (`0x2e`),
+   dissolve (programs 2 and `0x2f`), ghosting (program 8 with blend 5, the previous frame).
+3. The result is composited with the layer's colour, blend type and shader.
+
+Render-state helpers used here: `0x71000cf250` set render target, `0x71000d0380` clear `(depth, flags, colour, stencil)`
+with flags bit 0 colour, bit 1 depth, bit 2 stencil; `0x71000cf650` stencil state, laid out as
+`{function, fail op, depth-fail op, pass op, write mask, read mask, reference}` with GL-ordered enums
+(function 7 always, 5 not-equal; op 0 keep, 2 replace), the same order as shin's `StencilFunction` and
+`StencilOperation`; `0x71000cf880` index data; `0x71000cffc0` indexed draw; `0x71000d0520` create a render texture.
+
+In the port: `NewDrawableLayer::render_drawable_indirect` (default method) and
+`NewDrawableLayerState::{pre_render, try_finish_indirect_render}`.
+
+### Dissolve **confirmed** (property 68 = intensity × 1000, property 69 = mode)
+
+The layer breaks apart into 20-pixel pieces, starting from the corner opposite the one the mode selects
+(bit 0: right instead of left, bit 1: top instead of bottom). With `p = 1 − 3 × min(intensity, 1)` (1 intact,
+−2 gone):
+
+- **Intact part** (only while −1 ≤ p < 1): a right triangle in the selected corner with legs
+  `L = (p + 1) / 2 × 2971.72` (`0x710015a724`), texture coordinates = position / (1920, 1080), drawn with the plain
+  sprite program (2), opaque, writing stencil 1 (always / replace). Its three corners come from the index table
+  `0x7100170f70` (`{0,3,2}`, `{2,1,3}`, `{0,1,2}`, `{0,1,3}` for modes 0–3 over the quad corners top-left, top-right,
+  bottom-left, bottom-right).
+- **Pieces**: a 96 × 54 grid of 20-pixel cells. For each cell (row by row), with `c'` = column (or 96 − column when
+  bit 0 is clear) and `r'` = row (or 54 − row when bit 1 is set), distance `d = (c' + r') / 148` (`0x710015a9d4`) and
+  cell progress `t = p + 2d`. Two `minstd_rand` numbers are drawn for every cell (seeded from the layer's field `+0x58`;
+  its source is **open**): an angle and a radius. Cells with `t ≤ 0` or `t > 1.1` (`0x710015a43c`) are skipped; for
+  `t ≥ 1` the piece sits still; below 1 it moves by `radius × (1 − cos((1 − t) × π/2))` in direction
+  `(base + rand₁ × 0.48 − 0.24)` turns, `radius = rand₂ × 800 + 200` (`0x710015a6b4`, `0x710015a8b0`), with base 0.875,
+  0.625, 0.125, 0.375 turns for modes 0–3 (away from the intact corner; y points down). Each piece is a square of side
+  `32 t` (`0x710015a674`) around the cell centre, showing the picture patch at its starting position, masked by the
+  "breakup" texture of `effects.txa` (looked up by name, string `0x710015e9f7`). They are drawn with program `0x2f`,
+  blend 5 (premultiplied alpha) and stencil not-equal 1, so they never cover the intact triangle.
+- Shader `0x2f`: vertices of 24 bytes (position xy, picture uv, mask uv); fragment = `texture(picture, uv) ×
+  texture(breakup, mask_uv).a`.
+- The diagonal distance slightly exceeds 1 in the corner cells, so at full intensity a few sub-pixel specks remain,
+  in the original as in the port.
+- The result always composites in the transparent pass.
+
+In the port: `layer/new_drawable_layer/effect_passes.rs` (`apply_dissolve`) and `wgsl/dissolve.wgsl`.
+
+### Blur **confirmed** (property 66 = radius × 1000)
+
+Separable, at half resolution, four draws that each render into the second texture and swap it with the first:
+
+1. Shrink (`0x7100078360`): the sprite program (2), opaque, draws the whole canvas into a half-size viewport
+   (`0x71000cf3c0(target, no depth, width / 2, height / 2)`), i.e. the top-left quarter of the texture.
+2. Horizontal pass, program `0x2b`, opaque, half-size viewport, reading uv 0–0.5: eight taps at `uv ± offsetᵢ` with
+   offsets `(0.5, 1.5, 2.5, 3.5) × radius / 1920` and the result `Σ ½ wᵢ (tap₋ + tap₊)`, weights
+   `(0.4041, 0.3147, 0.1909, 0.0902)` (bit patterns `0x3eceed6b`, `0x3ea127be`, `0x3e437dbe`, `0x3db8afdf`, summing to
+   1; there is no centre tap).
+3. Vertical pass, the same with offsets `/ 1080` along y.
+4. Grow back (`0x7100078580`): the sprite program, opaque, full viewport, reading uv 0–0.5.
+
+The target is not cleared, so taps that reach past the quarter read stale texels at the picture's right and bottom
+edges, in the original as in the port. In the port a projection that maps the canvas onto the top-left quarter stands
+in for the half-size viewport (`effect_passes::apply_blur`, `wgsl/blur.wgsl`).
+
+### Ripple **confirmed** (properties 82 amplitude, 83 wavelength, 84 period)
+
+One opaque full-canvas pass of program `0x2e`. Uniforms: centre (0.5, 0.5), scale (1, 1) (both constant),
+`k = 1 / (int(property 83) × 0.001)` (0 when that is 0), amplitude `property 82 / 1920` and the running phase. Per
+pixel: `d = (uv − centre) × scale`, `r = |d|`, `r' = r + amplitude × sin(2π k (2r − phase))`, sample at
+`d / r × r' / scale + centre`: rings that travel outward as the phase grows.
+
+The phase lives in the layer at `+0x54` and is advanced every frame by `0x7100078780`: `phase += dt / property 84`
+(dt in 1/60 s ticks, skipped when property 84 is 0). The same function advances two raster phases, `+0x4c` by
+`dt / property 78` and `+0x50` by `dt / property 81`. In the port: `NewDrawableLayerState::update`,
+`effect_passes::apply_ripple`, `wgsl/ripple.wgsl`.

@@ -31,7 +31,7 @@ with no emulator. Development and testing happen on Windows.
 | Rain, snow, petals and golden snow | Working |
 | Screen transitions (crossfade, mask, whirl, glass shatter) | Working; whirl and glass not yet compared with the original on screen |
 | Every script command the game uses, except choices and the quiz | Working |
-| Layer effects (dissolve, blur, ripple, mosaic, raster) | Next up |
+| Layer effects | Dissolve, blur and ripple working (not yet compared with the original on screen); mosaic and raster next |
 | Story choices and the quiz | Planned |
 | Voices | Planned |
 | Title screen, save/load, settings, backlog and other menus | Planned |
