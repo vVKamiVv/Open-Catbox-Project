@@ -1,6 +1,7 @@
 pub mod assets;
 mod command;
 mod restore;
+mod unlocks;
 mod vm_state;
 
 use std::{borrow::Cow, sync::Arc};
@@ -401,6 +402,17 @@ impl Adv {
         match self.load.take() {
             None => {}
             Some(LoadState::Replayed(end)) => {
+                // the rebuilt layers unlock their pictures and movies again, as LAYERLOAD does
+                for (_, bank) in &self.vm_state.layers.layerbanks {
+                    if let Some(layer_type) = bank.layer_type {
+                        unlocks::layer_loaded(
+                            &mut self.vm_state.global.save_vectors,
+                            &self.scenario,
+                            layer_type,
+                            bank.params,
+                        );
+                    }
+                }
                 let restore = restore::SceneRestore::start(
                     context,
                     &self.scenario,

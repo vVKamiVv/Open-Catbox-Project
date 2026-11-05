@@ -20,10 +20,10 @@ both codebases.
 
 | # | Finding | Area | Size |
 |---|---|---|---|
-| 1 | **No voices**: `VoicePlayer::play` is an empty stub and VOICEPLAY only logs; 39,649 lines carry `@v`. Checked | systems, text | M-L |
+| 1 | **Done** (voices play; panning by speaker position not yet). **No voices**: `VoicePlayer::play` is an empty stub and VOICEPLAY only logs; 39,649 lines carry `@v`. Checked | systems, text | M-L |
 | 2 | **Done** except voice and movie volumes (still with voices and movies). **Settings are parsed but never applied**: text speed 80 instead of v9 (default 50; text types 2.5 x too fast; checked), auto delay 80 instead of v10, no volume setting (BGM/SE about 1.4 x, system sounds 1.8 x louder than the Switch default), window opacity, voice-on-advance | systems, text | S each |
-| 3 | **Bustups never blink or move their lips**: property 27 (set 154 times) is ignored; the original blinks every `(1 − r²)·240 + 80` ticks and moves the mouth with the voice level (`0x7100036a00`) | layers | M |
-| 4 | **Skip has none of the original's rules**: a held Ctrl instead of the R/L toggles with sounds and icon; it ignores events, unread lines (v11) and the system flag; read lines are never recorded; instant commands can't see it (fades not zeroed, one-shot SEs still play). Checked (held Ctrl) | commands, systems | M |
+| 3 | **Done** (blinking is ported but Umineko's bustups have no eye frames; the mouth level comes from loudness until the original's per-stream table is decoded). **Bustups never blink or move their lips**: property 27 (set 154 times) is ignored; the original blinks every `(1 − r²)·240 + 80` ticks and moves the mouth with the voice level (`0x7100036a00`) | layers | M |
+| 4 | **Done** for skip and auto (rollback, jump and event skip still to do). **Skip has none of the original's rules**: a held Ctrl instead of the R/L toggles with sounds and icon; it ignores events, unread lines (v11) and the system flag; read lines are never recorded; instant commands can't see it (fades not zeroed, one-shot SEs still play). Checked (held Ctrl) | commands, systems | M |
 | 5 | **Done.** **Event lines wait for a click**: MSGSET passes no flags (`read | event << 1`), so the 72 event lines don't play by themselves. Checked (flags empty) | commands | S |
 | 6 | **Done.** **MSGCLOSE closes the box mid-line** after an un-waited line (35 places, e.g. `0x31ce57`) | commands | S |
 | 7 | **Banners missing**: the scene title (AUTOSAVE, bottom left, size 48, 240 frames), the song title (BGMPLAY, top left with ♪), and 123 "characters/tips updated" notifications with their sounds | commands, text, systems | M |
@@ -32,10 +32,10 @@ both codebases.
 | 10 | **Done** (confirmed in code). **Screen shake and zoom applied twice** while a screen or page effect (ghosting, ripple, blur) runs: `screen_layer.rs`/`page_layer.rs` pass their own transform into the effect chain instead of the parent's (`0x71000e67f0`, `0x710009f360`). To verify on screen | layers | S |
 | 11 | **Done** (layer banks still break ties between layers without an id, such as the screen and the message window). **Layers with equal RenderPosition stack in reverse** (`0x7100081110`: lower layer id below) | layers | S |
 | 12 | **Done**: the Check screen matches Eden line for line. **Check and choice texts**: wrong font (system.fnt, not newrodin-medium; the 1.3 % width) and not justified | text | S |
-| 13 | Read lines **done**; unlocks still open. Read lines, CG/BGM/movie unlocks and UNLOCK are not recorded (needed by skip, galleries, the title) | systems, commands | S |
+| 13 | **Done.** Read lines, CG/BGM/movie unlocks and UNLOCK are not recorded (needed by skip, galleries, the title) | systems, commands | S |
 | 14 | Movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
 | 15 | No menus or game flow: title, save/load, config, backlog, system menu, scenario select, galleries | systems | L |
-| 16 | Smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
+| 16 | **Mostly done** (wobble slots 44-55 and EXIT's teardown remain). Smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
 
 ## Structural changes (prevent whole classes of bugs)
 

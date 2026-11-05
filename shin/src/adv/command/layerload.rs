@@ -141,10 +141,18 @@ impl StartableCommand for command::runtime::LAYERLOAD {
         self,
         context: &mut UpdateContext,
         scenario: &Arc<Scenario>,
-        _vm_state: &mut VmState,
+        vm_state: &mut VmState,
         state_info: LayerLoadStateInfo,
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
+        // `0x7100020470`: pictures and movies unlock in the galleries
+        crate::adv::unlocks::layer_loaded(
+            &mut vm_state.global.save_vectors,
+            scenario,
+            self.layer_type,
+            self.params,
+        );
+
         let asset_server = context.asset_server.clone();
         let audio_manager = adv_state.audio_manager.clone();
         let scenario = scenario.clone();

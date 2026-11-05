@@ -18,7 +18,7 @@ impl StartableCommand for command::runtime::BGMPLAY {
         self,
         context: &mut UpdateContext,
         scenario: &Arc<Scenario>,
-        _vm_state: &mut VmState,
+        vm_state: &mut VmState,
         _state_info: (),
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
@@ -34,7 +34,7 @@ impl StartableCommand for command::runtime::BGMPLAY {
             .load_sync(bgm_info.path())
             .expect("Failed to load BGM track");
 
-        adv_state.bgm_player.play(
+        let started = adv_state.bgm_player.play(
             self.bgm_data_id,
             audio,
             display_name.as_str(),
@@ -42,6 +42,10 @@ impl StartableCommand for command::runtime::BGMPLAY {
             self.volume,
             Tween::linear(if adv_state.skipping { Ticks::ZERO } else { self.fade_in_time }),
         );
+
+        if started {
+            crate::adv::unlocks::bgm_started(&mut vm_state.global.save_vectors, scenario, self.bgm_data_id);
+        }
 
         self.token.finish().into()
     }
