@@ -1,0 +1,6 @@
+# Only the hand-maintained symbols and the RTTI dump belong in the repo. Everything else that the tools write here
+# (decompiler output, disassembly, data dumps, the generated symbols.csv) is derived from the game executable.
+*
+!.gitignore
+!manual_symbols.csv
+!rtti_inventory.tsv

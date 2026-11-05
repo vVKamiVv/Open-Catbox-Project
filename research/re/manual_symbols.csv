@@ -1,0 +1,89 @@
+address,name,comment
+71000250e0,shin::Layer::Layer,base layer constructor
+7100074930,shin::Layer::Properties::getValue,"property index -> current tweener value (0x58-byte tweeners at +0x28)"
+71000bb400,shin::Tweener::value,"evaluates and caches a tweener's current value"
+71000a1f10,math::Mat4::rotationZ,builds a z-rotation matrix
+71000a1fd0,math::Mat4::scale,builds a scale matrix
+71000a1f90,math::Mat4::translation,builds a translation matrix
+71000a18f0,math::Mat4::multiply,4x4 matrix product
+71000a2030,math::Mat4::transformVec3,"matrix * vector (register-only helper)"
+71000c99a0,shin::RainLayer::RainLayer,"constructor (kind, distance_a, distance_b)"
+71000c9c60,shin::RainLayer::RainLayer_copy,copy constructor
+71000c9b20,shin::RainLayer::~RainLayer,
+71000c9bc0,shin::RainLayer::~RainLayer_deleting,
+71000c9d80,shin::RainLayer::clone,
+71000ca640,shin::RainLayer::update,"pre-warm, then step if property 27 != 0"
+71000c9d30,shin::RainLayer::prewarm,steps whole frames until a particle has left the screen
+71000c9df0,shin::RainLayer::step,"spawn, move, wrap, remove"
+71000ca0b0,shin::RainLayer::spawn,creates particles from the spawn accumulator
+71000ca730,shin::RainLayer::render,draws particles through the generic layer pipeline
+71000cad00,shin::RainLayer::sortParticles,std::sort by depth key
+710015a3a0,shin::RainLayer::kRainBoundingRadius,"float 150.05333 = |(4,150)|"
+7100165d78,shin::RainLayer::kBoundingRadiusByKind,"float[2]: other kinds 21.21, petals 42.43"
+710015aa30,shin::RainLayer::kMaxTilt,float pi/3
+710015a6a8,shin::RainLayer::kRainBaseSpeed,float 400
+710015a550,shin::kFloat_0_1,"float 0.1, shared: rain tilt jitter, SYSCALL 0 tween duration, ..."
+710015a4a4,shin::kRandomToUnit,float 2^-31 (minstd_rand -> [0;1))
+71001de058,shin::RainLayer::kTextureNames,"char*[4]: rain, hanabira, snow, goldsnow"
+7100226840,shin::gBlendStateByLayerBlendType,"-> int[3] {2,3,4} = Layer1..3"
+7100226838,shin::gShaderByFragmentShader,"-> int[] program ids, Default=8"
+710011ba80,shin::Wiper::progress,elapsed (+0x1c) / total (+0x20)
+710011b8f0,shin::Wiper::Wiper_copy,base copy constructor (timer state)
+71000cf720,shin::gfx::setProgram,"stores the shader program id (global +0x7100233a4c), used at draw time"
+71000cf700,shin::gfx::setBlend,"stores the blend state id (global 0x7100233a44); 1 opaque, 2..4 Layer1..3"
+71000cf7c0,shin::gfx::setUniform,"(slot, data, size): uploads a uniform block"
+71000cf830,shin::gfx::setVertices,"(data, size): uploads vertex data"
+71000cf740,shin::gfx::bindTexture,"(slot, texture, sampler)"
+7100062660,shin::DefaultWiper::render,"full-screen quad, program 0x24, opaque"
+71000efcf0,shin::ScrollWiper::render,"two quads offset by direction x progress; programs 2, blends 1/2"
+710011b770,shin::WhirlWiper::render,"program 0x28, uniforms (p, +-1, 1, strength)"
+710006c980,shin::GlassWiper::update,shard physics: velocity and per-frame gravity on the vertical speed
+710006cae0,shin::GlassWiper::render,"new screen, then shards in 3D with program 0x29"
+710006c7c0,shin::GlassWiper::clone,copies parameters and the shard vector
+71001de1c0,shin::gProgramTable,"48-byte entries: +0 vertex blob, +8 fragment blob; index = program id (53 programs)"
+71000cea50,shin::gfx::createPrograms,"copies each blob's GPU code (+0xc4/+0xc8) and control (+0xc0/+0xcc) and builds NVN programs"
+710022d2f0,shin::gPrograms,"runtime NVN program objects, stride 0x1f8"
+71000cf980,shin::gfx::flushState,binds program/blend/textures/uniforms before a draw
+71000cf920,shin::gfx::draw,"(primitive, first, count)"
+710011b410,shin::WhirlWiper::create,"(duration, scale param, direction param): +0x24 direction, +0x28 = 1/scale or 1"
+710011c6c0,shin::WhirlWiperLoader::create,maps WIPE parameters to the constructor
+710006b8d0,shin::GlassWiper::create,allocates and calls the shard builder
+710006b930,shin::GlassWiper::GlassWiper,"constructor; seeds minstd_rand, builds the jittered lattice and the 168 shards"
+710011c740,shin::GlassWiperLoader::create,maps WIPE parameters to the constructor
+71000cf6e0,shin::gfx::setCullFace,"stores the cull state index (global 0x7100233a3c); 0 none, 1 back, 2 front, matching shin's CullFace order"
+71000ce600,shin::gfx::initStateTables,"fills the state lookup tables, e.g. cull index -> NVN face at 0x7100233af8"
+7100233af8,shin::gfx::kCullFaceTable,"u32[3] = {0, 2, 1}: cull index -> NVN face (none, back, front)"
+71000a2020,math::Vec3::make,"vec3 from s0..s2 (just ret)"
+71000a1cf0,math::Vec3::sub,"*x0 - *x1"
+71000a1d80,math::Vec3::cross,cross product
+71000a1d20,math::Vec3::normalize,normalizes a vec3
+71000a1b90,math::Mat4::identity,identity matrix
+71000a1bc0,math::Mat4::orthographic,"(out, left, right, bottom, top, near, far)"
+71000a1c40,math::Mat4::perspective,"(out, fov, aspect, near, far)"
+71000a1e10,math::Mat4::rotationX,builds an x-rotation matrix
+71000a1e90,math::Mat4::rotationY,builds a y-rotation matrix
+71000fc2c0,shin::randomSeed,"system random value used to seed minstd_rand (glass wiper, rain)"
+7100170be0,shin::GlassWiper::kShardIndices,"u16[24]: index list for one shard (8 triangles over 18 vertices)"
+7100170bcc,shin::GlassWiper::kSideCorners,"u16 corner table: which face vertices make each side quad"
+7100007320,shin::ADV::SEONCE::execute,"skip test, then plays once on the first free channel -1, -2, ... and waits on a status mask"
+7100006e20,shin::ADV::BGMSYNC::execute,"done when no BGM plays or its position reaches sync_time frames"
+7100007760,shin::ADV::VOICEWAIT::execute,"done when (mask & voice status) == 0"
+7100006b30,shin::ADV::WIPEWAIT::execute,"done when the page layer has no running transition"
+71000077d0,shin::ADV::SYSSE::execute,"id 0 plays sysse ""horror""; other ids do nothing"
+7100004b10,shin::ADV::EXIT::execute,"two-stage teardown, then leaves ADV for the menus"
+71000071e0,shin::ADV::SEWAIT::execute,"done when (mask & channel status) == 0; negative slot = any automatic channel"
+7100007020,shin::ADV::SESTOPALL::execute,"stop all SE; fade 0 in skip mode"
+7100007c10,shin::ADV::SYSCALL::execute,"id 0 calls 0x7100012550 (context fade); other ids do nothing"
+7100012430,shin::ADV::isSkipping,"true while skip mode is on (several context checks + a config option); SEONCE and SESTOPALL use it"
+7100012550,shin::ADV::syscall0Fade,"tweens context +0x500 to 0 if +0x4f8 is set, clears +0x4f8 and +0x47c"
+71000f2fd0,shin::SePlayer::getStatus,"channel status bits: 2 present, +1 (+0xc == 0), +4/+8/+16 volume/pan/speed tweening"
+71000f2580,shin::SePlayer::play,"(volume, pan, speed, player, channel, se id, fade, once)"
+71000f2d20,shin::SePlayer::stopAll,"(player, fade) stops every channel"
+71000f2370,shin::SePlayer::fadeAllToSilence,"tweens every channel's volume to 0"
+7100033e00,shin::BgmPlayer::getStatus,"same bits as the SE status"
+7100033e70,shin::BgmPlayer::position,"current track position in microseconds"
+710011a980,shin::VoicePlayer::getStatus,"3 any voice in state 0, else 2 any in state 1, else 0"
+71000e66e0,shin::ScreenLayer::isTransitionRunning,"page layer (dynamic_cast) vfunc +0x58"
+71000272b0,shin::SysSePlayer::play,"(volume, name) plays a sysse.bin sound by name"
+710015d64e,shin::kSysSe0Name,"""horror"""
+71000138d0,shin::ADV::stopBgm,"(adv, ?, fade frames); EXIT passes 30"
