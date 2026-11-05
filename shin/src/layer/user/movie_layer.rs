@@ -16,6 +16,7 @@ use shin_render::{
         texture::{DepthStencilTarget, TextureTarget},
     },
 };
+use shin_tasks::ComputeTask;
 use shin_video::VideoPlayerHandle;
 use tracing::warn;
 
@@ -38,6 +39,8 @@ struct Shared {
     update_tracker: UpdateTracker,
     volume_source: MovieVolumeSource,
     local_volume: Volume,
+    /// A repeating movie's next run, starting in the background
+    restart: Option<ComputeTask<anyhow::Result<VideoPlayerHandle>>>,
 }
 
 impl Shared {
@@ -46,6 +49,7 @@ impl Shared {
             update_tracker: UpdateTracker::new(),
             volume_source,
             local_volume,
+            restart: None,
         }
     }
 
@@ -54,10 +58,8 @@ impl Shared {
             return;
         }
 
-        // TODO: restart the video if it's looping and it's finished
-
-        // TODO: need settings handle to read volume
-        let settings_volume = Volume(1.0);
+        // the settings volume of the movie's volume source
+        let settings_volume = Volume(crate::audio::sys_se::movie_setting_gain(self.volume_source));
         let final_volume = self.local_volume * settings_volume;
 
         handle.set_volume(final_volume);
@@ -72,6 +74,9 @@ pub struct MovieLayerImpl {
     shared: Arc<Mutex<Shared>>,
     transparency: MovieTransparencyMode,
     repeat: bool,
+    /// For playing a repeating movie again
+    movie: Arc<Movie>,
+    audio_manager: Arc<AudioManager>,
 }
 
 pub struct MovieArgs {
@@ -92,7 +97,7 @@ pub type MovieLayer = NewDrawableLayerWrapper<MovieLayerImpl>;
 impl MovieLayer {
     pub fn new(
         device: &wgpu::Device,
-        audio_manager: &AudioManager,
+        audio_manager: &Arc<AudioManager>,
         movie: Arc<Movie>,
         MovieArgs {
             volume_source,
@@ -107,10 +112,6 @@ impl MovieLayer {
         if transparency != MovieTransparencyMode::Opaque {
             warn!("Movie transparency mode {:?} not supported", transparency);
         }
-        if repeat {
-            warn!("Movie repeat mode not supported");
-        }
-
         NewDrawableLayerWrapper::from_inner(MovieLayerImpl {
             movie_label: movie.label().to_string(),
             video_player: Arc::new(
@@ -122,6 +123,8 @@ impl MovieLayer {
             shared: Arc::new(Mutex::new(Shared::new(volume_source, local_volume))),
             transparency,
             repeat,
+            movie,
+            audio_manager: audio_manager.clone(),
         })
     }
 
@@ -208,6 +211,35 @@ impl AdvUpdatable for MovieLayerImpl {
     fn update(&mut self, ctx: &AdvUpdateContext) {
         self.video_player
             .update(ctx.frame_id, ctx.delta_ticks, ctx.queue);
+
+        // a repeating movie (LAYERLOAD's repeat bit) plays again from the start; starting a player waits for the
+        // decoder's first frame, so the next run starts in the background
+        if !self.repeat || !self.video_player.is_finished() {
+            return;
+        }
+        let mut shared = self.shared.lock();
+        let Some(task) = &mut shared.restart else {
+            let (movie, device, audio_manager) =
+                (self.movie.clone(), ctx.device.clone(), self.audio_manager.clone());
+            shared.restart = Some(shin_tasks::compute::spawn(move || {
+                movie.play(&device, &audio_manager)
+            }));
+            return;
+        };
+        let Some(result) = task.poll_naive() else {
+            return;
+        };
+        shared.restart = None;
+        match result {
+            Ok(player) => {
+                tracing::debug!("Movie {} plays again", self.movie_label);
+                self.video_player = Arc::new(player);
+            }
+            Err(e) => {
+                warn!("Could not play {} again: {e:?}", self.movie_label);
+                self.repeat = false;
+            }
+        }
     }
 }
 

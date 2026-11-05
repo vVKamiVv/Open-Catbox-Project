@@ -736,6 +736,11 @@ impl AdvState {
         self.bgm_player.set_gain(settings.v0_bgmvol, self.voice_duck);
         self.se_player.set_gain(settings.v1_sfxvol, self.voice_duck);
         crate::audio::sys_se::set_setting_volume(settings.v3_sysvol);
+        crate::audio::sys_se::set_movie_setting_volumes(
+            settings.v0_bgmvol,
+            settings.v1_sfxvol,
+            settings.v2_voicevol,
+        );
     }
 
     pub fn new(

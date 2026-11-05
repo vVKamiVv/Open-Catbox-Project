@@ -13,9 +13,29 @@ use crate::asset::system::AssetServer;
 
 /// The system sound volume setting (v3, 0-100), read when a sound starts as the original reads the save data
 static SETTING_VOLUME: AtomicU8 = AtomicU8::new(55);
+/// The BGM, SE and voice volume settings (v0, v1, v2) for the movies, which take one of them by their volume source
+static MOVIE_SETTING_VOLUMES: [AtomicU8; 3] = [AtomicU8::new(70), AtomicU8::new(70), AtomicU8::new(90)];
 
 pub fn set_setting_volume(percent: u8) {
     SETTING_VOLUME.store(percent.min(100), Ordering::Relaxed);
+}
+
+pub fn set_movie_setting_volumes(bgm: u8, se: u8, voice: u8) {
+    for (slot, percent) in MOVIE_SETTING_VOLUMES.iter().zip([bgm, se, voice]) {
+        slot.store(percent.min(100), Ordering::Relaxed);
+    }
+}
+
+/// A movie's settings gain by its volume source (0 ignore, 1 BGM, 2 SE, 3 voice), as the original's movie player
+pub fn movie_setting_gain(source: shin_core::format::scenario::info::MovieVolumeSource) -> f32 {
+    use shin_core::format::scenario::info::MovieVolumeSource;
+    let slot = match source {
+        MovieVolumeSource::Ignore => return 1.0,
+        MovieVolumeSource::Bgm => 0,
+        MovieVolumeSource::Se => 1,
+        MovieVolumeSource::Voice => 2,
+    };
+    MOVIE_SETTING_VOLUMES[slot].load(Ordering::Relaxed) as f32 / 100.0
 }
 
 /// Plays a built-in system sound from `/sysse.bin` once, as the original's `SysSePlayer::play` (`0x71000272b0`)

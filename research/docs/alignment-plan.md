@@ -33,7 +33,7 @@ both codebases.
 | 11 | **Done** (layer banks still break ties between layers without an id, such as the screen and the message window). **Layers with equal RenderPosition stack in reverse** (`0x7100081110`: lower layer id below) | layers | S |
 | 12 | **Done**: the Check screen matches Eden line for line. **Check and choice texts**: wrong font (system.fnt, not newrodin-medium; the 1.3 % width) and not justified | text | S |
 | 13 | **Done.** Read lines, CG/BGM/movie unlocks and UNLOCK are not recorded (needed by skip, galleries, the title) | systems, commands | S |
-| 14 | Movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
+| 14 | **Done** (transparent movies still unsupported). Movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
 | 15 | No menus or game flow: title, save/load, config, backlog, system menu, scenario select, galleries | systems | L |
 | 16 | **Mostly done** (wobble slots 44-55 and EXIT's teardown remain). Smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
 
