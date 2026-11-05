@@ -51,6 +51,7 @@ mod notifyset;
 mod pageback;
 mod planeclear;
 mod planeselect;
+mod quiz;
 mod saveinfo;
 mod select;
 mod seonce;
@@ -86,7 +87,7 @@ use shin_core::{
 use self::{
     bgmsync::BGMSYNC, layerload::LAYERLOAD, layerwait::LAYERWAIT, maskload::MASKLOAD,
     moviewait::MOVIEWAIT, msgclose::MSGCLOSE, msgset::MSGSET, msgwait::MSGWAIT, seonce::SEONCE,
-    select::SELECT, sewait::SEWAIT, voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
+    quiz::QUIZ, select::SELECT, sewait::SEWAIT, voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
 };
 use crate::{
     adv::{AdvState, VmState},
@@ -143,6 +144,8 @@ pub enum ExecutingCommand {
     MSGCLOSE,
     #[derivative(Debug = "transparent")]
     SELECT,
+    #[derivative(Debug = "transparent")]
+    QUIZ,
 }
 
 pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
@@ -212,7 +215,7 @@ pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
         // MASKUNLOAD,
         CHARS,
         TIPSGET,
-        // QUIZ,
+        QUIZ,
         SHOWCHARS,
         NOTIFYSET,
         DEBUGOUT,
@@ -294,7 +297,7 @@ pub fn apply_command_state_and_start(
         // MASKUNLOAD,
         CHARS,
         TIPSGET,
-        // QUIZ,
+        QUIZ,
         SHOWCHARS,
         NOTIFYSET,
         DEBUGOUT,

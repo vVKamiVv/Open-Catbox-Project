@@ -54,3 +54,62 @@ impl<T: TextureArchive> Asset for T {
         .await
     }
 }
+
+/// Every texture of an archive by name, for archives too large to list in a [`TextureArchive`] struct
+pub struct NamedTextures {
+    by_name: std::collections::HashMap<String, GpuTexture>,
+    /// The names in archive order
+    order: Vec<String>,
+}
+
+impl NamedTextures {
+    /// The texture called `name`; panics when the archive has none, as a missing texture is a bug in the caller
+    pub fn get(&self, name: &str) -> &GpuTexture {
+        self.by_name
+            .get(name)
+            .unwrap_or_else(|| panic!("texture archive has no texture {name:?}"))
+    }
+
+    /// The first texture of the archive (`0x7100118ae0` with index 0)
+    pub fn first(&self) -> Option<&GpuTexture> {
+        self.order.first().map(|name| self.get(name))
+    }
+}
+
+impl Asset for NamedTextures {
+    type Args = ();
+
+    async fn load(
+        context: &Arc<AssetLoadContext>,
+        _args: (),
+        name: &str,
+        data: AssetDataAccessor,
+    ) -> Result<Self> {
+        let label = format!("TXA[{}]", name);
+        let data = data.read_all().await;
+        let context = context.clone();
+
+        shin_tasks::compute::spawn(move || {
+            let archive = shin_core::format::texture_archive::read_texture_archive(&data)?;
+            let mut order = archive.name_to_index.iter().collect::<Vec<_>>();
+            order.sort_by_key(|&(_, &index)| index);
+            Ok(Self {
+                order: order.iter().map(|(name, _)| (*name).clone()).collect(),
+                by_name: archive
+                    .name_to_index
+                    .iter()
+                    .map(|(tex_name, &index)| {
+                        let texture = GpuTexture::new_static_from_rgba_image(
+                            &context.wgpu_device,
+                            &context.wgpu_queue,
+                            Some(&format!("{}/{}", label, tex_name)),
+                            &archive.textures[index],
+                        );
+                        (tex_name.clone(), texture)
+                    })
+                    .collect(),
+            })
+        })
+        .await
+    }
+}

@@ -14,10 +14,11 @@ use shin_core::{
     vm::command::types::{LayerType, Volume},
 };
 use shin_render::{PassKind, render_pass::RenderPass, shaders::types::RenderClone};
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     asset::{
+        texture_archive::NamedTextures,
         bustup::{Bustup, BustupArgs, CharacterId},
         movie::Movie,
         picture::Picture,
@@ -33,10 +34,15 @@ use crate::{
 
 #[expect(unused)]
 mod bustup_layer;
+mod cake_layer;
+mod last_layer;
+pub mod minigame;
+mod murderer;
 #[expect(unused)]
 mod movie_layer;
 mod null_layer;
 mod picture_layer;
+mod quiz_layer;
 mod rain_layer;
 mod tile_layer;
 
@@ -45,6 +51,10 @@ pub use self::{
     movie_layer::MovieLayer,
     null_layer::NullLayer,
     picture_layer::PictureLayer,
+    cake_layer::{CakeAssets, CakeLayer},
+    last_layer::{LastLayer, LastTextures},
+    murderer::{MurdererAssets, MurdererLayer},
+    quiz_layer::{QuizLayer, QuizTextures},
     rain_layer::{EffectTextures, RainLayer},
     tile_layer::TileLayer,
 };
@@ -64,6 +74,14 @@ pub enum UserLayer {
     Movie(#[render_clone(needs_render)] MovieLayer),
     #[derivative(Debug = "transparent")]
     Rain(#[render_clone(needs_render)] RainLayer),
+    #[derivative(Debug = "transparent")]
+    Quiz(#[render_clone(needs_render)] QuizLayer),
+    #[derivative(Debug = "transparent")]
+    Cake(#[render_clone(needs_render)] CakeLayer),
+    #[derivative(Debug = "transparent")]
+    Last(#[render_clone(needs_render)] LastLayer),
+    #[derivative(Debug = "transparent")]
+    Murderer(#[render_clone(needs_render)] MurdererLayer),
 }
 
 impl UserLayer {
@@ -182,9 +200,73 @@ impl UserLayer {
 
                 RainLayer::new(textures, kind, min_distance, max_distance).into()
             }
+            LayerType::Quiz => {
+                // the loader (`0x7100084900`) builds a minigame by kind: 0 the quiz, 1 `CakeLayer`,
+                // 2 `MurdererLayer` (the culprit game), 3 `LastLayer`; main8 loads each
+                let (kind, param, ..): TypedNumberArray = lower_number_array(params);
+                match kind {
+                    0 => {
+                        let textures = asset_server
+                            .load::<QuizTextures, _>(crate::asset::asset_paths::QUIZ)
+                            .await
+                            .expect("Failed to load quiz.txa");
+                        QuizLayer::new(textures, param as u32).into()
+                    }
+                    1 => {
+                        let assets = asset_server
+                            .load::<CakeAssets, _>(crate::asset::asset_paths::CAKE)
+                            .await
+                            .expect("Failed to load cake.txa");
+                        CakeLayer::new(assets).into()
+                    }
+                    3 => {
+                        let textures = asset_server
+                            .load::<LastTextures, _>(crate::asset::asset_paths::LAST)
+                            .await
+                            .expect("Failed to load last.txa");
+                        LastLayer::new(textures).into()
+                    }
+                    2 => {
+                        let load = |path: String| async move {
+                            asset_server
+                                .load::<NamedTextures, _>(&path)
+                                .await
+                                .unwrap_or_else(|e| panic!("Failed to load {path}: {e:?}"))
+                        };
+                        let mut busts = Vec::new();
+                        for name in MurdererAssets::bust_names() {
+                            busts.push((name, load(format!("/chars/m_{name}.txa")).await));
+                        }
+                        let assets = MurdererAssets {
+                            textures: load(crate::asset::asset_paths::MURDERER.to_string()).await,
+                            system: load(crate::asset::asset_paths::SYSTEX.to_string()).await,
+                            busts,
+                        };
+                        MurdererLayer::new(Arc::new(assets), param).into()
+                    }
+                    _ => {
+                        // the loader builds nothing for other kinds
+                        warn!("Quiz layer kind {kind} does not exist; loading an empty layer");
+                        NullLayer::new().into()
+                    }
+                }
+            }
             _ => {
                 todo!("Layer type not implemented: {:?}", layer_ty);
             }
+        }
+    }
+}
+
+impl UserLayer {
+    /// The minigame a QUIZ command can wait on, for the quiz layer type
+    pub fn as_minigame_mut(&mut self) -> Option<&mut dyn minigame::Minigame> {
+        match self {
+            Self::Quiz(layer) => Some(layer.inner_mut()),
+            Self::Cake(layer) => Some(layer.inner_mut()),
+            Self::Last(layer) => Some(layer.inner_mut()),
+            Self::Murderer(layer) => Some(layer.inner_mut()),
+            _ => None,
         }
     }
 }
@@ -198,6 +280,10 @@ impl AdvUpdatable for UserLayer {
             Self::Tile(layer) => layer.update(context),
             Self::Movie(layer) => layer.update(context),
             Self::Rain(layer) => layer.update(context),
+            Self::Quiz(layer) => layer.update(context),
+            Self::Cake(layer) => layer.update(context),
+            Self::Last(layer) => layer.update(context),
+            Self::Murderer(layer) => layer.update(context),
         }
     }
 }
@@ -211,6 +297,10 @@ impl DrawableLayer for UserLayer {
             Self::Tile(layer) => layer.properties(),
             Self::Movie(layer) => layer.properties(),
             Self::Rain(layer) => layer.properties(),
+            Self::Quiz(layer) => layer.properties(),
+            Self::Cake(layer) => layer.properties(),
+            Self::Last(layer) => layer.properties(),
+            Self::Murderer(layer) => layer.properties(),
         }
     }
 
@@ -222,6 +312,10 @@ impl DrawableLayer for UserLayer {
             Self::Tile(layer) => layer.properties_mut(),
             Self::Movie(layer) => layer.properties_mut(),
             Self::Rain(layer) => layer.properties_mut(),
+            Self::Quiz(layer) => layer.properties_mut(),
+            Self::Cake(layer) => layer.properties_mut(),
+            Self::Last(layer) => layer.properties_mut(),
+            Self::Murderer(layer) => layer.properties_mut(),
         }
     }
 }
@@ -235,6 +329,10 @@ impl Layer for UserLayer {
             Self::Tile(layer) => layer.fast_forward(),
             Self::Movie(layer) => layer.fast_forward(),
             Self::Rain(layer) => layer.fast_forward(),
+            Self::Quiz(layer) => layer.fast_forward(),
+            Self::Cake(layer) => layer.fast_forward(),
+            Self::Last(layer) => layer.fast_forward(),
+            Self::Murderer(layer) => layer.fast_forward(),
         }
     }
 
@@ -246,6 +344,10 @@ impl Layer for UserLayer {
             Self::Tile(layer) => layer.get_stencil_bump(),
             Self::Movie(layer) => layer.get_stencil_bump(),
             Self::Rain(layer) => layer.get_stencil_bump(),
+            Self::Quiz(layer) => layer.get_stencil_bump(),
+            Self::Cake(layer) => layer.get_stencil_bump(),
+            Self::Last(layer) => layer.get_stencil_bump(),
+            Self::Murderer(layer) => layer.get_stencil_bump(),
         }
     }
 
@@ -257,6 +359,10 @@ impl Layer for UserLayer {
             Self::Tile(layer) => layer.pre_render(context, transform),
             Self::Movie(layer) => layer.pre_render(context, transform),
             Self::Rain(layer) => layer.pre_render(context, transform),
+            Self::Quiz(layer) => layer.pre_render(context, transform),
+            Self::Cake(layer) => layer.pre_render(context, transform),
+            Self::Last(layer) => layer.pre_render(context, transform),
+            Self::Murderer(layer) => layer.pre_render(context, transform),
         }
     }
 
@@ -274,6 +380,10 @@ impl Layer for UserLayer {
             Self::Tile(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
             Self::Movie(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
             Self::Rain(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
+            Self::Quiz(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
+            Self::Cake(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
+            Self::Last(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
+            Self::Murderer(layer) => layer.render(pass, transform, stencil_ref, pass_kind),
         }
     }
 }

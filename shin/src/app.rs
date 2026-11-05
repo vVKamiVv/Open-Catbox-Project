@@ -31,6 +31,8 @@ pub enum AppAction {
     Cancel,
     AnyDown,
     AnyUp,
+    AnyLeft,
+    AnyRight,
     HoldSkip,
 }
 
@@ -49,6 +51,8 @@ impl Action for AppAction {
             AppAction::Cancel => raw_input_state.keyboard.contains(&KeyCode::Backspace),
             AppAction::AnyDown => raw_input_state.keyboard.contains(&KeyCode::ArrowDown),
             AppAction::AnyUp => raw_input_state.keyboard.contains(&KeyCode::ArrowUp),
+            AppAction::AnyLeft => raw_input_state.keyboard.contains(&KeyCode::ArrowLeft),
+            AppAction::AnyRight => raw_input_state.keyboard.contains(&KeyCode::ArrowRight),
             AppAction::HoldSkip => raw_input_state.keyboard.contains(&KeyCode::ControlLeft),
         })
     }

@@ -44,6 +44,7 @@ use crate::{
         render_layer_without_bg,
         render_params::TransformParams,
         select_layer::{SelectInput, SelectLayer},
+        user::minigame::{Directions, MinigameInput},
         user::UserLayer,
     },
     render::{
@@ -174,6 +175,23 @@ impl Adv {
                     select_layer.handle_input(input);
                 }
             }
+            return;
+        }
+        if let Some(ExecutingCommand::QUIZ(quiz)) = &mut self.current_command {
+            let directions = |pick: fn(&ActionState) -> bool| Directions {
+                up: pick(&state[AppAction::AnyUp]),
+                down: pick(&state[AppAction::AnyDown]),
+                left: pick(&state[AppAction::AnyLeft]),
+                right: pick(&state[AppAction::AnyRight]),
+            };
+            quiz.handle_input(MinigameInput {
+                held: directions(|s| s.is_held),
+                pressed: directions(|s| s.is_clicked_or_repeated),
+                confirm: state[AppAction::Enter].is_clicked || state[AppAction::Act].is_clicked,
+                cancel: state[AppAction::Cancel].is_clicked,
+                // the QUIZ command fills in the frame time
+                frames: 0.0,
+            });
             return;
         }
 

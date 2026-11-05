@@ -433,6 +433,10 @@ impl<T: NewDrawableLayer> NewDrawableLayerWrapper<T> {
     pub fn inner_ref(&self) -> &T {
         &self.inner_layer
     }
+
+    pub fn inner_mut(&mut self) -> &mut T {
+        &mut self.inner_layer
+    }
 }
 
 impl<T: AdvUpdatable + NewDrawableLayer> AdvUpdatable for NewDrawableLayerWrapper<T> {

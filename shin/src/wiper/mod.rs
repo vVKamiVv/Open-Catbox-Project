@@ -19,11 +19,11 @@ use shin_render::{
     render_pass::RenderPass, shaders::types::texture::TextureSource, RenderRequestBuilder,
 };
 
-pub use self::default::DefaultWiper;
+pub use self::{default::DefaultWiper, glass::GlassWiper};
 use crate::{
     asset::{mask::MaskTexture, system::AssetServer},
     update::{AdvUpdatable, AdvUpdateContext},
-    wiper::{glass::GlassWiper, mask::MaskWiper, whirl::WhirlWiper},
+    wiper::{mask::MaskWiper, whirl::WhirlWiper},
 };
 
 pub trait Wiper: AdvUpdatable {
