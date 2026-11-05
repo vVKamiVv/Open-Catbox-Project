@@ -166,8 +166,8 @@ impl PersistData {
 
     pub fn set(&mut self, index: usize, value: i32) {
         if self.0.len() <= index {
-            // allocate more space, round up to 64
-            let new_len = index.next_multiple_of(Self::ALLOC_AHEAD);
+            // allocate more space, past the index and rounded to 64 (`0x71000d12d0`)
+            let new_len = (index + Self::ALLOC_AHEAD) & !(Self::ALLOC_AHEAD - 1);
             self.0.resize(new_len, 0);
         }
         self.0[index] = value.try_into().expect("value too large");
@@ -271,11 +271,16 @@ pub struct Settings {
     pub v11_disallowskipunread: bool,
     pub v12: bool,
     pub v13_msgwinalpha: u8,
-    pub v14_showroutenavi: bool,
-    pub v15: bool,
-    pub v16_showtoucheffect: bool,
-    pub v17_showscenetitle: bool,
-    pub v18_showsongtitle: bool,
+    /// The scene-title banner AUTOSAVE shows (its draw `0x7100064480` checks it; config item 19)
+    pub v14_showscenetitle: bool,
+    /// The song-title banner BGMPLAY shows (`0x710009e590`; config item 16)
+    pub v15_showsongtitle: bool,
+    /// No reader found
+    pub v16: bool,
+    /// The touch effect (`shin::TouchEffect`; config item 17)
+    pub v17_showtoucheffect: bool,
+    /// Unknown: config item 12; the ADV sets a float to 55.0 from it (`0x71000fc3b0`)
+    pub v18: bool,
     pub v19: u32,
 }
 
@@ -297,11 +302,11 @@ impl Settings {
         let v11_disallowskipunread = reader.read_bool()?;
         let v12 = reader.read_bool()?;
         let v13_msgwinalpha = reader.read_int(7)?;
-        let v14_showroutenavi = reader.read_bool()?;
-        let v15 = reader.read_bool()?;
-        let v16_showtoucheffect = reader.read_bool()?;
-        let v17_showscenetitle = reader.read_bool()?;
-        let v18_showsongtitle = reader.read_bool()?;
+        let v14_showscenetitle = reader.read_bool()?;
+        let v15_showsongtitle = reader.read_bool()?;
+        let v16 = reader.read_bool()?;
+        let v17_showtoucheffect = reader.read_bool()?;
+        let v18 = reader.read_bool()?;
         let v19 = reader.read_int(32)?;
 
         Ok(Self {
@@ -319,11 +324,11 @@ impl Settings {
             v11_disallowskipunread,
             v12,
             v13_msgwinalpha,
-            v14_showroutenavi,
-            v15,
-            v16_showtoucheffect,
-            v17_showscenetitle,
-            v18_showsongtitle,
+            v14_showscenetitle,
+            v15_showsongtitle,
+            v16,
+            v17_showtoucheffect,
+            v18,
             v19,
         })
     }
@@ -344,11 +349,11 @@ impl Settings {
             v11_disallowskipunread,
             v12,
             v13_msgwinalpha,
-            v14_showroutenavi,
-            v15,
-            v16_showtoucheffect,
-            v17_showscenetitle,
-            v18_showsongtitle,
+            v14_showscenetitle,
+            v15_showsongtitle,
+            v16,
+            v17_showtoucheffect,
+            v18,
             v19,
         } = self;
 
@@ -366,11 +371,11 @@ impl Settings {
         writer.write_bool(v11_disallowskipunread);
         writer.write_bool(v12);
         writer.write_int(7, v13_msgwinalpha);
-        writer.write_bool(v14_showroutenavi);
-        writer.write_bool(v15);
-        writer.write_bool(v16_showtoucheffect);
-        writer.write_bool(v17_showscenetitle);
-        writer.write_bool(v18_showsongtitle);
+        writer.write_bool(v14_showscenetitle);
+        writer.write_bool(v15_showsongtitle);
+        writer.write_bool(v16);
+        writer.write_bool(v17_showtoucheffect);
+        writer.write_bool(v18);
         writer.write_int(32, v19);
     }
 }
