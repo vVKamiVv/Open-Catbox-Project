@@ -414,14 +414,14 @@ where
         let mut pass = context.begin_pass(target, Some(depth_stencil), "LayerGroup/indirect");
 
         if !props.is_visible() {
-            pass.clear(Some(UnormColor::BLACK), None, None);
+            pass.clear(Some(UnormColor::TRANSPARENT), None, None);
         } else {
             let self_transform = props.get_composed_transform_params(transform);
 
             if let Some(mask) = self.mask_texture {
                 prepare_mask_for_offscreen(&mut pass, mask, self.mask_flags, self_transform);
             } else {
-                pass.clear(Some(UnormColor::BLACK), Some(0), None);
+                pass.clear(Some(UnormColor::TRANSPARENT), Some(0), None);
             }
 
             for render_item in self.layers_to_render.iter().rev() {
@@ -509,7 +509,7 @@ where
                 let layer = &self.layers[index];
                 let prop = layer.layer.properties();
 
-                let id = layer.layerbank_id;
+                let id = (prop.get_layer_id(), std::cmp::Reverse(layer.layerbank_id));
                 let render_position = prop.get_value(LayerProperty::RenderPosition);
 
                 (render_position, id)
@@ -518,9 +518,10 @@ where
             let (left_position, left_id) = get_values(left);
             let (right_position, right_id) = get_values(right);
 
-            // if positions are close, compare by id
+            // `0x7100081110`: at the same position, the lower layer id comes first (drawn below). The port's
+            // root group gives the screen and message layers no layer id, so their layer banks keep them apart
             if (left_position - right_position).abs() < f32::EPSILON {
-                left_id.cmp(&right_id).reverse()
+                left_id.cmp(&right_id)
             } else {
                 left_position
                     .partial_cmp(&right_position)
@@ -672,7 +673,7 @@ where
                         .build(
                             RenderProgramWithArguments::Clear {
                                 vertices: VertexSource::VertexData { vertices },
-                                color: FloatColor4::BLACK,
+                                color: FloatColor4::TRANSPARENT,
                             },
                             DrawPrimitive::Triangles,
                         ),

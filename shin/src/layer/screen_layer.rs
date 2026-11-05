@@ -174,7 +174,7 @@ impl Layer for TransitionLayer {
                 &mut pass,
                 transform,
                 self.source_layer.as_mut().unwrap(),
-                FloatColor4::BLACK,
+                FloatColor4::TRANSPARENT,
                 0,
             );
         }
@@ -192,7 +192,7 @@ impl Layer for TransitionLayer {
                 &mut pass,
                 transform,
                 self.target_layer.as_mut().unwrap(),
-                FloatColor4::BLACK,
+                FloatColor4::TRANSPARENT,
                 0,
             );
         }
@@ -330,7 +330,7 @@ impl NewDrawableLayer for ScreenLayerNewDrawableDelegate<'_> {
         let mut pass = context.begin_pass(target, Some(depth_stencil), "ScreenLayer/indirect");
 
         if !props.is_visible() {
-            pass.clear(Some(UnormColor::BLACK), None, None);
+            pass.clear(Some(UnormColor::TRANSPARENT), None, None);
         } else {
             let self_transform = props.get_composed_transform_params(transform);
 
@@ -342,12 +342,13 @@ impl NewDrawableLayer for ScreenLayerNewDrawableDelegate<'_> {
                 &mut pass,
                 &self_transform,
                 self.active_layer,
-                FloatColor4::BLACK,
+                FloatColor4::TRANSPARENT,
                 0,
             );
         }
 
-        PassKind::Transparent
+        // the original's screen layer reports an opaque pass (`0x71000e6b70`)
+        PassKind::Opaque
     }
 
     fn render_drawable_direct(
@@ -400,8 +401,9 @@ impl Layer for ScreenLayer {
             active_layer: &self.active_layer,
         };
 
+        // the parent's transform: the indirect render composes this layer's own (`0x71000e67f0`)
         self.new_drawable_state
-            .pre_render(context, props, &mut delegate, &self_transform);
+            .pre_render(context, props, &mut delegate, transform);
     }
 
     #[tracing::instrument(skip_all)]

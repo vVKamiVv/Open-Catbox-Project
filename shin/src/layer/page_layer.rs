@@ -106,11 +106,11 @@ impl NewDrawableLayer for PageLayerNewDrawableDelegate<'_> {
         let mut pass = context.begin_pass(target, Some(depth_stencil), "PageLayer/indirect");
 
         if !props.is_visible() {
-            pass.clear(Some(UnormColor::BLACK), None, None);
+            pass.clear(Some(UnormColor::TRANSPARENT), None, None);
         } else {
             let self_transform = props.get_composed_transform_params(transform);
 
-            pass.clear(Some(UnormColor::BLACK), Some(0), None);
+            pass.clear(Some(UnormColor::TRANSPARENT), Some(0), None);
 
             for render_item in self.layers_to_render.iter().rev() {
                 self.planes[render_item.layer_index.raw() as usize].render(
@@ -212,8 +212,9 @@ impl Layer for PageLayer {
             layers_to_render,
         };
 
+        // the parent's transform: the indirect render composes this layer's own (`0x710009f360`)
         self.new_drawable_state
-            .pre_render(context, &self.props, &mut delegate, &self_transform);
+            .pre_render(context, &self.props, &mut delegate, transform);
 
         self.layers_to_render = delegate.layers_to_render;
     }
@@ -299,7 +300,7 @@ impl Layer for PageLayer {
                         .build(
                             RenderProgramWithArguments::Clear {
                                 vertices: VertexSource::VertexData { vertices },
-                                color: FloatColor4::BLACK,
+                                color: FloatColor4::TRANSPARENT,
                             },
                             DrawPrimitive::Triangles,
                         ),

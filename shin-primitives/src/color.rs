@@ -54,6 +54,8 @@ impl UnormColor {
 
     pub const WHITE: Self = Self(0xffffffff);
     pub const BLACK: Self = Self(0xff000000);
+    /// What the original's layer containers clear to (`0x7100226c88`)
+    pub const TRANSPARENT: Self = Self(0);
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -127,6 +129,7 @@ impl FloatColor4 {
 
     pub const WHITE: Self = Self::from_unorm(UnormColor::WHITE);
     pub const BLACK: Self = Self::from_unorm(UnormColor::BLACK);
+    pub const TRANSPARENT: Self = Self::from_unorm(UnormColor::TRANSPARENT);
 }
 
 impl std::ops::Mul<FloatColor4> for FloatColor4 {
