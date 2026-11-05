@@ -1,83 +1,95 @@
 # Open Catbox Project
 
-A native PC port of the Nintendo Switch release of *Umineko no Naku Koro ni Saku ~Nekobako to Musou no
-Koukyoukyoku~* (title id `01006A300BA2C000`), built to be played with your own copy of the game and the fan-made
-**Catbox** English patch.
+**Play *Umineko: The Symphony of Catbox and Dreams* natively on PC, in English.**
 
-The engine is an independent continuation of [shin](https://github.com/DCNick3/shin) by DCNick3, an unofficial
-re-implementation of the visual-novel engine Entergram uses on Switch, PS4 and PS Vita. Upstream development has
-slowed down, so this project keeps going on its own: every engine value is taken from the original executable through
-reverse engineering instead of being guessed, and everything learned is written down in [`research/`](research/) so
-others can work with it too.
+*Umineko no Naku Koro ni Saku ~Nekobako to Musou no Koukyoukyoku~* was only released on consoles. The Open Catbox
+Project is a from-scratch PC engine for it: you supply your own Nintendo Switch copy of the game and the fan-made
+[English patch](https://github.com/andOlga/umineko-catbox-english), and the port runs them directly on your computer,
+with no emulator. Development and testing happen on Windows.
 
-## Status
+> [!NOTE]
+> Work in progress: the story runs, but not every effect and screen exists yet. See [Progress](#progress).
 
-Not fully playable yet. On top of shin, this project so far adds:
+## How it is made
 
-- Pictures with differentially-encoded blocks (the English patch's images now load)
-- Rain, snow, petal and golden-snow particle layers
-- The whirl and glass-shatter screen transitions
-- The `SEONCE`, `BGMSYNC`, `VOICEWAIT`, `WIPEWAIT`, `SYSSE`, `SYSCALL` and `EXIT` script commands
-- Fixes for movie playback (deadlocks and clips decoding truncated or empty)
+- **Faithful by construction.** Every timing, constant, formula and shader is read out of the original game's
+  executable through reverse engineering, never estimated by eye.
+- **Documented in the open.** Nobody had written down how this engine works. Everything we learn goes into
+  [`research/`](research/): behaviour, data formats and original addresses, plus the scripts used to find them, so
+  anyone can verify the work or build on it.
+- **Built on [shin](https://github.com/DCNick3/shin).** DCNick3's open-source re-implementation of Entergram's engine
+  is our starting point; we develop it further here as an independent project. See [Credits](#credits).
+- **No game content included.** No game data, keys or decompiled code are in this repository.
 
-Still missing, in rough order: layer effects (dissolve, blur, ripple, mosaic, raster), story choices and the quiz,
-voice playback, and the menus. [`research/docs/engine-internals.md`](research/docs/engine-internals.md) keeps the
-full list, built from a static analysis of the whole game script.
+## Progress
 
-![screenshot.png](screenshot.png)
+| Area | State |
+|---|---|
+| Text, character sprites, backgrounds, music, sound effects | Working |
+| English patch images (delta-coded pictures) | Working |
+| Movies | Working |
+| Rain, snow, petals and golden snow | Working |
+| Screen transitions (crossfade, mask, whirl, glass shatter) | Working; whirl and glass not yet compared with the original on screen |
+| Every script command the game uses, except choices and the quiz | Working |
+| Layer effects (dissolve, blur, ripple, mosaic, raster) | Next up |
+| Story choices and the quiz | Planned |
+| Voices | Planned |
+| Title screen, save/load, settings, backlog and other menus | Planned |
 
-## Running it
+The full list of what is missing was made by statically analysing the entire game script; it lives in
+[`research/docs/engine-internals.md`](research/docs/engine-internals.md) §10.
 
-You need your own dump of the game (title id `01006A300BA2C000`), for example made with
-[nxdumptool](https://github.com/DarkMatterCore/nxdumptool), and its romfs extracted with
-[hactoolnet](https://github.com/Thealexbarney/LibHac):
+## Getting started
 
-```bash
-hactoolnet -t pfs0 "Umineko no Naku Koro ni Saku ~Nekobako to Musou no Koukyoukyoku~ [01006A300BA2C000].nsp" --romfs=assets
-```
+You need:
 
-The `assets` directory should contain a `data.rom` with sha256
-`6d90eb0bacacf769a7e4634407622b047acd711c47debb28136d7bab3fd0e591`. For English, put the Catbox patch's `patch.rom`
-next to it; it is layered over `data.rom`. Then point the engine at that directory with the `SHIN_ASSETS` environment
-variable, or put it next to the executable.
+1. **The game**: the romfs of your own dump of the Switch release (title id `01006A300BA2C000`), made for example with
+   [nxdumptool](https://github.com/DarkMatterCore/nxdumptool) and extracted with
+   [hactoolnet](https://github.com/Thealexbarney/LibHac):
+   ```bash
+   hactoolnet -t pfs0 "<your dump>.nsp" --romfs=assets
+   ```
+   `assets/data.rom` should have sha256 `6d90eb0bacacf769a7e4634407622b047acd711c47debb28136d7bab3fd0e591`.
+2. **The English patch**: copy the `patch.rom` from
+   [umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english) into the same `assets` folder. The
+   port layers it over `data.rom`, just like the console does.
+3. **ffmpeg** on your `PATH`, for the movies.
 
-Movies need `ffmpeg` on your `PATH`.
-
-Controls:
-
-- Mouse click, space, enter - advance text
-- Ctrl - fast-forward text
-- Escape, Q - quit
-- F3 - show overlay menu
-- F10 - resize to 1080p
-- F11 - toggle fullscreen
-
-Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to get logs.
-
-## Building from source
-
-Install [Rust](https://www.rust-lang.org/), then:
+Then build and run (requires [Rust](https://www.rust-lang.org/)):
 
 ```bash
 cargo build --release -p shin
 ```
 
-Use the release profile: the unoptimised debug build overflows the main thread's stack at startup.
+Point the engine at your `assets` folder with the `SHIN_ASSETS` environment variable, or place the folder next to
+the executable. Use the release build: the unoptimised debug build overflows the main thread's stack at startup.
+Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the engine is doing.
 
-## What else is in the box
+**Controls**: click, Space or Enter to advance · hold Ctrl to fast-forward · F3 debug overlay · F10 1080p window ·
+F11 fullscreen · Escape or Q to quit.
 
-- `shin-core`: a library for the game's data formats.
-- `sdu`: a command-line tool on top of it to extract and convert game data (`.rom` archives, `.bup` sprites, `.pic`
-  pictures, `.nxa` audio, `.snr` scenarios, `.fnt` fonts, `.txa` texture archives).
-- [`research/`](research/): reverse-engineering notes, Ghidra scripts and the symbol map of the original executable.
+## Inside the repository
 
-## Credits and license
+| Path | Contents |
+|---|---|
+| `shin/` | The game engine (the executable keeps shin's name for now) |
+| `shin-core/` | Reading and writing the game's data formats |
+| `shin-render*`, `shin-audio`, `shin-video`, `shin-tasks`, `shin-window`, `shin-input`, `shin-primitives`, `shin-derive` | Rendering, audio, video, threading, windowing, input and shared building blocks |
+| `sdu/`, `shin-asm/` | Command-line tool to extract and convert game data (`.rom`, `.pic`, `.bup`, `.nxa`, `.snr`, `.fnt`, `.txa`), and an assembler/disassembler for the game's script bytecode |
+| `research/` | Reverse-engineering notes, Ghidra scripts and the symbol map of the original executable |
 
-The engine is based on [shin](https://github.com/DCNick3/shin), created by DCNick3 with the help of its contributors,
-all listed in [CREDITS.md](CREDITS.md). Like shin, this project is licensed under the
-[Mozilla Public License 2.0](LICENSE).
+## Credits
 
-## Disclaimer
+This project stands on the work of others, all named in [CREDITS.md](CREDITS.md):
 
-This project is not affiliated with Entergram, 07th Expansion or the Catbox translation team. It is an unofficial fan
-project. It contains no game data, keys or decompiled code: you need to own the game to play it.
+- **[shin](https://github.com/DCNick3/shin)** by DCNick3 and its contributors: the engine this project grew from.
+- **[umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english)** by andOlga and contributors: the
+  English translation this port is made to play.
+- **07th Expansion** and **Entergram**, for the game itself.
+
+## License
+
+[Mozilla Public License 2.0](LICENSE), the same license as shin.
+
+Not affiliated with Entergram, 07th Expansion, the shin project or the translation team. You need to own the game to
+play it.

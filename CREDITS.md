@@ -22,11 +22,16 @@ Thank you, all of you.
 
 - TruEKami
 
-## Others
+## The English translation
 
-- The **Catbox** team, for the English translation patch this port is meant to be played with. The patch is not part
-  of this repository; get it from its authors.
-- 07th Expansion and Entergram, for the game itself.
+The port is made to play **[umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english)**, the English
+translation patch for *Umineko: The Symphony of Catbox and Dreams* by **andOlga** and its contributors, who are
+credited in the [patch's own README](https://github.com/andOlga/umineko-catbox-english#credits). The patch is not
+part of this repository; get it from its authors.
+
+## The game
+
+*Umineko no Naku Koro ni* is by **07th Expansion**; the Switch release this port runs is by **Entergram**.
 
 ## License
 
