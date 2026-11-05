@@ -303,24 +303,28 @@ fn check_layout_dump(path: &str) {
 }
 
 #[test]
+#[ignore = "needs the game's fonts and layout dumps in shin-core/test_assets/ (not in the repo)"]
 fn ep1() {
     let path = "test_assets/layout_dumps/ep1.cbor.zst";
     check_layout_dump(path);
 }
 
 #[test]
+#[ignore = "needs the game's fonts and layout dumps in shin-core/test_assets/ (not in the repo)"]
 fn ep2() {
     let path = "test_assets/layout_dumps/ep2.cbor.zst";
     check_layout_dump(path);
 }
 
 #[test]
+#[ignore = "needs the game's fonts and layout dumps in shin-core/test_assets/ (not in the repo)"]
 fn ep3() {
     let path = "test_assets/layout_dumps/ep3.cbor.zst";
     check_layout_dump(path);
 }
 
 #[test]
+#[ignore = "needs the game's fonts and layout dumps in shin-core/test_assets/ (not in the repo)"]
 fn ep4() {
     let path = "test_assets/layout_dumps/ep4.cbor.zst";
     check_layout_dump(path);

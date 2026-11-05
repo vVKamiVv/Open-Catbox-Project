@@ -1,0 +1,2 @@
+# The assembler tests compare exact source text, so keep their data in LF on every platform
+shin-asm/test_data/** text eol=lf

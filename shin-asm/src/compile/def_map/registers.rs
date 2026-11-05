@@ -237,9 +237,13 @@ pub fn resolve_global_registers(
         node_info: FxHashMap::default(),
     };
 
-    global_registers
-        .iter()
-        .map(|(name, &_)| {
+    // resolve in name order: which end of an alias loop gets reported must not depend on hashing
+    let mut names = global_registers.keys().collect::<Vec<_>>();
+    names.sort_unstable();
+
+    names
+        .into_iter()
+        .map(|name| {
             let result = register_resolver.resolve(name.clone(), None);
 
             (name.clone(), result)
