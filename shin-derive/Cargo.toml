@@ -3,9 +3,9 @@ name = "shin-derive"
 version = "0.8.1"
 edition = "2024"
 description = "Shin derive macros"
-repository = "https://github.com/DCNick3/shin"
+repository = "https://github.com/vVKamiVv/Open-Catbox-Project"
 license = "MPL-2.0"
-authors = ["DCNick3"]
+authors = ["DCNick3", "TruEKami"]
 
 [lib]
 proc-macro = true

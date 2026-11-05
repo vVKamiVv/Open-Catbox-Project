@@ -73,8 +73,9 @@ Use the release profile: the unoptimised debug build overflows the main thread's
 
 ## Credits and license
 
-The engine is based on [shin](https://github.com/DCNick3/shin) by DCNick3 and contributors; its git history is kept
-here. Licensed under the [Mozilla Public License 2.0](LICENSE), like upstream.
+The engine is based on [shin](https://github.com/DCNick3/shin), created by DCNick3 with the help of its contributors,
+all listed in [CREDITS.md](CREDITS.md). Like shin, this project is licensed under the
+[Mozilla Public License 2.0](LICENSE).
 
 ## Disclaimer
 

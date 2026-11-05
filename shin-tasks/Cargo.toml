@@ -3,9 +3,9 @@ name = "shin-tasks"
 version = "0.8.1"
 edition = "2024"
 description = "A task executor for Shin Engine (based on bevy)"
-repository = "https://github.com/DCNick3/shin"
+repository = "https://github.com/vVKamiVv/Open-Catbox-Project"
 license = "MIT OR Apache-2.0"
-authors = ["DCNick3"]
+authors = ["DCNick3", "TruEKami"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
