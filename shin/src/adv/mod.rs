@@ -28,7 +28,7 @@ use shin_render::{
     shaders::types::{RenderClone as _, RenderCloneCtx},
 };
 use smallvec::{SmallVec, smallvec};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use vm_state::layers::ITER_VLAYER_SMALL_VECTOR_SIZE;
 pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
@@ -89,6 +89,8 @@ pub struct Adv {
     // action_state: ActionState<AdvMessageAction>,
     current_command: Option<ExecutingCommand>,
     fast_forward_to_bp: Option<BreakpointObserver>,
+    /// Set by `EXIT`; the script then stops running while the screen keeps updating
+    script_exited: bool,
 }
 
 impl Adv {
@@ -104,6 +106,7 @@ impl Adv {
             adv_state,
             current_command: None,
             fast_forward_to_bp: None,
+            script_exited: false,
         }
     }
 
@@ -159,7 +162,7 @@ impl Adv {
         }
 
         let mut result = CommandResult::None;
-        loop {
+        while !self.script_exited {
             // check the fast-forward breakpoint; delete if hit
             if self
                 .fast_forward_to_bp
@@ -203,7 +206,12 @@ impl Adv {
                     self.current_command = Some(executing_command);
                 }
                 CommandStartResult::Exit => {
-                    todo!("adv exit");
+                    // the original returns to the menus here, which the port does not have yet
+                    info!(
+                        "Script reached EXIT at {:?}; no menus to return to, so the script stops here",
+                        self.scripter.position()
+                    );
+                    self.script_exited = true;
                 }
             }
         }

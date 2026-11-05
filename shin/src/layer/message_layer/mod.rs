@@ -288,6 +288,11 @@ impl MessageLayer {
         ));
     }
 
+    /// Status of the voice player, as VOICEWAIT polls it
+    pub fn voice_wait_status(&self) -> AudioWaitStatus {
+        self.voice_player.get_wait_status()
+    }
+
     pub fn is_interested_in_input(&self) -> bool {
         // messagebox is in the process of being hidden or is not fully shown yet
         // TODO: can this be a function on SimpleInterpolator?

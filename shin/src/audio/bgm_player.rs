@@ -3,8 +3,8 @@ use std::sync::Arc;
 use kira::track::{TrackBuilder, TrackHandle, TrackId, TrackRoutes};
 use shin_audio::{AudioData, AudioFile, AudioHandle, AudioManager, AudioSettings};
 use shin_core::{
-    time::Tween,
-    vm::command::types::{Pan, Volume},
+    time::{Ticks, Tween},
+    vm::command::types::{AudioWaitStatus, Pan, Volume},
 };
 use tracing::warn;
 
@@ -64,6 +64,19 @@ impl BgmPlayer {
         } else {
             warn!("Tried to set volume of BGM, but no BGM is currently playing");
         }
+    }
+
+    pub fn get_wait_status(&self) -> AudioWaitStatus {
+        self.current_bgm
+            .as_ref()
+            .map_or(AudioWaitStatus::empty(), AudioHandle::get_wait_status)
+    }
+
+    /// Playback position of the current track (zero when nothing plays)
+    pub fn position(&self) -> Ticks {
+        self.current_bgm
+            .as_ref()
+            .map_or(Ticks::ZERO, AudioHandle::position)
     }
 
     pub fn stop(&mut self, fade_out: Tween) {

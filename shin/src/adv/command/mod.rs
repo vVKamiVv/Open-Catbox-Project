@@ -27,11 +27,13 @@ mod prelude {
 mod autosave;
 mod bgmplay;
 mod bgmstop;
+mod bgmsync;
 mod bgmvol;
 mod chars;
 mod debugout;
 mod evbegin;
 mod evend;
+mod exit;
 mod layerctrl;
 mod layerinit;
 mod layerload;
@@ -50,6 +52,7 @@ mod pageback;
 mod planeclear;
 mod planeselect;
 mod saveinfo;
+mod seonce;
 mod sepan;
 mod seplay;
 mod sestop;
@@ -59,12 +62,16 @@ mod sewait;
 mod sget;
 mod showchars;
 mod sset;
+mod syscall;
+mod sysse;
 mod tipsget;
 mod trophy;
 mod unlock;
 mod voiceplay;
+mod voicewait;
 mod wait;
 mod wipe;
+mod wipewait;
 
 use std::sync::Arc;
 
@@ -76,8 +83,9 @@ use shin_core::{
 };
 
 use self::{
-    layerload::LAYERLOAD, layerwait::LAYERWAIT, maskload::MASKLOAD, moviewait::MOVIEWAIT,
-    msgset::MSGSET, msgwait::MSGWAIT, sewait::SEWAIT, wait::WAIT, wipe::WIPE,
+    bgmsync::BGMSYNC, layerload::LAYERLOAD, layerwait::LAYERWAIT, maskload::MASKLOAD,
+    moviewait::MOVIEWAIT, msgset::MSGSET, msgwait::MSGWAIT, seonce::SEONCE, sewait::SEWAIT,
+    voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
 };
 use crate::{
     adv::{AdvState, VmState},
@@ -122,6 +130,14 @@ pub enum ExecutingCommand {
     WIPE,
     #[derivative(Debug = "transparent")]
     MASKLOAD,
+    #[derivative(Debug = "transparent")]
+    SEONCE,
+    #[derivative(Debug = "transparent")]
+    BGMSYNC,
+    #[derivative(Debug = "transparent")]
+    VOICEWAIT,
+    #[derivative(Debug = "transparent")]
+    WIPEWAIT,
 }
 
 pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
@@ -135,7 +151,7 @@ pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
     }
 
     impl_apply_state!(
-        // EXIT,
+        EXIT,
         SGET,
         SSET,
         WAIT,
@@ -147,23 +163,23 @@ pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
         MSGCLOSE,
         // SELECT,
         WIPE,
-        // WIPEWAIT,
+        WIPEWAIT,
         BGMPLAY,
         BGMSTOP,
         BGMVOL,
         // BGMWAIT,
-        // BGMSYNC,
+        BGMSYNC,
         SEPLAY,
         SESTOP,
         SESTOPALL,
         SEVOL,
         SEPAN,
         SEWAIT,
-        // SEONCE,
+        SEONCE,
         VOICEPLAY,
         // VOICESTOP,
-        // VOICEWAIT,
-        // SYSSE,
+        VOICEWAIT,
+        SYSSE,
         SAVEINFO,
         AUTOSAVE,
         EVBEGIN,
@@ -193,7 +209,8 @@ pub fn apply_command_state(command: RuntimeCommand, state: &mut VmState) {
         // QUIZ,
         SHOWCHARS,
         NOTIFYSET,
-        DEBUGOUT
+        DEBUGOUT,
+        SYSCALL
     );
 }
 
@@ -215,7 +232,7 @@ pub fn apply_command_state_and_start(
     }
 
     impl_apply_state!(
-        // EXIT,
+        EXIT,
         SGET,
         SSET,
         WAIT,
@@ -227,23 +244,23 @@ pub fn apply_command_state_and_start(
         MSGCLOSE,
         // SELECT,
         WIPE,
-        // WIPEWAIT,
+        WIPEWAIT,
         BGMPLAY,
         BGMSTOP,
         BGMVOL,
         // BGMWAIT,
-        // BGMSYNC,
+        BGMSYNC,
         SEPLAY,
         SESTOP,
         SESTOPALL,
         SEVOL,
         SEPAN,
         SEWAIT,
-        // SEONCE,
+        SEONCE,
         VOICEPLAY,
         // VOICESTOP,
-        // VOICEWAIT,
-        // SYSSE,
+        VOICEWAIT,
+        SYSSE,
         SAVEINFO,
         AUTOSAVE,
         EVBEGIN,
@@ -273,7 +290,8 @@ pub fn apply_command_state_and_start(
         // QUIZ,
         SHOWCHARS,
         NOTIFYSET,
-        DEBUGOUT
+        DEBUGOUT,
+        SYSCALL
     )
 }
 
