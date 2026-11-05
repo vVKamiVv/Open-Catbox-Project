@@ -391,13 +391,28 @@ impl VmCtx {
         if a == b {
             a
         } else {
-            let useful_state = ((state >> 8) & 0xffff) as i32;
-            let interval_size = (b - a).abs() + 1;
-            let lower_bound = a.min(b);
+            // `0x71000ed3c0`: the top 24 bits of the state scale the interval size (a 64-bit product)
+            let interval_size = (a as i64 - b as i64).abs() + 1;
+            let amplitude = (interval_size * (state >> 8) as i64) >> 24;
 
-            let amplitude = (useful_state * interval_size) >> 0x10;
-
-            lower_bound + amplitude
+            a.min(b).wrapping_add(amplitude as i32)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VmCtx;
+
+    #[test]
+    fn rnd_scales_the_top_24_bits_of_the_state() {
+        let ctx = |state| VmCtx::new(0, state);
+        // the state's top 24 bits as a fraction of the interval, rounded down
+        assert_eq!(ctx(0).run_prng(3, 7), 3);
+        assert_eq!(ctx(u32::MAX).run_prng(3, 7), 7);
+        assert_eq!(ctx(0x8000_0000).run_prng(7, 3), 5);
+        assert_eq!(ctx(0x1234_5678).run_prng(5, 5), 5);
+        // a 32-bit add, as the original's, wraps
+        assert_eq!(ctx(u32::MAX).run_prng(i32::MIN, i32::MAX), i32::MAX - 255);
     }
 }
