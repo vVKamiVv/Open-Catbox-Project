@@ -151,7 +151,7 @@ impl NewDrawableLayer for PageLayerNewDrawableDelegate<'_> {
 impl AdvUpdatable for PageLayer {
     fn update(&mut self, context: &AdvUpdateContext) {
         self.props.update(context);
-        self.new_drawable_state.update(context);
+        self.new_drawable_state.update(context, &self.props);
 
         for plane in self.planes.iter_mut() {
             plane.update(context);

@@ -19,7 +19,7 @@ use shin_render_shader_types::{
     uniforms::{
         ClearUniformParams, FillUniformParams, FontBorderUniformParams, FontUniformParams,
         LayerUniformParams, MaskUniformParams, MovieUniformParams, SpriteUniformParams,
-        UniformType, WiperDefaultUniformParams, WiperMaskUniformParams,
+        BlurUniformParams, UniformType, WiperDefaultUniformParams, WiperMaskUniformParams,
         metadata::{ArraySchema, PrimitiveType, StructSchema, TypeSchema},
     },
     vertices::{
@@ -294,6 +294,7 @@ fn generate_wgsl_types() -> WgslSchema {
     ctx.gen_uniform::<MovieUniformParams>();
     ctx.gen_uniform::<WiperDefaultUniformParams>();
     ctx.gen_uniform::<WiperMaskUniformParams>();
+    ctx.gen_uniform::<BlurUniformParams>();
 
     let vertex_rust_names = ctx.known_vertices;
     let struct_rust_names = ctx

@@ -41,10 +41,13 @@ mod rain_layer;
 mod tile_layer;
 
 pub use self::{
-    bustup_layer::BustupLayer, movie_layer::MovieLayer, null_layer::NullLayer,
-    picture_layer::PictureLayer, rain_layer::RainLayer, tile_layer::TileLayer,
+    bustup_layer::BustupLayer,
+    movie_layer::MovieLayer,
+    null_layer::NullLayer,
+    picture_layer::PictureLayer,
+    rain_layer::{EffectTextures, RainLayer},
+    tile_layer::TileLayer,
 };
-use self::rain_layer::EffectTextures;
 
 #[derive(Derivative, RenderClone, FromVariants)]
 #[derivative(Debug)]
@@ -173,7 +176,7 @@ impl UserLayer {
                 let (kind, min_distance, max_distance, ..): TypedNumberArray =
                     lower_number_array(params);
                 let textures = asset_server
-                    .load::<EffectTextures, _>("/effects.txa")
+                    .load::<EffectTextures, _>(crate::asset::asset_paths::EFFECTS)
                     .await
                     .expect("Failed to load effects.txa");
 

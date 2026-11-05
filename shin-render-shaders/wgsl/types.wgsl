@@ -102,3 +102,9 @@ struct WiperMaskUniformParams {
     minmax: vec4<f32>,
 }
 
+struct BlurUniformParams {
+    transform: mat4x4<f32>,
+    offsets: array<vec4<f32>, 2>,
+    weights: vec4<f32>,
+}
+

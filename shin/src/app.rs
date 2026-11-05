@@ -15,6 +15,7 @@ use winit::keyboard::KeyCode;
 
 use crate::{
     adv::{Adv, assets::AdvAssets},
+    layer::user::EffectTextures,
     asset::system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
     cli::Cli,
     render::PreRenderContext,
@@ -55,6 +56,7 @@ pub struct App {
     #[expect(unused)] // for future stuff
     audio_manager: Arc<AudioManager>,
     asset_server: Arc<AssetServer>,
+    effect_textures: Arc<EffectTextures>,
     adv: Adv,
 }
 
@@ -86,6 +88,7 @@ impl ShinApp for App {
             scripter.unsafe_set_position(CodeAddress(addr));
         }
 
+        let effect_textures = adv_assets.effect_textures.clone();
         let mut adv = Adv::new(audio_manager.clone(), adv_assets, scripter);
 
         if let Some(addr) = cli.fast_forward_to {
@@ -161,6 +164,7 @@ impl ShinApp for App {
             frame_id: FrameId::default(),
             audio_manager,
             asset_server,
+            effect_textures,
             adv,
         })
     }
@@ -198,6 +202,7 @@ impl ShinApp for App {
             resize_source: &context.winit.resize_source,
             sampler_store: &context.render.sampler_store,
             depth_stencil: context.render.canvas_depth_stencil_buffer.get_target_view(),
+            effect_textures: &self.effect_textures,
 
             pipeline_storage: &mut context.render.pipelines,
             dynamic_buffer: &mut context.render.dynamic_buffer,

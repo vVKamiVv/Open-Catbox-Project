@@ -307,6 +307,39 @@ impl UniformType for WiperDefaultUniformParams {
     });
 }
 
+/// One pass of the separable blur layer effect: 8 taps at +-offset (4 offsets, packed xy/zw), weighted in pairs
+#[derive(ShaderType)]
+pub struct BlurUniformParams {
+    pub transform: Mat4,
+    pub offsets: [Vec4; 2],
+    pub weights: Vec4,
+}
+
+impl UniformType for BlurUniformParams {
+    const SCHEMA: TypeSchema = TypeSchema::Struct(StructSchema {
+        name: "BlurUniformParams",
+        size: BlurUniformParams::METADATA.min_size.get() as u32,
+        alignment: BlurUniformParams::METADATA.alignment.get() as u32,
+        fields: &[
+            FieldSchema {
+                name: "transform",
+                ty: &<Mat4 as UniformType>::SCHEMA,
+                offset: BlurUniformParams::METADATA.extra.offsets[0] as u32,
+            },
+            FieldSchema {
+                name: "offsets",
+                ty: &<[Vec4; 2] as UniformType>::SCHEMA,
+                offset: BlurUniformParams::METADATA.extra.offsets[1] as u32,
+            },
+            FieldSchema {
+                name: "weights",
+                ty: &<Vec4 as UniformType>::SCHEMA,
+                offset: BlurUniformParams::METADATA.extra.offsets[2] as u32,
+            },
+        ],
+    });
+}
+
 #[derive(ShaderType)]
 pub struct WiperMaskUniformParams {
     pub transform: Mat4,

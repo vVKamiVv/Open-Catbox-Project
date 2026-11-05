@@ -126,18 +126,6 @@ impl NewDrawableLayerNeedsSeparatePass for BustupLayerImpl {}
 
 impl NewDrawableLayer for BustupLayerImpl {
     #[tracing::instrument(skip_all)]
-    fn render_drawable_indirect(
-        &mut self,
-        _context: &mut PreRenderContext,
-        _props: &LayerProperties,
-        _target: TextureTarget,
-        _depth_stencil: DepthStencilTarget,
-        _transform: &TransformParams,
-    ) -> PassKind {
-        todo!()
-    }
-
-    #[tracing::instrument(skip_all)]
     fn render_drawable_direct(
         &self,
         pass: &mut RenderPass,

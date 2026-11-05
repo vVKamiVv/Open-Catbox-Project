@@ -13,6 +13,8 @@ use shin_render::{
 };
 use winit::dpi::PhysicalSize;
 
+use crate::layer::user::EffectTextures;
+
 #[expect(unused)]
 pub mod overlay;
 pub mod render_texture_holder;
@@ -55,6 +57,8 @@ pub struct PreRenderContext<'immutable, 'pipelines, 'dynbuffer, 'encoder> {
     pub resize_source: &'immutable SurfaceResizeSource,
     pub sampler_store: &'immutable TextureSamplerStore,
     pub depth_stencil: DepthStencilTarget<'immutable>,
+    /// Textures used by layer effects (the dissolve mask)
+    pub effect_textures: &'immutable EffectTextures,
 
     pub pipeline_storage: &'pipelines mut PipelineStorage,
     pub dynamic_buffer: &'dynbuffer mut DynamicBuffer,

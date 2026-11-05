@@ -1,10 +1,14 @@
 mod effect_passes;
 
-use shin_core::vm::command::types::LayerProperty;
+use glam::Vec4;
+use shin_core::{
+    primitives::color::{FloatColor4, UnormColor},
+    vm::command::types::LayerProperty,
+};
 use shin_render::{
-    ColorBlendType, DepthStencilState, DrawPrimitive, LayerShaderOutputKind, PassKind,
-    RenderProgramWithArguments, RenderRequestBuilder, StencilFunction, StencilOperation,
-    StencilPipelineState, StencilState,
+    ColorBlendType, DepthStencilState, DrawPrimitive, LayerBlendType, LayerFragmentShader,
+    LayerShaderOutputKind, PassKind, RenderProgramWithArguments, RenderRequestBuilder,
+    StencilFunction, StencilOperation, StencilPipelineState, StencilState,
     quad_vertices::build_quad_vertices,
     render_pass::RenderPass,
     render_texture::RenderTexture,
@@ -35,8 +39,11 @@ pub trait NewDrawableLayerNeedsSeparatePass {
 }
 
 pub trait NewDrawableLayer: NewDrawableLayerNeedsSeparatePass {
+    /// Renders the layer into `target` so effects can be applied to it, as the original's slot-16 methods do (e.g.
+    /// `shin::PictureLayer` at `0x71000c6040`): clear to transparent, then draw with neutral parameters. The layer's
+    /// own colour, alpha, blend type and fragment shader are applied once, when the texture is composited
+    /// ([`NewDrawableLayerState::try_finish_indirect_render`]).
     #[tracing::instrument(skip_all)]
-    #[expect(unused)] // it will be used. eventually.
     fn render_drawable_indirect(
         &mut self,
         context: &mut PreRenderContext,
@@ -45,8 +52,27 @@ pub trait NewDrawableLayer: NewDrawableLayerNeedsSeparatePass {
         depth_stencil: DepthStencilTarget,
         transform: &TransformParams,
     ) -> PassKind {
-        // TODO: initiate a generic render pass and delegate to Self::render_drawable_direct
-        todo!()
+        let mut pass = context.begin_pass(target, Some(depth_stencil), "NewDrawableLayer/indirect");
+        pass.clear(Some(UnormColor(0)), Some(0), None);
+
+        if props.is_visible() {
+            let self_transform = props.get_composed_transform_params(transform);
+            let neutral = DrawableParams {
+                color_multiplier: FloatColor4::WHITE,
+                blend_type: LayerBlendType::Type1,
+                fragment_shader: LayerFragmentShader::Default,
+                shader_param: Vec4::ONE,
+            };
+            let clip = props.get_clip_params();
+            // the original draws opaque and transparent blocks in one go; two passes give the same image
+            for pass_kind in [PassKind::Opaque, PassKind::Transparent] {
+                self.render_drawable_direct(&mut pass, &self_transform, &neutral, &clip, 1, pass_kind);
+            }
+        }
+
+        // shortcut: always composited in the transparent pass; the original uses the opaque pass when an opaque
+        // picture covers the whole screen (0x7100072c80), which only saves overdraw
+        PassKind::Transparent
     }
     fn render_drawable_direct(
         &self,
@@ -67,6 +93,13 @@ pub trait NewDrawableLayerFastForward {
     fn fast_forward(&mut self);
 }
 
+/// The second texture effects render into before swapping it with the layer's texture, made on first use
+fn scratch_texture<'a>(slot: &'a mut Option<RenderTexture>, context: &PreRenderContext) -> &'a mut RenderTexture {
+    slot.get_or_insert_with(|| {
+        context.new_render_texture("NewDrawableLayerState/render_texture_target".to_string())
+    })
+}
+
 pub struct PrerenderedDrawable<'a> {
     pub render_texture: TextureSource<'a>,
     pub target_pass: PassKind,
@@ -82,6 +115,10 @@ pub struct NewDrawableLayerState {
     #[render_clone(needs_render)]
     render_texture_prev_frame: Option<RenderTexture>,
     target_pass: PassKind,
+    /// Seeds the dissolve pieces' random directions, fixed for the layer's lifetime so they don't flicker
+    dissolve_seed: u32,
+    /// Running phase of the ripple waves (the original's `+0x54`)
+    ripple_phase: f32,
 }
 
 impl NewDrawableLayerState {
@@ -91,6 +128,12 @@ impl NewDrawableLayerState {
             render_texture_target: None,
             render_texture_prev_frame: None,
             target_pass: PassKind::Transparent,
+            // shortcut: the original reads its seed from the layer (+0x58), whose source is not identified yet;
+            // any per-layer value gives the same kind of picture
+            dissolve_seed: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(1, |d| d.subsec_nanos()),
+            ripple_phase: 0.0,
         }
     }
 
@@ -103,8 +146,14 @@ impl NewDrawableLayerState {
         })
     }
 
-    pub fn update(&mut self, _context: &AdvUpdateContext) {
-        // TODO: there are several float values we need to track and to update for some effects
+    /// Advances the effects' running phases as the original's `0x7100078780` does: one unit per period, in ticks
+    pub fn update(&mut self, context: &AdvUpdateContext, props: &LayerProperties) {
+        // shortcut: the two raster phases (periods in properties 78 and 81) advance the same way; track them once
+        // raster is implemented
+        let period = props.get_value(LayerProperty::RippleTPeriod);
+        if period != 0.0 {
+            self.ripple_phase += context.delta_ticks.as_f32() / period;
+        }
     }
 
     pub fn is_rendered_opaquely<T: NewDrawableLayerNeedsSeparatePass>(
@@ -179,7 +228,8 @@ impl NewDrawableLayerState {
         );
 
         if blur_radius.abs() >= f32::EPSILON {
-            todo!()
+            let scratch = scratch_texture(&mut self.render_texture_target, context);
+            effect_passes::apply_blur(context, render_texture_src, scratch, blur_radius);
         }
         if prop70 >= f32::EPSILON {
             todo!()
@@ -193,10 +243,30 @@ impl NewDrawableLayerState {
             todo!()
         }
         if ripple_amplitude.abs() >= f32::EPSILON {
-            todo!()
+            let target = scratch_texture(&mut self.render_texture_target, context);
+            effect_passes::apply_ripple(
+                context,
+                render_texture_src,
+                target,
+                ripple_amplitude,
+                props.get_value(LayerProperty::RippleLPeriod),
+                self.ripple_phase,
+            );
+            std::mem::swap(render_texture_src, target);
         }
         if dissolve_intensity > 0.0 {
-            todo!()
+            let target = scratch_texture(&mut self.render_texture_target, context);
+            effect_passes::apply_dissolve(
+                context,
+                render_texture_src,
+                target,
+                dissolve_intensity,
+                props.get_value(LayerProperty::DissolveMode) as u32,
+                self.dissolve_seed,
+            );
+            std::mem::swap(render_texture_src, target);
+            // the pieces leave holes
+            self.target_pass = PassKind::Transparent;
         }
         match (ghosting_alpha > 0.0, &mut self.render_texture_prev_frame) {
             (true, Some(render_texture_prev_frame)) => {
@@ -296,8 +366,12 @@ impl NewDrawableLayerState {
         stencil_ref: u8,
         pass_kind: PassKind,
     ) {
-        // TODO: implement the indirect drawing stuff
         if !props.is_visible() {
+            return;
+        }
+
+        // an effect rendered the layer to a texture in pre_render: draw that instead
+        if self.try_finish_indirect_render(props, pass, transform, stencil_ref, pass_kind) {
             return;
         }
 
@@ -344,7 +418,7 @@ impl<T: NewDrawableLayer> NewDrawableLayerWrapper<T> {
 impl<T: AdvUpdatable + NewDrawableLayer> AdvUpdatable for NewDrawableLayerWrapper<T> {
     fn update(&mut self, context: &AdvUpdateContext) {
         self.inner_layer.update(context);
-        self.state.update(context);
+        self.state.update(context, &self.props);
         self.props.update(context);
         self.inner_layer.update_from_props(&self.props);
     }

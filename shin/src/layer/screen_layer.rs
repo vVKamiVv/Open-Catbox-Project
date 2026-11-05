@@ -367,7 +367,7 @@ impl NewDrawableLayer for ScreenLayerNewDrawableDelegate<'_> {
 impl AdvUpdatable for ScreenLayer {
     fn update(&mut self, context: &AdvUpdateContext) {
         self.props.update(context);
-        self.new_drawable_state.update(context);
+        self.new_drawable_state.update(context, &self.props);
 
         self.active_layer.update(context);
         if let Some(pending_layer) = &mut self.pending_layer {

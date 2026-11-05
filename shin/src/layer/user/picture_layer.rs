@@ -6,23 +6,18 @@ use shin_render::{
     ColorBlendType, DrawPrimitive, LayerBlendType, LayerFragmentShader, LayerShaderOutputKind,
     PassKind, RenderProgramWithArguments, RenderRequestBuilder,
     render_pass::RenderPass,
-    shaders::types::{
-        RenderClone,
-        buffer::VertexSource,
-        texture::{DepthStencilTarget, TextureTarget},
-    },
+    shaders::types::{RenderClone, buffer::VertexSource},
 };
 
 use crate::{
     asset::picture::{GpuPictureBlock, Picture},
     layer::{
-        LayerProperties, NewDrawableLayerWrapper,
+        NewDrawableLayerWrapper,
         new_drawable_layer::{
             NewDrawableLayer, NewDrawableLayerFastForward, NewDrawableLayerNeedsSeparatePass,
         },
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
     },
-    render::PreRenderContext,
     update::{AdvUpdatable, AdvUpdateContext},
 };
 
@@ -218,18 +213,6 @@ impl PictureLayer {
 impl NewDrawableLayerNeedsSeparatePass for PictureLayerImpl {}
 
 impl NewDrawableLayer for PictureLayerImpl {
-    #[tracing::instrument(skip_all)]
-    fn render_drawable_indirect(
-        &mut self,
-        _context: &mut PreRenderContext,
-        _props: &LayerProperties,
-        _target: TextureTarget,
-        _depth_stencil: DepthStencilTarget,
-        _transform: &TransformParams,
-    ) -> PassKind {
-        todo!()
-    }
-
     #[tracing::instrument(skip_all)]
     fn render_drawable_direct(
         &self,

@@ -156,18 +156,6 @@ impl NewDrawableLayerNeedsSeparatePass for MovieLayerImpl {
 }
 
 impl NewDrawableLayer for MovieLayerImpl {
-    #[tracing::instrument(skip_all)]
-    fn render_drawable_indirect(
-        &mut self,
-        context: &mut PreRenderContext,
-        props: &LayerProperties,
-        target: TextureTarget,
-        depth_stencil: DepthStencilTarget,
-        transform: &TransformParams,
-    ) -> PassKind {
-        todo!()
-    }
-
     fn render_drawable_direct(
         &self,
         pass: &mut RenderPass,

@@ -6,15 +6,16 @@ use shin_render_shader_types::{
     uniforms::{
         ClearUniformParams, FillUniformParams, FontBorderUniformParams, FontUniformParams,
         LayerUniformParams, MaskUniformParams, MovieUniformParams, SpriteUniformParams,
-        WiperDefaultUniformParams, WiperMaskUniformParams,
+        BlurUniformParams, WiperDefaultUniformParams, WiperMaskUniformParams,
     },
     vertices::PosVertex,
 };
 use shin_render_shaders::{
     Clear, ClearBindings, Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings,
     Layer, LayerBindings, Mask, MaskBindings, Movie, MovieBindings, Shader, Sprite, SpriteBindings,
-    WiperDefault, WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask, WiperMaskBindings,
-    WiperWhirl, WiperWhirlBindings,
+    Blur, BlurBindings, Dissolve, DissolveBindings, Ripple, RippleBindings, WiperDefault,
+    WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask, WiperMaskBindings, WiperWhirl,
+    WiperWhirlBindings,
 };
 
 use crate::{
@@ -352,6 +353,58 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                         alpha: params,
                     },
                     source: texture_source,
+                },
+                vertices,
+            ),
+
+            RenderProgramWithArguments::Dissolve {
+                vertices,
+                texture,
+                mask,
+                transform,
+            } => self.run_impl::<Dissolve>(
+                key,
+                DissolveBindings {
+                    params: &SpriteUniformParams { transform },
+                    source: texture,
+                    mask,
+                },
+                vertices,
+            ),
+
+            RenderProgramWithArguments::Blur {
+                vertices,
+                texture,
+                transform,
+                offsets,
+                weights,
+            } => self.run_impl::<Blur>(
+                key,
+                BlurBindings {
+                    params: &BlurUniformParams {
+                        transform,
+                        offsets,
+                        weights,
+                    },
+                    source: texture,
+                },
+                vertices,
+            ),
+
+            RenderProgramWithArguments::Ripple {
+                vertices,
+                texture,
+                transform,
+                params,
+            } => self.run_impl::<Ripple>(
+                key,
+                RippleBindings {
+                    // reuses the default wiper's uniform layout; `alpha` carries the ripple parameters
+                    params: &WiperDefaultUniformParams {
+                        transform,
+                        alpha: params,
+                    },
+                    source: texture,
                 },
                 vertices,
             ),

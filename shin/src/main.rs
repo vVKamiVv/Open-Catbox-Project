@@ -15,6 +15,7 @@ mod cli;
 #[expect(unused)]
 mod fps_counter;
 mod layer;
+mod random;
 mod render;
 mod time;
 mod update;

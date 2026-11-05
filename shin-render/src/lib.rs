@@ -196,7 +196,13 @@ pub enum RenderProgramWithArguments<'a> {
         minmax: Vec2,
     },
 
-    Dissolve {},
+    /// Pieces of the dissolve layer effect: `texture` masked by the alpha of `mask`
+    Dissolve {
+        vertices: VertexSource<'a, MaskVertex>,
+        texture: TextureSource<'a>,
+        mask: TextureSource<'a>,
+        transform: Mat4,
+    },
     TapEffect {},
     Movie {
         vertices: VertexSource<'a, PosTexVertex>,
@@ -246,10 +252,25 @@ pub enum RenderProgramWithArguments<'a> {
     },
 
     Mosaic {},
-    Blur {},
+    /// One direction of the blur layer effect
+    Blur {
+        vertices: VertexSource<'a, PosTexVertex>,
+        texture: TextureSource<'a>,
+        transform: Mat4,
+        /// four (x, y) tap offsets in uv units
+        offsets: [Vec4; 2],
+        weights: Vec4,
+    },
     ZoomBlur {},
     Raster {},
-    Ripple {},
+    /// The ripple layer effect
+    Ripple {
+        vertices: VertexSource<'a, PosTexVertex>,
+        texture: TextureSource<'a>,
+        transform: Mat4,
+        /// (frequency, amplitude in uv units, phase, unused)
+        params: Vec4,
+    },
     Breakup {},
 
     Charicon0 {},
@@ -274,6 +295,9 @@ impl RenderProgramWithArguments<'_> {
             RenderProgramWithArguments::WiperWhirl { .. } => ShaderName::WiperWhirl,
             RenderProgramWithArguments::WiperMask { .. } => ShaderName::WiperMask,
             RenderProgramWithArguments::WiperGlass { .. } => ShaderName::WiperGlass,
+            RenderProgramWithArguments::Dissolve { .. } => ShaderName::Dissolve,
+            RenderProgramWithArguments::Blur { .. } => ShaderName::Blur,
+            RenderProgramWithArguments::Ripple { .. } => ShaderName::Ripple,
 
             ref program => todo!("Implement shader for {:?}", program),
         }

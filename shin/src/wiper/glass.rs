@@ -18,6 +18,7 @@ use shin_render::{
 };
 
 use crate::{
+    random::MinStdRand,
     render::normalized_projection_matrix,
     update::{AdvUpdatable, AdvUpdateContext},
     wiper::timed::{TimedWiper, TimedWiperWrapper},
@@ -36,24 +37,6 @@ const GRAVITY: f32 = 0.35;
 const HALF_THICKNESS: f32 = 4.0;
 /// The camera sits this far in front of the screen plane, which then fills the view exactly
 const CAMERA_DISTANCE: f32 = 1000.0;
-
-/// `std::minstd_rand` mapped to [0, 1), like the rain layer's (the original shares the generator)
-#[derive(Debug, Clone)]
-struct MinStdRand(u32);
-
-impl MinStdRand {
-    fn new(seed: u32) -> Self {
-        Self(match seed % 0x7fff_ffff {
-            0 => 1,
-            seed => seed,
-        })
-    }
-
-    fn next(&mut self) -> f32 {
-        self.0 = ((self.0 as u64 * 48271) % 0x7fff_ffff) as u32;
-        (self.0 - 1) as f32 / 2_147_483_648.0
-    }
-}
 
 #[derive(Debug, Clone)]
 struct Shard {
