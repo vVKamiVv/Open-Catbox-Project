@@ -152,7 +152,7 @@ impl SelectLayer {
     ) -> Self {
         let layout = LayoutParams {
             layout_width: TEXT_LAYOUT_WIDTH - 2.0 * TEXT_OUTLINE,
-            text_alignment: MessageTextLayout::Left,
+            text_alignment: MessageTextLayout::Justify,
             line_padding_above: 0.0,
             line_padding_below: 0.0,
             line_padding_between: 4.0,
@@ -169,7 +169,7 @@ impl SelectLayer {
             .filter(|&(variant, _)| variant < 32 && visible & (1 << variant) != 0)
             .take(MAX_CHOICES)
             .map(|(variant, text)| {
-                let text = TextBlock::new(ctx, fonts, text, layout, TEXT_OUTLINE);
+                let text = TextBlock::new(ctx, &fonts.medium_font, text, layout, TEXT_OUTLINE);
                 let height = text.size().y + BAR_PADDING;
                 Choice {
                     variant,

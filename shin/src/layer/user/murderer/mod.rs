@@ -387,7 +387,13 @@ impl NewDrawableLayer for MurdererLayerImpl {
         let wanted = self.screen.text().unwrap_or_default();
         if self.text.0.as_ref().is_none_or(|(text, _)| text != wanted) {
             let block = (!wanted.is_empty()).then(|| {
-                TextBlock::new(context, &self.assets.fonts, wanted, check::text_layout(), check::TEXT_OUTLINE)
+                TextBlock::new(
+                    context,
+                    &self.assets.fonts.system_font,
+                    wanted,
+                    check::text_layout(),
+                    check::TEXT_OUTLINE,
+                )
             });
             self.shared.text_height = block.as_ref().map_or(0.0, |block| block.size().y);
             self.text.0 = block.map(|block| (wanted.to_string(), block));

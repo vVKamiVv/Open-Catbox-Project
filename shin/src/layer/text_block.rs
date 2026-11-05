@@ -1,12 +1,13 @@
 //! A block of laid-out text drawn on its own, outside the message box: the original's text object (constructor
 //! `0x7100100ea0`, layout `0x71001011d0`, draw `0x7100101a90`), which the choice menu uses for its options.
 
+use std::sync::Arc;
+
 use glam::{Mat4, Vec2};
-use itertools::{Either, Itertools};
 use shin_core::{
     layout::{
         LayoutParams, MessageTextLayouter, MessageTextLayouterDefaults,
-        commands::{CharFontType, Command},
+        commands::Command,
     },
     primitives::color::FloatColor4,
 };
@@ -20,7 +21,7 @@ use shin_render::{
 };
 
 use crate::{
-    adv::assets::AdvFonts,
+    asset::font::GpuFontLazy,
     layer::message_layer::layout::{Char, LineInfo},
     render::PreRenderContext,
 };
@@ -39,9 +40,11 @@ pub struct TextBlock {
 
 impl TextBlock {
     /// Lays out `text` (with the message markup) fully shown, with an outline `outline` pixels thick
+    /// Lays `text` out in one font for both regular and bold, as the original's TextObject does (`0x71000b3c70`):
+    /// system.fnt for the culprit game's texts, newrodin-medium for the choices
     pub fn new(
         ctx: &PreRenderContext,
-        fonts: &AdvFonts,
+        font: &Arc<GpuFontLazy>,
         text: &str,
         params: LayoutParams,
         outline: f32,
@@ -53,8 +56,8 @@ impl TextBlock {
         };
         // the plain layouter: the message box's one treats the first line as a speaker's name
         let (commands, lines, size) = MessageTextLayouter::new(
-            fonts.medium_font.as_ref(),
-            fonts.bold_font.as_ref(),
+            font.as_ref(),
+            font.as_ref(),
             params,
             defaults,
         )
@@ -67,21 +70,10 @@ impl TextBlock {
                 _ => None,
             })
             .collect::<Vec<_>>();
-        let (regular, bold) = layout_chars
-            .iter()
-            .partition_map::<Vec<_>, Vec<_>, _, _, _>(|c| match c.font {
-                CharFontType::Regular => Either::Left(c.codepoint),
-                CharFontType::Bold => Either::Right(c.codepoint),
-            });
-        let mut regular = fonts
-            .medium_font
+        let codepoints = layout_chars.iter().map(|c| c.codepoint).collect::<Vec<_>>();
+        let mut glyphs = font
             .clone()
-            .load_glyphs(ctx.device.clone(), ctx.queue.clone(), &regular)
-            .into_iter();
-        let mut bold = fonts
-            .bold_font
-            .clone()
-            .load_glyphs(ctx.device.clone(), ctx.queue.clone(), &bold)
+            .load_glyphs(ctx.device.clone(), ctx.queue.clone(), &codepoints)
             .into_iter();
 
         let lines = lines
@@ -100,10 +92,7 @@ impl TextBlock {
             .enumerate()
             .map(|(index, char)| {
                 // rely on the order of the glyphs returned from `load_glyphs`
-                let glyph = match char.font {
-                    CharFontType::Regular => regular.next().unwrap(),
-                    CharFontType::Bold => bold.next().unwrap(),
-                };
+                let glyph = glyphs.next().unwrap();
                 let border_distances = Char::border_distances(
                     glyph.info(),
                     char.horizontal_scale,

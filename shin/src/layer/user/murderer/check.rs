@@ -406,11 +406,12 @@ impl Check {
 
 /// The text object's layout (`0x7100094480`, built by `TextObject::layout` `0x7100101360`): 1024 px wide (1030 less
 /// the 3 px outline on each side), size 32, no padding, and room for rubi above every line (the rubi size 0 becomes
-/// 0.4 x the text size), which makes the lines 48 px apart
+/// 0.4 x the text size), which makes the lines 48 px apart; drawn in system.fnt
 pub fn text_layout() -> LayoutParams {
     LayoutParams {
         layout_width: 1024.0,
-        text_alignment: MessageTextLayout::Left,
+        // the text object always justifies
+        text_alignment: MessageTextLayout::Justify,
         line_padding_above: 0.0,
         line_padding_below: 0.0,
         line_padding_between: 0.0,
