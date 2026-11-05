@@ -205,6 +205,37 @@ impl VertexType for PosTexVertex {
     ];
 }
 
+/// 3D vertex with a normal, used by the glass transition's shards (same 32-byte layout as the original engine's)
+#[derive(Copy, Clone, Debug, NoUninit)]
+#[repr(C, packed)]
+pub struct PosNormTexVertex {
+    pub position: Vec3,
+    pub normal: Vec3,
+    pub texture_position: Vec2,
+}
+
+impl VertexType for PosNormTexVertex {
+    const NAME: &'static str = "PosNormTexVertex";
+    const ATTRIBUTE_NAMES: &'static [&'static str] = &["position", "normal", "texture_position"];
+    const ATTRIBUTES: &'static [wgpu::VertexAttribute] = &[
+        wgpu::VertexAttribute {
+            format: <Vec3 as VertexAttribute>::FORMAT,
+            offset: std::mem::offset_of!(PosNormTexVertex, position) as wgpu::BufferAddress,
+            shader_location: 0,
+        },
+        wgpu::VertexAttribute {
+            format: <Vec3 as VertexAttribute>::FORMAT,
+            offset: std::mem::offset_of!(PosNormTexVertex, normal) as wgpu::BufferAddress,
+            shader_location: 1,
+        },
+        wgpu::VertexAttribute {
+            format: <Vec2 as VertexAttribute>::FORMAT,
+            offset: std::mem::offset_of!(PosNormTexVertex, texture_position) as wgpu::BufferAddress,
+            shader_location: 2,
+        },
+    ];
+}
+
 #[derive(Copy, Clone, Debug, NoUninit)]
 #[repr(C, packed)]
 pub struct MaskVertex {

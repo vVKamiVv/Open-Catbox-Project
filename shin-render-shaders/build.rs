@@ -23,8 +23,8 @@ use shin_render_shader_types::{
         metadata::{ArraySchema, PrimitiveType, StructSchema, TypeSchema},
     },
     vertices::{
-        BlendVertex, MaskVertex, PosColTexVertex, PosColVertex, PosTexVertex, PosVertex,
-        TextVertex, VertexType, WindowVertex,
+        BlendVertex, MaskVertex, PosColTexVertex, PosColVertex, PosNormTexVertex, PosTexVertex,
+        PosVertex, TextVertex, VertexType, WindowVertex,
     },
 };
 
@@ -282,6 +282,7 @@ fn generate_wgsl_types() -> WgslSchema {
     ctx.gen_vertex::<BlendVertex>();
     ctx.gen_vertex::<WindowVertex>();
     ctx.gen_vertex::<MaskVertex>();
+    ctx.gen_vertex::<PosNormTexVertex>();
 
     ctx.gen_uniform::<ClearUniformParams>();
     ctx.gen_uniform::<FillUniformParams>();

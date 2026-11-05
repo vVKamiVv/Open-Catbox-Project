@@ -1,6 +1,8 @@
 mod default;
+mod glass;
 mod mask;
 mod timed;
+mod whirl;
 
 use from_variants::FromVariants;
 use shin_core::{
@@ -21,7 +23,7 @@ pub use self::default::DefaultWiper;
 use crate::{
     asset::{mask::MaskTexture, system::AssetServer},
     update::{AdvUpdatable, AdvUpdateContext},
-    wiper::mask::MaskWiper,
+    wiper::{glass::GlassWiper, mask::MaskWiper, whirl::WhirlWiper},
 };
 
 pub trait Wiper: AdvUpdatable {
@@ -40,6 +42,8 @@ pub trait Wiper: AdvUpdatable {
 pub enum AnyWiper {
     Default(DefaultWiper),
     Mask(MaskWiper),
+    Whirl(WhirlWiper),
+    Glass(GlassWiper),
 }
 
 impl AnyWiper {
@@ -71,6 +75,12 @@ impl AnyWiper {
 
                 AnyWiper::Mask(MaskWiper::new(duration, mask, param2, flags))
             }
+            WiperType::Whirl => {
+                let (direction, scale_param, ..): TypedNumberArray = lower_number_array(params);
+                AnyWiper::Whirl(WhirlWiper::new(duration, direction, scale_param as f32))
+            }
+            // takes no parameters (`GlassWiperLoader` 0x710011c740 only passes the duration)
+            WiperType::Glass => AnyWiper::Glass(GlassWiper::new(duration)),
             ty => {
                 todo!("unimplemented wiper {:?} {:?} {:?}", ty, duration, params)
             }
@@ -83,6 +93,8 @@ impl AdvUpdatable for AnyWiper {
         match self {
             AnyWiper::Default(wiper) => wiper.update(context),
             AnyWiper::Mask(wiper) => wiper.update(context),
+            AnyWiper::Whirl(wiper) => wiper.update(context),
+            AnyWiper::Glass(wiper) => wiper.update(context),
         }
     }
 }
@@ -92,6 +104,8 @@ impl Wiper for AnyWiper {
         match self {
             AnyWiper::Default(wiper) => wiper.is_running(),
             AnyWiper::Mask(wiper) => wiper.is_running(),
+            AnyWiper::Whirl(wiper) => wiper.is_running(),
+            AnyWiper::Glass(wiper) => wiper.is_running(),
         }
     }
 
@@ -99,6 +113,8 @@ impl Wiper for AnyWiper {
         match self {
             AnyWiper::Default(wiper) => wiper.fast_forward(),
             AnyWiper::Mask(wiper) => wiper.fast_forward(),
+            AnyWiper::Whirl(wiper) => wiper.fast_forward(),
+            AnyWiper::Glass(wiper) => wiper.fast_forward(),
         }
     }
 
@@ -114,6 +130,12 @@ impl Wiper for AnyWiper {
                 wiper.render(pass, render_request_builder, from_texture, to_texture)
             }
             AnyWiper::Mask(wiper) => {
+                wiper.render(pass, render_request_builder, from_texture, to_texture)
+            }
+            AnyWiper::Whirl(wiper) => {
+                wiper.render(pass, render_request_builder, from_texture, to_texture)
+            }
+            AnyWiper::Glass(wiper) => {
                 wiper.render(pass, render_request_builder, from_texture, to_texture)
             }
         }

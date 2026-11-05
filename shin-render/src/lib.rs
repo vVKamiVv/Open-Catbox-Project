@@ -22,7 +22,10 @@ use shin_primitives::color::FloatColor4;
 use shin_render_shader_types::{
     buffer::VertexSource,
     texture::TextureSource,
-    vertices::{MaskVertex, PosColTexVertex, PosColVertex, PosTexVertex, PosVertex, TextVertex},
+    vertices::{
+        MaskVertex, PosColTexVertex, PosColVertex, PosNormTexVertex, PosTexVertex, PosVertex,
+        TextVertex,
+    },
 };
 pub use shin_render_shaders as shaders;
 use shin_render_shaders::ShaderName;
@@ -212,6 +215,14 @@ pub enum RenderProgramWithArguments<'a> {
         transform: Mat4,
         alpha: f32,
     },
+    WiperWhirl {
+        vertices: VertexSource<'a, PosTexVertex>,
+        texture_source: TextureSource<'a>,
+        texture_target: TextureSource<'a>,
+        transform: Mat4,
+        /// (progress, direction +-1, x scale, y scale)
+        params: Vec4,
+    },
     WiperMask {
         vertices: VertexSource<'a, MaskVertex>,
         texture_source: TextureSource<'a>,
@@ -226,11 +237,12 @@ pub enum RenderProgramWithArguments<'a> {
     WiperRipple {
         // TODO
     },
-    WiperWhirl {
-        // TODO
-    },
     WiperGlass {
-        // TODO
+        vertices: VertexSource<'a, PosNormTexVertex>,
+        texture_source: TextureSource<'a>,
+        transform: Mat4,
+        /// (alpha, flash, unused, unused)
+        params: Vec4,
     },
 
     Mosaic {},
@@ -259,7 +271,9 @@ impl RenderProgramWithArguments<'_> {
             RenderProgramWithArguments::Mask { .. } => ShaderName::Mask,
             RenderProgramWithArguments::Movie { .. } => ShaderName::Movie,
             RenderProgramWithArguments::WiperDefault { .. } => ShaderName::WiperDefault,
+            RenderProgramWithArguments::WiperWhirl { .. } => ShaderName::WiperWhirl,
             RenderProgramWithArguments::WiperMask { .. } => ShaderName::WiperMask,
+            RenderProgramWithArguments::WiperGlass { .. } => ShaderName::WiperGlass,
 
             ref program => todo!("Implement shader for {:?}", program),
         }
@@ -541,18 +555,19 @@ pub fn shin_orthographic_projection_matrix(
     near: f32,
     far: f32,
 ) -> Mat4 {
-    // flip the y coordinate (because the game uses coordinate system with Y going down, but wgpu has Y going up)
-    // and map Z from [-1; 1] to [0; 1] (because glam uses OpenGL's range of [-1; 1], while wgpu has range [0; 1])
-    #[rustfmt::skip]
-    const SHIN_TO_WGPU_MATRIX: Mat4 = Mat4::from_cols_array(&[
-        1.0, 0.0, 0.0, 0.0,
-        0.0,-1.0, 0.0, 0.0,
-        0.0, 0.0, 0.5, 0.0,
-        0.0, 0.0, 0.5, 1.0,
-    ]);
-
     SHIN_TO_WGPU_MATRIX * Mat4::orthographic_rh_gl(left, right, bottom, top, near, far)
 }
+
+/// Converts an OpenGL-style clip space (as glam's `*_gl` projections produce) to shin's wgpu one:
+/// flip the y coordinate (because the game uses coordinate system with Y going down, but wgpu has Y going up)
+/// and map Z from [-1; 1] to [0; 1] (because glam uses OpenGL's range of [-1; 1], while wgpu has range [0; 1])
+#[rustfmt::skip]
+pub const SHIN_TO_WGPU_MATRIX: Mat4 = Mat4::from_cols_array(&[
+    1.0, 0.0, 0.0, 0.0,
+    0.0,-1.0, 0.0, 0.0,
+    0.0, 0.0, 0.5, 0.0,
+    0.0, 0.0, 0.5, 1.0,
+]);
 
 // /// A trait for elements that can be rendered
 // ///

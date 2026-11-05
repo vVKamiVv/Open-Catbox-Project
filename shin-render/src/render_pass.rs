@@ -13,7 +13,8 @@ use shin_render_shader_types::{
 use shin_render_shaders::{
     Clear, ClearBindings, Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings,
     Layer, LayerBindings, Mask, MaskBindings, Movie, MovieBindings, Shader, Sprite, SpriteBindings,
-    WiperDefault, WiperDefaultBindings, WiperMask, WiperMaskBindings,
+    WiperDefault, WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask, WiperMaskBindings,
+    WiperWhirl, WiperWhirlBindings,
 };
 
 use crate::{
@@ -296,6 +297,26 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                 vertices,
             ),
 
+            RenderProgramWithArguments::WiperWhirl {
+                vertices,
+                texture_source,
+                texture_target,
+                transform,
+                params,
+            } => self.run_impl::<WiperWhirl>(
+                key,
+                WiperWhirlBindings {
+                    // reuses the default wiper's uniform layout; `alpha` carries all four whirl parameters
+                    params: &WiperDefaultUniformParams {
+                        transform,
+                        alpha: params,
+                    },
+                    source: texture_source,
+                    target: texture_target,
+                },
+                vertices,
+            ),
+
             RenderProgramWithArguments::WiperMask {
                 vertices,
                 texture_source,
@@ -313,6 +334,24 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                     source: texture_source,
                     target: texture_target,
                     mask: texture_mask,
+                },
+                vertices,
+            ),
+
+            RenderProgramWithArguments::WiperGlass {
+                vertices,
+                texture_source,
+                transform,
+                params,
+            } => self.run_impl::<WiperGlass>(
+                key,
+                WiperGlassBindings {
+                    // reuses the default wiper's uniform layout; `alpha` carries (alpha, flash, 0, 0)
+                    params: &WiperDefaultUniformParams {
+                        transform,
+                        alpha: params,
+                    },
+                    source: texture_source,
                 },
                 vertices,
             ),

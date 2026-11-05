@@ -40,6 +40,12 @@ struct MaskVertex {
     @location(2) mask_position: vec2<f32>,
 }
 
+struct PosNormTexVertex {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) texture_position: vec2<f32>,
+}
+
 struct ClearUniformParams {
     color: vec4<f32>,
 }
