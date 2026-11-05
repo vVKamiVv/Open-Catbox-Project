@@ -62,10 +62,10 @@ The executable contains 284 classes with RTTI, 282 of them in namespace `shin`:
 
 | Area | Original | shin | Missing or stubbed in shin |
 |---|---|---|---|
-| Script commands | 61 | 51 implemented | Missing: TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET, NOP (unused). Stubs: AUTOSAVE, CHARS, EVBEGIN, EVEND, NOTIFYSET, TIPSGET, TROPHY, UNLOCK; SYSCALL 0's fade; EXIT stops the script instead of returning to the menus |
-| Layer types | 10 | 7 | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's testimony texts are missing (they live in the executable) |
+| Script commands | 61 | 51 implemented | Missing: TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET, NOP (unused). Stubs: CHARS, NOTIFYSET, TIPSGET, TROPHY, UNLOCK; AUTOSAVE's scene-title banner; SYSCALL 0's fade; EXIT stops the script instead of returning to the menus |
+| Layer types | 10 | 7 | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's texts come from the player's executable (§3) |
 | Wipers | 11 | 5 (Whirl and Glass added) | Ripple, Scanline, Scroll, Turn, Wave, Zoom (none used by Umineko) |
-| Systems | all menus and modes | adventure screen only | title, save/load, config, backlog, galleries, tips, characters, manual, scenario select, chapter titles |
+| Systems | all menus and modes | adventure screen, saving and loading (§14) | title, save/load menus (a save is made with F5 and loaded with `--load`), config, backlog, galleries, tips, characters, manual, scenario select, chapter titles |
 
 - The engine's own C++ namespace is **`shin`** (from RTTI), the same name the open-source reimplementation chose.
 - Game logic runs from a compiled bytecode scenario, `main.snr`. Layers (pictures, sprites, movies, effects) are created
@@ -91,6 +91,15 @@ The executable contains 284 classes with RTTI, 282 of them in namespace `shin`:
 The fan English translation ("Catbox") ships its own 374 MB `patch.rom` (replacing the update's) plus a patched `main`
 and an IPS patch for the same build ID. Text, UI textures and translated images live in the `patch.rom`; the engine
 reads files from `patch.rom` first and falls back to `data.rom`. **confirmed**
+
+The translation's `main` is byte-identical to v1.0.3's; all its executable changes are in the IPS32 patch (60
+records, offsets = NSO image offset + `0x100`). They are the texts the engine keeps in the executable (the culprit
+game's testimonies `0x71001db528` and evidence `0x71001db270`, the system dialogs, "Yes"/"No"/"OK"/"End"/"%dm") and one
+code byte: `0x71000b39da` turns `orr w0, wzr, #0x20000` into `#0x100000`, a constructor's buffer of 128 KB raised to
+1 MB (room for the longer English text). Nothing adds word wrapping: the layouter breaks between any two characters
+unless a kinsoku rule forbids it, so these texts, which have `@r` only between paragraphs, wrap mid-word in the original
+too (to confirm on screen). The port reads them from the player's executable and IPS (`--exefs`, `SHIN_EXEFS`, or an
+`exefs` folder next to the assets; `shin/src/asset/executable.rs`). **confirmed** (the wrapping: inferred)
 
 ---
 
@@ -619,8 +628,8 @@ register `$v38`.
 - **Input** (`0x71000f1740`, only in state 2 with the menu fully shown): up/down move the cursor with
   wrap-around and the sound `move`; the old highlight fades out in 0.1 s, the new one in in 0.25 s. Confirm plays
   `seldecide` and flashes the option to 0.7 and back in 0.2 s each; with no cursor it plays `error`. Touch/mouse:
-  a bar is hit between x 460 and 1460 (`0x71000f1940`); hovering moves the cursor and starts the flash, releasing
-  picks (`0x71000f19e0`, `0x71000f1aa0`). The menu starts without a cursor unless a flag (`+0x79` bit 7) is set;
+  a bar is hit between x 460 and 1460 (`0x71000f1940`); pressing on it moves the cursor and raises the flash,
+  releasing over it picks, releasing elsewhere drops the flash (`0x71000f19e0`, `0x71000f1aa0`). The menu starts without a cursor unless a flag (`+0x79` bit 7) is set;
   played with a controller in Eden it starts without one.
 - Tween easing codes as elsewhere (0 linear, 1 sine-in, 2 sine-out); `0x80` holds the current value for the
   duration (a delay); `0x40` gives the duration in seconds instead of frames.
@@ -777,8 +786,13 @@ answers so far; the script loads the game again after each scene it answers with
   `0x710017224b`: line tiles and people with culprit and victim bits); victims are tinted 0xffff0f0f and skipped by
   the cursor; picking a person shows `/chars/m_<name>.txa` at 25 % and their testimony. Mode 1 lists 23 pieces of
   evidence under six chapter headers that stick to the top. The cursor moves in 2D by the lowest |D| / cos⁴ to the
-  candidates (no wrap). The testimony and evidence texts are strings in the executable (Japanese in the original,
-  and the English patch replaces the executable): the port has no source for them and leaves the text panel empty.
+  candidates (no wrap). The testimony and evidence texts are strings in the executable (`0x71001db528`, 17 pointers by
+  person; `0x71001db270`, 29 entries of index, flags, title, body), which the English patch's IPS translates (§3).
+  The text object (`0x7100094480`, laid out by `TextObject::layout` `0x7100101360` with the message layouter) is
+  1030 px wide with a 3 px outline at (723, 180), size 32, no line padding, and room for rubi above every line (rubi
+  size 0 means 0.4 × the size), so lines are 48 px apart; it breaks between any two letters, mid-word in English
+  (compared in Eden); clipped to (146, 180)–(1774, 900); the right stick scrolls it 32 px per frame and, in mode 0, the hint "Scroll" shows when it
+  is taller than 720 px. The port reads the strings from the player's own `main` and `.ips`.
 - **Select** (`0x7100097930`): the tree with every person (28 × 30 cells), Battler on the right in three poses.
   Confirm toggles a person as a culprit (the `murderer` mark), and "Confirm" (`tokutei`) submits with `attack`: a
   white flash fading over 30 frames, 60 frames, and when wrong `ahaha`, a 10-frame crossfade to Battler's troubled
@@ -786,3 +800,64 @@ answers so far; the script loads the game again after each scene it answers with
 
 In the port: `layer/user/murderer/` (one file per screen, `tree.rs` for the table and the 2D cursor). Debug
 fast-forwarding goes straight to Select and marks the right answer.
+
+### Text colours
+
+`@cRGB` in a message sets the colour from three decimal digits in the order red, green, blue, each mapped to
+0, 0x1c, 0x39, 0x55, 0x71, 0x8e, 0xaa, 0xc6, 0xe3, 0xff: `@c649`, the purple of the testimonies and of purple truths,
+is (170, 113, 255) in the original (measured in Eden). shin read the digits in reverse (blue, green, red), which drew
+it pink; fixed in `shin-primitives` `UnormColor::from_decimal_rgb`. **confirmed**
+
+### Mouse and touch
+
+The minigames and the choice menu take the touch screen through their overlay layers' handlers: slot 18 hit-tests a
+point (1920 x 1080, top left) and remembers what is under it, 19 is the pointer leaving, 20 a press on the hit, 21 the
+release over it (activate) and 22 a release elsewhere (undo the press). The dispatcher that calls them was not
+decompiled; the port calls them like a button (hit-tests while the button is up, a press holds its target until the
+release) **inferred**. In the port: `PointerTracker` in `layer/user/minigame.rs`; the window maps the mouse into the
+canvas (`shin-window`).
+
+---
+
+## 14. Saving and loading **confirmed** (code; Switch saves load in the port)
+
+A save does not hold the scene. It holds how to get there: the scenario (`scenario_id`, the VM's initial `$v0`), the
+VM's first random seed, a **save-point counter** value (`save_position`) and the **route**: every SGET, SELECT and
+QUIZ result in execution order. Loading replays the script to that counter without drawing anything, then builds the
+scene from the scene model the commands keep. Addresses below are in `shin::ADV::Context` (`+0x2530..`).
+
+**The counter** (`+0x2db0`) counts save-point commands as they start (their constructor, not their execute):
+MSGSET unless an EVBEGIN..EVEND event plays; AUTOSAVE; EVBEGIN; EVEND; RESUMESET (unused); SELECT and QUIZ when no
+line is still shown (`+0x90f0`, set by MSGSET, cleared by a MSGCLOSE after a waited line: MSGSET's wait flag or
+`MSGWAIT -1`). An answered SELECT or QUIZ counts once more. Before counting, the pending SSETs reach the persistent
+data (`0x710000f800`); SSET only queues (`+0x9158`), and SGET reads the queue first.
+
+**The snapshot** (`0x710000f720`) makes the current counter the save point and copies the slot info into the
+in-memory auto slot: when a MSGSET's text is handed to the message box, when a SELECT or QUIZ opens and when it is
+answered, and at AUTOSAVE. AUTOSAVE writes no file; the auto slot reaches the disk with the next write.
+
+**The route** is a bit stream, most significant bit first, grown in 1024-byte steps on read and write: SGET writes
+`1, v` for 0 or 1, else `0` and 16 bits; SELECT 4 bits; QUIZ 6 bits. Random results are not in it: the VM's
+generator steps once per instruction from the saved seed (`state = state * 0x343fd + 0x269ec3`), and `rnd a, b`
+gives `min + ((n * (state >> 8)) >> 24)` with `n = |a - b| + 1` (`0x71000ed3c0`), so a replay draws the same numbers.
+
+**Replay** (`0x710001b340`) runs the VM calling each command's slot 2 instead of its execute: almost every command is
+skipped (its constructor already updated the scene model); SGET, SELECT and QUIZ take the route's value; SSETs before
+the save point are skipped (they happened); the save-point commands stop once the counter reaches the save point, and
+that command then runs live (normally the MSGSET whose line was on screen). A save made inside an event, or a replay
+that reaches EXIT, falls back to the last save point before it (`+0x2dc8`, `0x710000f210`).
+
+**The file** is one file, `savedata:/SAVEDATA` (format in `shin-core/src/format/save`): version byte 1, play
+seconds, the persistent data, the seen-message / seen-choice / last-choice / CG / BGM / movie sets, the settings, the
+auto slot and 100 manual slots. It is written only at EXIT, when returning to the title, when closing the config with
+changed settings, and on a manual save or delete (`0x71000d52f0`). A version-0 file is a fresh save. Defaults:
+`0x71000d2110`.
+
+In the port: `adv/vm_state/save.rs` (counter, route, pending SSETs, snapshot), `adv/command/mod.rs`
+(`replay_command`), `Adv::new` (the replay and its fallback), `adv/restore.rs` (the scene rebuild: layers, masks,
+group properties, BGM, looping sounds) and `savedata.rs` (the file, by default `%APPDATA%\shin\SAVEDATA`).
+shortcuts: there are no save or load menus yet, so F5 saves to the slot the menu would open at and `--load auto` or
+`--load <1-100>` loads; closing the window writes the file (the port's way back to the title); the rebuild starts on
+a black screen instead of the 0.3 s cross-fade, and does not restore a minigame's answer, the message box style or
+the unlocks. The user's Switch save (22 h, Tsubasa Story03, save points 316 and 182) replays in 40–80 ms and resumes
+on a line; that it is the same line as on the Switch is still to be checked.

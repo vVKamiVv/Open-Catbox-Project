@@ -221,3 +221,34 @@ address,name,comment
 71001db1e0,shin::MurdererLayer::portraitNames,"17 portrait texture names by person id"
 71001db528,shin::MurdererLayer::Check::testimonies,"17 testimony strings by person id"
 71001db270,shin::MurdererLayer::Check::evidenceList,"29 x (index, flags, title, body)"
+71000ed3c0,shin::VM::op_rnd,"rnd dest, a, b: min + ((n * (state >> 8)) >> 24), n = |a - b| + 1"
+71000348d0,shin::RouteCursor::make,cursor over the Context's route stream (+0x2da0)
+7100034230,shin::BitStream::read,"n bits, MSB first, grows to 1024-byte steps"
+7100034470,shin::BitStream::write,"n bits, MSB first, grows to 1024-byte steps"
+71000348e0,shin::Route::readSget,"bit; 1 -> next bit, 0 -> 16 bits sign-extended"
+7100034930,shin::Route::writeSget,"v in 0..1 -> 1,v; else 0 + 16 bits"
+710000ea30,shin::ADV::Context::Context,"(listener, scenario, GameData): VM with $v0 = scenario_id, seed; replay target"
+710000e680,shin::ADV::Context::resetCounters,"counter block +0x2db0..+0x2ddc (event -1)"
+710000ee70,shin::ADV::Context::replayStep,run the VM to the next command and call its slot 2
+710000f720,shin::ADV::Context::takeSaveSnapshot,"save_position = counter; refreshes the global auto slot"
+710000f800,shin::ADV::Context::savePointCheckpoint,"flushes pending SSETs; a state copy every 200 counts"
+710000fab0,shin::ADV::Context::flushPendingSset,
+710000f210,shin::ADV::Context::rebuildAtLastSavePoint,replay fallback for saves inside events or past EXIT
+710001b340,shin::ADV::SceneLoader::job,replay to the save point then preload the model's resources
+7100019ea0,shin::ADV::SceneLoader::update,"state 1 rebuilds the scene from the model"
+7100005280,shin::ADV::MSGSET::replay,counter < target
+7100005ad0,shin::ADV::SELECT::replay,"4 route bits; stops at a save point reached"
+710000df50,shin::ADV::QUIZ::replay,"6 route bits"
+7100004ce0,shin::ADV::SGET::replay,reads the route
+7100004e10,shin::ADV::SSET::replay,skipped below the SSET threshold
+71000026e0,shin::ADV::onAUTOSAVE,"save point; copies the SAVEINFO texts"
+71000078d0,shin::ADV::AUTOSAVE::execute,"snapshot; scene-title banner"
+71000027e0,shin::ADV::onEVBEGIN,"counted; event id +0x2ddc"
+7100002960,shin::ADV::onEVEND,"counted; event -1"
+71000d52f0,shin::SaveGame::create,"at EXIT, title, config close, manual save, delete"
+71000d3ce0,shin::SaveGame::writeJob,"savedata:/SAVEDATA; crc then two obfuscation layers"
+71000d4890,shin::LoadGame::readJob,"0 ok / 1 corrupt / 2 newer version"
+71000d2110,shin::SaveData::setDefaults,default settings
+71000da920,shin::SaveMenu::save,"slot = Context save info; save_menu_position = slot"
+71000fc2c0,shin::randomSeed,"MT19937, one per new game"
+71000b39d8,shin::?::ctor_buffer,"orr w0, wzr, #0x20000 -> English IPS makes it 0x100000"
