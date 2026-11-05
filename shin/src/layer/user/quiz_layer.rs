@@ -26,7 +26,8 @@ use crate::{
         new_drawable_layer::{NewDrawableLayerFastForward, NewDrawableLayerNeedsSeparatePass},
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
         user::minigame::{
-            self, Minigame, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, from_top_left, seconds,
+            self, Minigame, MinigameInput, PointerTarget, SOUND_DECIDE, SOUND_MOVE, Sprite, contains,
+            from_top_left, seconds,
         },
     },
     update::{AdvUpdatable, AdvUpdateContext},
@@ -136,6 +137,9 @@ pub struct QuizLayerImpl {
     /// Fraction of the blink period; the consult button shows its second frame in the upper half
     blink_phase: f32,
     sounds: Vec<&'static str>,
+    /// The button under the pointer (`+0x48`) and the one a press raised
+    hovered: Option<usize>,
+    pressed: Option<usize>,
 }
 
 impl QuizLayerImpl {
@@ -158,6 +162,8 @@ impl QuizLayerImpl {
             cursor: 0,
             blink_phase: 0.0,
             sounds: Vec::new(),
+            hovered: None,
+            pressed: None,
         }
     }
 
@@ -179,6 +185,55 @@ impl QuizLayerImpl {
         self.sounds.push(SOUND_DECIDE);
         minigame::flash(&mut self.buttons[self.cursor].flash);
         self.state = State::Picked;
+    }
+}
+
+/// `QuizOverlayLayer` slots 18-25 (`0x71000c8ad0`-`0x71000c8e00`)
+impl PointerTarget for QuizLayerImpl {
+    fn pointer_hit(&mut self, position: Vec2) -> bool {
+        self.hovered = None;
+        if self.state == State::Waiting {
+            self.hovered = self.buttons.iter().position(|button| {
+                let [_, _, width, height] = BUTTONS[button.id].rect;
+                let p = button.position;
+                contains([p.x, p.y, p.x + width, p.y + height], position)
+            });
+        }
+        self.hovered.is_some()
+    }
+
+    fn pointer_leave(&mut self) {
+        self.hovered = None;
+    }
+
+    /// Raises the flash and moves the glow there, without a sound
+    fn pointer_press(&mut self) {
+        let Some(hovered) = self.hovered else { return };
+        minigame::raise(&mut self.buttons[hovered].flash);
+        if hovered != self.cursor {
+            self.buttons[self.cursor]
+                .hover
+                .enqueue_now(0.0, seconds(HOVER_OUT_SECONDS));
+            self.cursor = hovered;
+            self.buttons[hovered]
+                .hover
+                .enqueue_now(1.0, seconds(HOVER_IN_SECONDS));
+        }
+        self.pressed = Some(hovered);
+    }
+
+    fn pointer_release(&mut self) {
+        self.pressed = None;
+        if let Some(hovered) = self.hovered.take() {
+            self.cursor = hovered;
+            self.pick();
+        }
+    }
+
+    fn pointer_cancel(&mut self) {
+        if let Some(pressed) = self.pressed.take() {
+            minigame::lower(&mut self.buttons[pressed].flash);
+        }
     }
 }
 

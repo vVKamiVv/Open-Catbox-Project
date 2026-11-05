@@ -10,15 +10,17 @@ use shin_core::{
 };
 
 use super::{
-    Handover, SOUND_CANCEL, Screen, Shared,
+    Handover, SOUND_CANCEL, Screen, Shared, Target,
     draw::{Drawer, SCREEN, rect, white},
     hint_menu::{LEFT_US, LEFT_VS},
     move_highlight,
-    rule::draw_back,
+    rule::{back_hit, draw_back},
     top_menu::TopMenu,
     tree::{self, CONFIRM, LINES, NODES, PORTRAITS},
 };
-use crate::layer::user::minigame::{self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, frames};
+use crate::layer::user::minigame::{
+    self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, contains, frames,
+};
 
 const SOUND_ATTACK: &str = "attack";
 const SOUND_LAUGH: &str = "ahaha";
@@ -318,6 +320,69 @@ pub fn draw_lines(drawer: &mut Drawer, origin: Vec2, cell: Vec2, crop: (f32, f32
                 v + cell.y / 144.0,
             ])
         });
+    }
+}
+
+/// Pointer slots 10-17 (`0x710009a1e0`-`0x710009a7f0`)
+impl Select {
+    pub fn pointer_hit(&self, position: Vec2) -> Option<Target> {
+        if self.state != State::Idle {
+            return None;
+        }
+        if back_hit(position) {
+            return Some(Target::Back);
+        }
+        if !contains([320.0, 200.0, 780.0, 900.0], position) {
+            return None;
+        }
+        (0..NODES.len())
+            .find(|&i| contains(node_rect(i), position))
+            .map(Target::Item)
+    }
+
+    fn point_at(&mut self, item: usize) {
+        if item != self.cursor {
+            move_highlight(&mut self.items, self.cursor, item, |item| &mut item.highlight);
+            self.cursor = item;
+        }
+    }
+
+    pub fn pointer_press(&mut self, target: Target) {
+        match target {
+            Target::Item(item) => {
+                minigame::raise(&mut self.items[item].flash);
+                self.point_at(item);
+            }
+            _ => minigame::raise(&mut self.back_flash),
+        }
+    }
+
+    /// An item acts as confirm on it (toggle, or submit on Confirm); "back" leaves with `decide`
+    pub fn pointer_release(&mut self, target: Target, shared: &mut Shared) {
+        match target {
+            Target::Item(item) => {
+                self.point_at(item);
+                self.handle_input(
+                    &MinigameInput {
+                        confirm: true,
+                        ..Default::default()
+                    },
+                    shared,
+                );
+            }
+            _ => {
+                shared.sounds.push(SOUND_DECIDE);
+                minigame::flash(&mut self.back_flash);
+                self.state = State::Leaving;
+            }
+        }
+    }
+
+    pub fn pointer_cancel(&mut self, target: Target) {
+        match target {
+            Target::Item(item) => minigame::lower(&mut self.items[item].flash),
+            _ => minigame::lower(&mut self.back_flash),
+        }
     }
 }
 

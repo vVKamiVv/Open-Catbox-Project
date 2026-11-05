@@ -6,8 +6,10 @@ use shin_core::{
     time::{Easing, Ticks, Tweener},
 };
 
+use glam::Vec2;
+
 use super::{
-    Handover, Screen, Shared,
+    Handover, Screen, Shared, Target,
     check::Check,
     draw::{Drawer, SCREEN, rect, white},
     hint_menu::HintMenu,
@@ -16,7 +18,9 @@ use super::{
     rule::Rule,
     select::Select,
 };
-use crate::layer::user::minigame::{self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, frames};
+use crate::layer::user::minigame::{
+    self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, contains, frames,
+};
 
 const ITEMS: usize = 6;
 /// The item that names the culprit
@@ -185,7 +189,7 @@ impl TopMenu {
         let labels = drawer.texture("topmenu");
         for (i, item) in self.items.iter().enumerate() {
             let y = ITEM_Y + ITEM_STEP * i as f32;
-            let bounds = rect(ITEM_X, y, ITEM_W, ITEM_H);
+            let bounds = item_rect(i);
             let hover = item.hover.value();
             let [r, g, b] =
                 std::array::from_fn(|c| PLATE_DIM[c] + (PLATE_LIT[c] - PLATE_DIM[c]) * hover);
@@ -208,6 +212,51 @@ impl TopMenu {
                 .uv([0.0, v, 1.0, v + 1.0 / ITEMS as f32]),
             );
             drawer.flat(bounds, white(item.flash.value()));
+        }
+    }
+}
+
+fn item_rect(i: usize) -> [f32; 4] {
+    rect(ITEM_X, ITEM_Y + ITEM_STEP * i as f32, ITEM_W, ITEM_H)
+}
+
+/// Pointer slots 10-17 (`0x710008d710`-`0x710008da70`)
+impl TopMenu {
+    pub fn pointer_hit(&self, position: Vec2) -> Option<Target> {
+        if self.state != State::Idle {
+            return None;
+        }
+        (0..ITEMS)
+            .find(|&i| contains(item_rect(i), position))
+            .map(Target::Item)
+    }
+
+    fn point_at(&mut self, item: usize) {
+        if item != self.cursor {
+            move_highlight(&mut self.items, self.cursor, item, |item| &mut item.hover);
+            self.cursor = item;
+        }
+    }
+
+    pub fn pointer_press(&mut self, target: Target) {
+        if let Target::Item(item) = target {
+            minigame::raise(&mut self.items[item].flash);
+            self.point_at(item);
+        }
+    }
+
+    pub fn pointer_release(&mut self, target: Target, shared: &mut Shared) {
+        if let Target::Item(item) = target {
+            self.point_at(item);
+            shared.sounds.push(SOUND_DECIDE);
+            minigame::flash(&mut self.items[item].flash);
+            self.state = State::Picked;
+        }
+    }
+
+    pub fn pointer_cancel(&mut self, target: Target) {
+        if let Target::Item(item) = target {
+            minigame::lower(&mut self.items[item].flash);
         }
     }
 }

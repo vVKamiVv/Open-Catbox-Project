@@ -22,7 +22,7 @@ use shin_core::{
         },
     },
 };
-use shin_input::{Action, ActionState, inputs::MouseButton};
+use shin_input::{Action, ActionState, Pointer, inputs::MouseButton};
 use shin_render::{
     render_pass::RenderPass,
     shaders::types::{RenderClone as _, RenderCloneCtx},
@@ -44,7 +44,7 @@ use crate::{
         render_layer_without_bg,
         render_params::TransformParams,
         select_layer::{SelectInput, SelectLayer},
-        user::minigame::{Directions, MinigameInput},
+        user::minigame::{Directions, MinigameInput, PointerTracker},
         user::UserLayer,
     },
     render::{
@@ -93,6 +93,8 @@ pub struct Adv {
     adv_state: AdvState,
     // action_state: ActionState<AdvMessageAction>,
     current_command: Option<ExecutingCommand>,
+    /// The mouse over the choice menu
+    select_pointer: PointerTracker,
     fast_forward_to_bp: Option<BreakpointObserver>,
     /// Set by `EXIT`; the script then stops running while the screen keeps updating
     script_exited: bool,
@@ -112,6 +114,7 @@ impl Adv {
             vm_state,
             adv_state,
             current_command: None,
+            select_pointer: PointerTracker::default(),
             fast_forward_to_bp: None,
             script_exited: false,
             capture: None,
@@ -159,7 +162,12 @@ impl Adv {
         self.adv_state.render(pass);
     }
 
-    pub fn handle_input(&mut self, state: EnumMap<AppAction, ActionState>, is_focused: bool) {
+    pub fn handle_input(
+        &mut self,
+        state: EnumMap<AppAction, ActionState>,
+        pointer: Pointer,
+        is_focused: bool,
+    ) {
         if !is_focused {
             return;
         }
@@ -169,12 +177,13 @@ impl Adv {
                 (AppAction::AnyUp, SelectInput::Up),
                 (AppAction::AnyDown, SelectInput::Down),
                 (AppAction::Enter, SelectInput::Confirm),
-                (AppAction::Act, SelectInput::Confirm),
             ] {
                 if state[action].is_clicked {
                     select_layer.handle_input(input);
                 }
             }
+            // a click goes through the pointer handlers
+            self.select_pointer.dispatch(pointer, select_layer);
             return;
         }
         if let Some(ExecutingCommand::QUIZ(quiz)) = &mut self.current_command {
@@ -184,18 +193,23 @@ impl Adv {
                 left: pick(&state[AppAction::AnyLeft]),
                 right: pick(&state[AppAction::AnyRight]),
             };
-            quiz.handle_input(MinigameInput {
+            let input = MinigameInput {
                 held: directions(|s| s.is_held),
                 pressed: directions(|s| s.is_clicked_or_repeated),
-                confirm: state[AppAction::Enter].is_clicked || state[AppAction::Act].is_clicked,
+                // a click goes through the pointer handlers
+                confirm: state[AppAction::Enter].is_clicked,
                 cancel: state[AppAction::Cancel].is_clicked,
+                text_scroll: state[AppAction::PageDown].is_held as i32 as f32
+                    - state[AppAction::PageUp].is_held as i32 as f32,
                 // the QUIZ command fills in the frame time
                 frames: 0.0,
-            });
+            };
+            quiz.handle_input(input, pointer);
             return;
         }
 
-        if state[AppAction::Enter].is_clicked {
+        // a click advances the text too, as a touch does in the original
+        if state[AppAction::Enter].is_clicked || state[AppAction::Act].is_clicked {
             self.adv_state.message_layer_mut().try_advance();
             if let Some(ExecutingCommand::WAIT(wait)) = &mut self.current_command {
                 wait.interrupt();
@@ -208,6 +222,7 @@ impl Adv {
         &mut self,
         context: &mut UpdateContext,
         input_state: EnumMap<AppAction, ActionState>,
+        pointer: Pointer,
     ) {
         // self.action_state.update(context.raw_input_state);
 
@@ -224,7 +239,7 @@ impl Adv {
         // }
 
         // TODO: tasks from task pool can steal focus
-        self.handle_input(input_state, true);
+        self.handle_input(input_state, pointer, true);
 
         if self.is_fast_forwarding(fast_forward_button_held) {
             self.adv_state.root_layer_group_mut().fast_forward();

@@ -20,7 +20,9 @@ use shin_render::{
 
 use crate::{
     adv::assets::AdvFonts,
-    layer::{message_layer::MessageboxTextures, text_block::TextBlock},
+    layer::{
+        message_layer::MessageboxTextures, text_block::TextBlock, user::minigame::PointerTarget,
+    },
     random::MinStdRand,
     render::{PreRenderContext, top_left_projection_matrix},
 };
@@ -133,6 +135,9 @@ pub struct SelectLayer {
     alpha: f32,
     state: State,
     cursor: Option<usize>,
+    /// The bar under the pointer (`+0x84`) and the one a press raised
+    pointer_hover: Option<usize>,
+    pointer_pressed: Option<usize>,
     sounds: Vec<&'static str>,
 }
 
@@ -214,6 +219,8 @@ impl SelectLayer {
             // the original starts on the first option only when a flag (`+0x79` bit 7) is set; in practice
             // (Eden, played with a controller) no option is highlighted until the first Up or Down
             cursor: None,
+            pointer_hover: None,
+            pointer_pressed: None,
             sounds: Vec::new(),
         }
     }
@@ -277,6 +284,22 @@ impl SelectLayer {
                 None => self.sounds.push(SOUND_ERROR),
             },
         }
+    }
+
+    /// Moves the highlight without a sound (a press)
+    fn point_at(&mut self, to: usize) {
+        if self.cursor == Some(to) {
+            return;
+        }
+        if let Some(from) = self.cursor {
+            self.choices[from]
+                .hover
+                .enqueue_now(0.0, Tween::linear(Ticks::from_seconds(HOVER_OUT_SECONDS)));
+        }
+        self.choices[to]
+            .hover
+            .enqueue_now(1.0, Tween::linear(Ticks::from_seconds(HOVER_IN_SECONDS)));
+        self.cursor = Some(to);
     }
 
     /// Picks an option without input (used while the script is fast-forwarded)
@@ -420,6 +443,55 @@ fn render_bar(
             .with_tex_box(0.0, v0, 1.0, v1)
             .with_color(color)
             .render_sprite(pass, builder, texture.as_source(), transform);
+    }
+}
+
+/// Bars are hit between these x (`0x710015a668`, `0x710015a888`)
+const POINTER_X: (f32, f32) = (460.0, 1460.0);
+
+/// Pointer slots (`0x71000f1940` hit test, `0x71000f19e0` press, `0x71000f1aa0` release): a press moves the
+/// highlight there and raises its flash; releasing on it picks it
+impl PointerTarget for SelectLayer {
+    fn pointer_hit(&mut self, position: Vec2) -> bool {
+        self.pointer_hover = None;
+        if self.is_interactive() && (POINTER_X.0..POINTER_X.1).contains(&position.x) {
+            self.pointer_hover = self
+                .choices
+                .iter()
+                .position(|choice| (choice.y..choice.y + choice.height).contains(&position.y));
+        }
+        self.pointer_hover.is_some()
+    }
+
+    fn pointer_leave(&mut self) {
+        self.pointer_hover = None;
+    }
+
+    fn pointer_press(&mut self) {
+        let Some(hovered) = self.pointer_hover else {
+            return;
+        };
+        self.point_at(hovered);
+        self.choices[hovered]
+            .flash
+            .enqueue_now(FLASH_PEAK, Tween::linear(Ticks::from_seconds(FLASH_SECONDS)));
+        self.pointer_pressed = Some(hovered);
+    }
+
+    fn pointer_release(&mut self) {
+        self.pointer_pressed = None;
+        if let Some(hovered) = self.pointer_hover.take() {
+            self.point_at(hovered);
+            self.pick(hovered);
+        }
+    }
+
+    fn pointer_cancel(&mut self) {
+        if let Some(pressed) = self.pointer_pressed.take() {
+            self.choices[pressed]
+                .flash
+                .enqueue_now(0.0, Tween::linear(Ticks::from_seconds(FLASH_SECONDS)));
+        }
     }
 }
 

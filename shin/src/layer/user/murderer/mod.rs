@@ -25,7 +25,7 @@ mod tree;
 
 use std::{fmt::Debug, sync::Arc};
 
-use glam::{Mat4, vec3};
+use glam::{Mat4, Vec2, vec3};
 use shin_core::{
     primitives::color::UnormColor,
     time::{Ticks, Tweener},
@@ -39,19 +39,22 @@ use shin_render::{
         texture::{DepthStencilTarget, TextureTarget},
     },
 };
+use shin_render::resize::CanvasSize;
 
 use self::{
     check::Check, draw::Drawer, hint_menu::HintMenu, replay_menu::ReplayMenu, rule::Rule,
     select::Select, top_menu::TopMenu,
 };
 use crate::{
+    adv::assets::AdvFonts,
     asset::texture_archive::NamedTextures,
     layer::{
         LayerProperties, NewDrawableLayer, NewDrawableLayerWrapper,
         new_drawable_layer::{NewDrawableLayerFastForward, NewDrawableLayerNeedsSeparatePass},
         render_params::{DrawableClipParams, DrawableParams, TransformParams},
-        user::minigame::{Minigame, MinigameInput, seconds},
+        user::minigame::{Minigame, MinigameInput, PointerTarget, seconds},
     },
+    layer::text_block::TextBlock,
     render::PreRenderContext,
     update::{AdvUpdatable, AdvUpdateContext},
     wiper::{AnyWiper, DefaultWiper, GlassWiper, Wiper},
@@ -61,6 +64,7 @@ use crate::{
 /// which the original loads when a person is picked)
 pub struct MurdererAssets {
     pub textures: Arc<NamedTextures>,
+    pub fonts: AdvFonts,
     pub system: Arc<NamedTextures>,
     pub busts: Vec<(&'static str, Arc<NamedTextures>)>,
 }
@@ -80,6 +84,8 @@ struct Shared {
     sounds: Vec<&'static str>,
     /// Advances by 1/60 per frame and wraps (`+0x5c`)
     blink_phase: f32,
+    /// The height of the text the screen shows (the Check screen's testimony or evidence), once laid out
+    text_height: f32,
     transition_running: bool,
 }
 
@@ -125,6 +131,15 @@ pub const SOUND_CANCEL: &str = "cancel";
 /// The back button every sub-screen has at the top right (160 x 84)
 const BACK_RECT: [f32; 4] = [1640.0, 32.0, 1800.0, 116.0];
 
+/// What the pointer can be over in a screen
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    Back,
+    Item(usize),
+    /// A chapter header of the Check screen's evidence list
+    Header(usize),
+}
+
 #[derive(Clone)]
 enum Screen {
     Top(TopMenu),
@@ -167,6 +182,34 @@ impl Screen {
         each_screen!(self, s => s.auto_pick(shared))
     }
 
+    /// What is under `position`, only while the screen takes input (each screen's slot 10)
+    fn pointer_hit(&self, position: Vec2) -> Option<Target> {
+        each_screen!(self, s => s.pointer_hit(position))
+    }
+
+    /// Slot 12: lights the target and, for items, moves the cursor there
+    fn pointer_press(&mut self, target: Target) {
+        each_screen!(self, s => s.pointer_press(target))
+    }
+
+    /// Slot 13: activates the target, as confirm (or "back") does
+    fn pointer_release(&mut self, target: Target, shared: &mut Shared) {
+        each_screen!(self, s => s.pointer_release(target, shared))
+    }
+
+    /// Slots 14/15/17: drops the press's light
+    fn pointer_cancel(&mut self, target: Target) {
+        each_screen!(self, s => s.pointer_cancel(target))
+    }
+
+    /// The text the screen shows, if any (the Check screen's text object)
+    fn text(&self) -> Option<&str> {
+        match self {
+            Screen::Check(screen) => Some(screen.text()),
+            _ => None,
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
             Screen::Top(_) => "TopMenu",
@@ -195,6 +238,10 @@ pub struct MurdererLayerImpl {
     screen_texture: Option<RenderTexture>,
     #[render_clone(needs_render)]
     snapshot: Option<RenderTexture>,
+    #[render_clone(needs_render)]
+    text: TextCache,
+    hovered: Option<Target>,
+    pressed: Option<Target>,
 }
 
 impl MurdererLayerImpl {
@@ -206,6 +253,7 @@ impl MurdererLayerImpl {
                 result: None,
                 sounds: Vec::new(),
                 blink_phase: 0.0,
+                text_height: 0.0,
                 transition_running: false,
             },
             screen: Screen::Top(TopMenu::new(0)),
@@ -215,6 +263,9 @@ impl MurdererLayerImpl {
             snapshot_of: None,
             screen_texture: None,
             snapshot: None,
+            text: TextCache::default(),
+            hovered: None,
+            pressed: None,
         }
     }
 
@@ -227,11 +278,50 @@ impl MurdererLayerImpl {
         depth_stencil: DepthStencilTarget,
         transform: Mat4,
     ) {
+        let target_size = context.resize_source.handle::<CanvasSize>().get();
+        let target_size = (target_size.width, target_size.height);
+        let text = self.text.0.as_ref().map(|(_, block)| block);
         let mut pass = context.begin_pass(target, Some(depth_stencil), "MurdererLayer/screen");
         pass.clear(Some(UnormColor::BLACK), Some(0), None);
-        let mut drawer = Drawer::new(&mut pass, &self.assets, transform);
+        let mut drawer = Drawer::new(&mut pass, &self.assets, transform, target_size, text);
         screen.draw(&mut drawer, &self.shared, true);
         screen.draw(&mut drawer, &self.shared, false);
+    }
+}
+
+/// `MurdererOverlayLayer` slots 18-25 (`0x710009ba20`-`0x710009bb10`): forwarded to the current screen; the hit test
+/// is skipped while a transition runs
+impl PointerTarget for MurdererLayerImpl {
+    fn pointer_hit(&mut self, position: Vec2) -> bool {
+        self.hovered = None;
+        if self.transition.is_none() && self.pending.is_none() && self.shared.result.is_none() {
+            self.hovered = self.screen.pointer_hit(position);
+        }
+        self.hovered.is_some()
+    }
+
+    fn pointer_leave(&mut self) {
+        self.hovered = None;
+    }
+
+    fn pointer_press(&mut self) {
+        if let Some(target) = self.hovered {
+            self.screen.pointer_press(target);
+            self.pressed = Some(target);
+        }
+    }
+
+    fn pointer_release(&mut self) {
+        self.pressed = None;
+        if let Some(target) = self.hovered.take() {
+            self.screen.pointer_release(target, &mut self.shared);
+        }
+    }
+
+    fn pointer_cancel(&mut self) {
+        if let Some(target) = self.pressed.take() {
+            self.screen.pointer_cancel(target);
+        }
     }
 }
 
@@ -292,6 +382,16 @@ impl NewDrawableLayer for MurdererLayerImpl {
             .get_composed_transform_params(transform)
             .compute_final_transform()
             * Mat4::from_translation(vec3(-960.0, -540.0, 0.0));
+
+        // lay out the text the screen shows when it changes (`0x7100094480`)
+        let wanted = self.screen.text().unwrap_or_default();
+        if self.text.0.as_ref().is_none_or(|(text, _)| text != wanted) {
+            let block = (!wanted.is_empty()).then(|| {
+                TextBlock::new(context, &self.assets.fonts, wanted, check::text_layout(), check::TEXT_OUTLINE)
+            });
+            self.shared.text_height = block.as_ref().map_or(0.0, |block| block.size().y);
+            self.text.0 = block.map(|block| (wanted.to_string(), block));
+        }
 
         if self.snapshot_pending {
             // the screen that started the transition is still current: the wiper starts from this picture
@@ -366,6 +466,8 @@ impl AdvUpdatable for MurdererLayerImpl {
         self.shared.blink_phase = (self.shared.blink_phase + delta.as_f32() / 60.0).fract();
         if let Some(next) = self.pending.take() {
             self.screen = next;
+            self.hovered = None;
+            self.pressed = None;
         }
         self.shared.transition_running = self.transition.is_some();
         if let Some(handover) = self.screen.update(delta, &mut self.shared) {
@@ -392,5 +494,16 @@ impl Debug for MurdererLayerImpl {
             .field("screen", &self.screen.name())
             .field("result", &self.shared.result)
             .finish()
+    }
+}
+
+/// The laid-out text of the current screen and the string it was laid out from; not cloned with the layer (it is
+/// laid out again)
+#[derive(Default)]
+struct TextCache(Option<(String, TextBlock)>);
+
+impl RenderClone for TextCache {
+    fn render_clone(&self, _ctx: &mut shin_render::shaders::types::RenderCloneCtx) -> Self {
+        Self(None)
     }
 }

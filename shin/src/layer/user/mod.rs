@@ -237,7 +237,11 @@ impl UserLayer {
                         for name in MurdererAssets::bust_names() {
                             busts.push((name, load(format!("/chars/m_{name}.txa")).await));
                         }
+                        let fonts = crate::adv::assets::AdvFonts::load(asset_server)
+                            .await
+                            .expect("Failed to load the fonts");
                         let assets = MurdererAssets {
+                            fonts,
                             textures: load(crate::asset::asset_paths::MURDERER.to_string()).await,
                             system: load(crate::asset::asset_paths::SYSTEX.to_string()).await,
                             busts,

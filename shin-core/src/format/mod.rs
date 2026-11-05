@@ -6,6 +6,7 @@ pub mod text;
 pub mod rom;
 
 pub mod audio;
+pub mod executable;
 pub mod bustup;
 pub mod font;
 pub mod mask;

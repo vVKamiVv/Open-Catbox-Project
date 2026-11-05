@@ -28,8 +28,8 @@ use crate::{
         new_drawable_layer::{NewDrawableLayerFastForward, NewDrawableLayerNeedsSeparatePass},
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
         user::minigame::{
-            self, Minigame, MinigameInput, SOUND_DECIDE, SOUND_ERROR, Sprite, from_top_left,
-            seconds,
+            self, Minigame, MinigameInput, PointerTarget, SOUND_DECIDE, SOUND_ERROR, Sprite,
+            from_top_left, seconds,
         },
     },
     update::{AdvUpdatable, AdvUpdateContext},
@@ -202,6 +202,9 @@ pub struct CakeLayerImpl {
     hovered: Option<usize>,
     state: State,
     sounds: Vec<&'static str>,
+    /// Where the pointer last hit, and the slice there (`+0xa8`)
+    pointer_at: Vec2,
+    pointer_slice: Option<usize>,
 }
 
 impl CakeLayerImpl {
@@ -220,6 +223,8 @@ impl CakeLayerImpl {
             hovered: None,
             state: State::Waiting,
             sounds: Vec::new(),
+            pointer_at: POINTER_START,
+            pointer_slice: None,
         }
     }
 
@@ -246,6 +251,47 @@ impl CakeLayerImpl {
         self.pointer_alpha
             .enqueue_now(0.0, seconds(POINTER_FADE_SECONDS));
         self.state = State::Picked;
+    }
+}
+
+/// `CakeOverlayLayer` slots 18-25 (`0x7100046010`-`0x7100046430`): the whole screen answers the pointer; a press
+/// brings the finger there
+impl PointerTarget for CakeLayerImpl {
+    fn pointer_hit(&mut self, position: Vec2) -> bool {
+        if self.state != State::Waiting {
+            return false;
+        }
+        self.pointer_at = position;
+        self.pointer_slice = self.assets.slice_at(position);
+        true
+    }
+
+    fn pointer_leave(&mut self) {
+        self.pointer_slice = None;
+    }
+
+    fn pointer_press(&mut self) {
+        self.pointer = self.pointer_at.clamp(POINTER_MIN, POINTER_MAX);
+        self.hover(self.pointer_slice);
+        if let Some(slice) = self.pointer_slice {
+            minigame::raise(&mut self.slices[slice].flash);
+        }
+    }
+
+    fn pointer_release(&mut self) {
+        self.pointer = self.pointer_at.clamp(POINTER_MIN, POINTER_MAX);
+        self.hover(self.pointer_slice);
+        match self.pointer_slice {
+            Some(slice) => self.pick(slice),
+            None => self.sounds.push(SOUND_ERROR),
+        }
+    }
+
+    fn pointer_cancel(&mut self) {
+        if let Some(slice) = self.hovered {
+            minigame::lower(&mut self.slices[slice].flash);
+        }
+        self.pointer_slice = None;
     }
 }
 

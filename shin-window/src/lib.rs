@@ -7,7 +7,7 @@ use std::{
 use cfg_if::cfg_if;
 use derive_where::derive_where;
 use enum_map::EnumMap;
-use shin_input::{Action, ActionState, ActionsState, RawInputAccumulator};
+use shin_input::{Action, ActionState, ActionsState, Pointer, RawInputAccumulator};
 use shin_render::{
     init::{RenderResources, WgpuInitResult, WgpuResources},
     render_pass::RenderPass,
@@ -62,6 +62,7 @@ pub trait ShinApp: Sized {
         &mut self,
         context: AppContext<Self>,
         input: EnumMap<Self::ActionType, ActionState>,
+        pointer: Pointer,
         elapsed_time: Duration,
         command_encoder: &mut wgpu::CommandEncoder,
     );
@@ -562,6 +563,25 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                 // NOTE: this interface does not expose analog stick positions, as well as mouse wheel (and buttons...)
                 // these should probably be passed directly or some other abstraction should be devised
                 let input_state = input_state.update(instantaneous_input_state, elapsed);
+                let pointer = {
+                    let viewport = A::map_canvas_size(winit.window.inner_size());
+                    let mouse = &raw_instantaneous_input_state.mouse;
+                    let offset = glam::vec2(
+                        viewport.canvas_offset.x as f32,
+                        viewport.canvas_offset.y as f32,
+                    );
+                    let size = glam::vec2(
+                        viewport.canvas_size.width as f32,
+                        viewport.canvas_size.height as f32,
+                    );
+                    let canvas = (mouse.position - offset) / size;
+                    Pointer {
+                        position: (canvas.cmpge(glam::Vec2::ZERO).all()
+                            && canvas.cmplt(glam::Vec2::ONE).all())
+                        .then(|| canvas * glam::vec2(1920.0, 1080.0)),
+                        held: mouse.buttons[shin_input::inputs::MouseButton::Left],
+                    }
+                };
 
                 let mut update_encoder =
                     wgpu.device
@@ -579,6 +599,7 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                             render,
                         },
                         input_state,
+                        pointer,
                         elapsed,
                         &mut update_encoder,
                     );

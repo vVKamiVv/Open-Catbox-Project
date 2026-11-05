@@ -1,10 +1,14 @@
 use std::fmt::{Debug, Formatter};
 
 use shin_core::vm::command::types::{LayerId, Volume};
+use shin_input::Pointer;
 use tracing::{debug, info};
 
 use super::prelude::*;
-use crate::{audio::play_sys_se, layer::user::minigame::MinigameInput};
+use crate::{
+    audio::play_sys_se,
+    layer::user::minigame::{MinigameInput, PointerTracker},
+};
 
 /// Behaviour in the Switch v1.0.3 executable (`shin::ADV::QUIZ`, constructor `0x710000dcc0`, execute
 /// `0x710000e020`): waits on the minigame loaded at layer `arg` of the current plane (the quiz layer type: the quiz,
@@ -19,13 +23,16 @@ pub struct QUIZ {
     layer_id: LayerId,
     /// This frame's controller state, handed to the minigame on the next update
     pending_input: Option<MinigameInput>,
+    pending_pointer: Option<Pointer>,
+    pointer: PointerTracker,
     /// Debug fast-forwarding has already announced it is picking for the player
     auto_pick_logged: bool,
 }
 
 impl QUIZ {
-    pub fn handle_input(&mut self, input: MinigameInput) {
+    pub fn handle_input(&mut self, input: MinigameInput, pointer: Pointer) {
         self.pending_input = Some(input);
+        self.pending_pointer = Some(pointer);
     }
 }
 
@@ -47,6 +54,8 @@ impl StartableCommand for command::runtime::QUIZ {
                 token: Some(self.token),
                 layer_id: LayerId::new(self.arg as u16),
                 pending_input: None,
+                pending_pointer: None,
+                pointer: PointerTracker::default(),
                 auto_pick_logged: false,
             }
             .into(),
@@ -90,6 +99,9 @@ impl UpdatableCommand for QUIZ {
                 debug!("QUIZ: input {:?}", input);
             }
             quiz.handle_input(&input);
+        }
+        if let Some(pointer) = self.pending_pointer.take() {
+            self.pointer.dispatch(pointer, quiz);
         }
         if auto_choose && quiz.is_interactive() {
             // debug fast-forwarding (sweeps, captures) cannot wait for a player

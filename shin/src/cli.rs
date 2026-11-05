@@ -13,6 +13,10 @@ pub struct Cli {
     /// Consult the README for more information.
     #[clap(short, long)]
     pub assets_dir: Option<PathBuf>,
+    /// A folder with the game's executable (`main`) and a translation's `.ips` patches, for the texts the engine
+    /// keeps there; by default `SHIN_EXEFS`, or an `exefs` folder next to the assets
+    #[clap(long)]
+    pub exefs: Option<PathBuf>,
     /// Automatically fast-forward the scenario to the specified address (useful for debugging)
     #[clap(long, value_parser=maybe_hex::<u32>)]
     pub fast_forward_to: Option<u32>,
@@ -36,3 +40,4 @@ pub struct Cli {
     #[clap(long, default_value_t = 4.0)]
     pub capture_settle: f32,
 }
+

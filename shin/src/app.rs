@@ -7,7 +7,7 @@ use shin_core::{
     format::scenario::instruction_elements::CodeAddress, primitives::update::FrameId, time::Ticks,
     vm::Scripter,
 };
-use shin_input::{Action, ActionState, RawInputState, inputs::MouseButton};
+use shin_input::{Action, ActionState, Pointer, RawInputState, inputs::MouseButton};
 use shin_render::render_pass::RenderPass;
 use shin_window::{AppContext, RenderContext, ShinApp};
 use tracing::{debug, error, info};
@@ -33,6 +33,8 @@ pub enum AppAction {
     AnyUp,
     AnyLeft,
     AnyRight,
+    PageUp,
+    PageDown,
     HoldSkip,
 }
 
@@ -53,6 +55,8 @@ impl Action for AppAction {
             AppAction::AnyUp => raw_input_state.keyboard.contains(&KeyCode::ArrowUp),
             AppAction::AnyLeft => raw_input_state.keyboard.contains(&KeyCode::ArrowLeft),
             AppAction::AnyRight => raw_input_state.keyboard.contains(&KeyCode::ArrowRight),
+            AppAction::PageUp => raw_input_state.keyboard.contains(&KeyCode::PageUp),
+            AppAction::PageDown => raw_input_state.keyboard.contains(&KeyCode::PageDown),
             AppAction::HoldSkip => raw_input_state.keyboard.contains(&KeyCode::ControlLeft),
         })
     }
@@ -78,6 +82,18 @@ impl ShinApp for App {
     fn init(context: AppContext<Self>, cli: Self::Parameters) -> anyhow::Result<Self> {
         let audio_manager = Arc::new(AudioManager::new());
 
+        crate::asset::executable::load(
+            &[
+                cli.exefs.clone(),
+                std::env::var_os("SHIN_EXEFS").map(PathBuf::from),
+                cli.assets_dir.as_ref().map(|dir| dir.join("exefs")),
+                std::env::var_os("SHIN_ASSETS").map(|dir| PathBuf::from(dir).join("exefs")),
+                std::env::current_dir().ok().map(|dir| dir.join("assets").join("exefs")),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>(),
+        );
         let asset_io = locate_assets(cli.assets_dir.as_deref()).context("Failed to locate assets. Consult the README for instructions on how to set up the game.")?;
 
         debug!("Asset IO: {:#?}", asset_io);
@@ -203,6 +219,7 @@ impl ShinApp for App {
         &mut self,
         context: AppContext<Self>,
         input: EnumMap<Self::ActionType, ActionState>,
+        pointer: Pointer,
         elapsed_time: Duration,
         command_encoder: &mut wgpu::CommandEncoder,
     ) {
@@ -253,7 +270,8 @@ impl ShinApp for App {
             pre_render: &mut pre_render_context,
         };
 
-        self.adv.update(&mut update_context, input);
+        self.adv.update(&mut update_context, input, pointer);
+
 
         if self.pending_capture.is_none() {
             if let Some(message_id) = self.adv.capture_due() {
@@ -308,3 +326,4 @@ impl ShinApp for App {
         // render_layer(pass, &transform, &self.adv, FloatColor4::BLACK, 0);
     }
 }
+

@@ -4,6 +4,7 @@ version = "0.8.1"
 edition = "2024"
 
 [dependencies]
+glam = { workspace = true }
 shin-primitives = { path = "../shin-primitives" }
 shin-tasks = { path = "../shin-tasks" }
 shin-input = { path = "../shin-input" }
@@ -47,7 +48,6 @@ tracy = ["tracing-tracy/enable"]
 
 [dev-dependencies]
 dpi = { workspace = true }
-glam = { workspace = true }
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]

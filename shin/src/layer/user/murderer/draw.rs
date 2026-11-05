@@ -13,7 +13,10 @@ use shin_render::{
 
 use super::MurdererAssets;
 use crate::{
-    layer::user::minigame::{self, Sprite},
+    layer::{
+        text_block::TextBlock,
+        user::minigame::{self, Sprite},
+    },
     render::normalized_projection_matrix,
 };
 
@@ -31,6 +34,9 @@ pub struct Drawer<'p, 'a, 'b, 'c, 'd, 'e> {
     assets: &'p MurdererAssets,
     transform: Mat4,
     builder: RenderRequestBuilder,
+    target_size: (u32, u32),
+    /// The screen's text, laid out by the layer
+    text: Option<&'p TextBlock>,
 }
 
 impl<'p, 'a, 'b, 'c, 'd, 'e> Drawer<'p, 'a, 'b, 'c, 'd, 'e> {
@@ -38,6 +44,8 @@ impl<'p, 'a, 'b, 'c, 'd, 'e> Drawer<'p, 'a, 'b, 'c, 'd, 'e> {
         pass: &'p mut RenderPass<'a, 'b, 'c, 'd, 'e>,
         assets: &'p MurdererAssets,
         transform: Mat4,
+        target_size: (u32, u32),
+        text: Option<&'p TextBlock>,
     ) -> Self {
         Self {
             pass,
@@ -45,6 +53,43 @@ impl<'p, 'a, 'b, 'c, 'd, 'e> Drawer<'p, 'a, 'b, 'c, 'd, 'e> {
             transform,
             // the screens draw with `setLayerDepthStencil(1, 1, 1)` after clearing the stencil
             builder: minigame::builder(1),
+            target_size,
+            text,
+        }
+    }
+
+    /// Limits drawing to `rect` (1920x1080 top-left space) until [`Self::unclip`] (the original masks with the
+    /// stencil, which is the same for a rect)
+    pub fn clip_to(&mut self, [x0, y0, x1, y1]: Rect) {
+        let (w, h) = (self.target_size.0 as f32, self.target_size.1 as f32);
+        let px = |x: f32, full: f32, max: f32| (x / full * max).round().clamp(0.0, max) as u32;
+        let (left, top) = (px(x0, 1920.0, w), px(y0, 1080.0, h));
+        let (right, bottom) = (px(x1, 1920.0, w), px(y1, 1080.0, h));
+        self.pass.set_scissor(
+            Some((left, top, right.saturating_sub(left), bottom.saturating_sub(top))),
+            self.target_size,
+        );
+    }
+
+    pub fn unclip(&mut self) {
+        self.pass.set_scissor(None, self.target_size);
+    }
+
+    /// The height of the screen's text, if any
+    pub fn text_height(&self) -> f32 {
+        self.text.map_or(0.0, |text| text.size().y)
+    }
+
+    /// The screen's text with its top-left corner at `position`, white with a black outline
+    pub fn draw_text(&mut self, position: Vec2) {
+        if let Some(text) = self.text {
+            text.render(
+                self.pass,
+                self.builder,
+                self.transform * Mat4::from_translation(position.extend(0.0)),
+                FloatColor4::WHITE,
+                FloatColor4::BLACK,
+            );
         }
     }
 

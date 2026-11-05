@@ -3,12 +3,14 @@
 
 use shin_core::time::{Ticks, Tweener};
 
+use glam::Vec2;
+
 use super::{
-    BACK_RECT, Handover, SOUND_CANCEL, Screen, Shared,
+    BACK_RECT, Handover, SOUND_CANCEL, Screen, Shared, Target,
     draw::{Drawer, SCREEN},
     top_menu::TopMenu,
 };
-use crate::layer::user::minigame::{self, MinigameInput, Sprite};
+use crate::layer::user::minigame::{self, MinigameInput, SOUND_DECIDE, Sprite, contains};
 
 /// The frame `right` (384 x 448) cut at these screen and texture edges
 const FRAME_XS: [f32; 4] = [264.0, 280.0, 1320.0, 1672.0];
@@ -86,4 +88,30 @@ impl Rule {
 pub fn draw_back(drawer: &mut Drawer, flash: &Tweener) {
     let texture = drawer.texture("back");
     drawer.sprite(Sprite::new(texture, BACK_RECT).flash(flash.value()));
+}
+
+/// Pointer slots 10-17 (`0x7100090370`-`0x7100090660`): only the back button
+impl Rule {
+    pub fn pointer_hit(&self, position: Vec2) -> Option<Target> {
+        (self.state == State::Idle && contains(BACK_RECT, position)).then_some(Target::Back)
+    }
+
+    pub fn pointer_press(&mut self, _target: Target) {
+        minigame::raise(&mut self.back_flash);
+    }
+
+    pub fn pointer_release(&mut self, _target: Target, shared: &mut Shared) {
+        shared.sounds.push(SOUND_DECIDE);
+        minigame::flash(&mut self.back_flash);
+        self.state = State::Leaving;
+    }
+
+    pub fn pointer_cancel(&mut self, _target: Target) {
+        minigame::lower(&mut self.back_flash);
+    }
+}
+
+/// The back button under `position`, as every sub-screen tests it
+pub fn back_hit(position: Vec2) -> bool {
+    contains(BACK_RECT, position)
 }

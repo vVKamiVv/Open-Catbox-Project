@@ -12,7 +12,7 @@
 
 use std::{f32::consts::TAU, fmt::Debug, sync::Arc};
 
-use glam::{Mat4, vec3};
+use glam::{Mat4, Vec2, vec3};
 use shin_core::time::{Easing, Tweener};
 use shin_render::{
     PassKind, gpu_texture::GpuTexture, render_pass::RenderPass, shaders::types::RenderClone,
@@ -24,7 +24,10 @@ use crate::{
         LayerProperties, NewDrawableLayer, NewDrawableLayerWrapper,
         new_drawable_layer::{NewDrawableLayerFastForward, NewDrawableLayerNeedsSeparatePass},
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
-        user::minigame::{self, Minigame, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, frames},
+        user::minigame::{
+            self, Minigame, MinigameInput, PointerTarget, SOUND_DECIDE, SOUND_MOVE, Sprite, contains,
+            frames,
+        },
     },
     update::{AdvUpdatable, AdvUpdateContext},
 };
@@ -90,6 +93,8 @@ pub struct LastLayerImpl {
     plate_flash: Tweener,
     pulse_phase: f32,
     sounds: Vec<&'static str>,
+    /// What the pointer is over (`+0x29c`): the left plate or the door (0), the right plate or "back" (1)
+    pointer_target: Option<usize>,
 }
 
 impl LastLayerImpl {
@@ -106,6 +111,7 @@ impl LastLayerImpl {
             plate_flash: Tweener::new(0.0),
             pulse_phase: 0.0,
             sounds: Vec::new(),
+            pointer_target: None,
         }
     }
 
@@ -137,8 +143,84 @@ impl LastLayerImpl {
         self.state = State::Picked;
     }
 
+    /// The flash a pointer target lights: the plates on the front view, the door plate or "back" on a door view
+    fn target_flash(&mut self, target: usize) -> &mut Tweener {
+        match (self.side, target) {
+            (Side::Front, 0) => &mut self.select_flash[0],
+            (Side::Front, _) => &mut self.select_flash[1],
+            (_, 0) => &mut self.plate_flash,
+            _ => &mut self.back_flash,
+        }
+    }
+
     fn view_is_moving(&self) -> bool {
         !self.pan.is_idle() || !self.front_alpha.is_idle()
+    }
+}
+
+/// The pointer targets, in 1920x1080 top-left space (`0x710006f160` front view, `0x710006f340` left door,
+/// `0x710006f530` right door): (rect, target)
+fn pointer_targets(side: Side) -> &'static [([f32; 4], usize)] {
+    const fn r(x: f32, y: f32, w: f32, h: f32) -> [f32; 4] {
+        [x, y, x + w, y + h]
+    }
+    const FRONT: [([f32; 4], usize); 2] = [(r(272.0, 816.0, 624.0, 176.0), 0), (r(1024.0, 816.0, 624.0, 176.0), 1)];
+    const LEFT: [([f32; 4], usize); 3] = [
+        (r(496.0, 96.0, 918.0, 800.0), 0),
+        (r(768.0, 880.0, 436.0, 176.0), 0),
+        (r(1416.0, 816.0, 480.0, 176.0), 1),
+    ];
+    const RIGHT: [([f32; 4], usize); 3] = [
+        (r(506.0, 96.0, 918.0, 800.0), 0),
+        (r(720.0, 880.0, 436.0, 176.0), 0),
+        (r(24.0, 816.0, 480.0, 176.0), 1),
+    ];
+    match side {
+        Side::Front => &FRONT,
+        Side::Left => &LEFT,
+        Side::Right => &RIGHT,
+    }
+}
+
+/// `LastOverlayLayer` slots 18-25 (`0x7100070290`-`0x71000705d0`)
+impl PointerTarget for LastLayerImpl {
+    fn pointer_hit(&mut self, position: Vec2) -> bool {
+        self.pointer_target = None;
+        if self.state == State::Waiting && !self.view_is_moving() {
+            self.pointer_target = pointer_targets(self.side)
+                .iter()
+                .find(|(rect, _)| contains(*rect, position))
+                .map(|&(_, target)| target);
+        }
+        self.pointer_target.is_some()
+    }
+
+    fn pointer_leave(&mut self) {
+        self.pointer_target = None;
+    }
+
+    fn pointer_press(&mut self) {
+        if let Some(target) = self.pointer_target {
+            minigame::raise(self.target_flash(target));
+        }
+    }
+
+    fn pointer_release(&mut self) {
+        let Some(target) = self.pointer_target.take() else { return };
+        match (self.side, target) {
+            (Side::Front, 0) => self.look_at(Side::Left),
+            (Side::Front, _) => self.look_at(Side::Right),
+            (_, 0) => self.pick(),
+            _ => self.look_at(Side::Front),
+        }
+    }
+
+    fn pointer_cancel(&mut self) {
+        // drops whichever of the two flashes a press could have raised
+        for target in 0..2 {
+            minigame::lower(self.target_flash(target));
+        }
+        self.pointer_target = None;
     }
 }
 

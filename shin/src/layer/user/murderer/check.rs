@@ -3,27 +3,31 @@
 //! picking a living person shows a faint bust of them and their testimony. Mode 1 is a scrolling list of 23 pieces of
 //! evidence under six chapter headers that stick to the top of the list.
 //!
-//! shortcut: the testimony and evidence texts (`0x71001db528`, `0x71001db270`) are strings inside the game's
-//! executable, which the port does not have, so the text panel stays empty; everything else is drawn. Upgrade if the
-//! port ever reads the player's own executable.
+//! The testimony and evidence texts are strings inside the game's executable (`0x71001db528`, `0x71001db270`),
+//! translated by the English patch's IPS; they are read from the player's own executable when one is found
+//! (`asset::executable`) and the panel stays empty otherwise.
 
-use glam::vec2;
+use glam::{Vec2, vec2};
+use shin_core::{layout::LayoutParams, vm::command::types::MessageTextLayout};
 use shin_core::{
     primitives::color::FloatColor4,
     time::{Easing, Ticks, Tweener},
 };
 
 use super::{
-    Handover, SOUND_CANCEL, Screen, Shared,
+    Handover, SOUND_CANCEL, Screen, Shared, Target,
     draw::{self, Drawer, Rect, SCREEN, rect, white},
     hint_menu::{LEFT_US, LEFT_VS, draw_scroll_bar},
     move_highlight,
-    rule::draw_back,
+    rule::{back_hit, draw_back},
     select::draw_lines,
     top_menu::TopMenu,
     tree::{self, BUSTS, CONFIRM, NODES, PORTRAITS},
 };
-use crate::layer::user::minigame::{self, MinigameInput, SOUND_MOVE, Sprite, frames};
+use crate::asset::executable;
+use crate::layer::user::minigame::{
+    self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, contains, frames,
+};
 
 const ROW: f32 = 90.0;
 const VIEW: f32 = 720.0;
@@ -76,6 +80,9 @@ pub struct Check {
     back_flash: Tweener,
     /// The person whose bust is shown (mode 0)
     bust: Option<&'static str>,
+    /// The testimony or evidence shown, and how far it is scrolled
+    text: String,
+    text_scroll: f32,
 }
 
 impl Check {
@@ -129,7 +136,32 @@ impl Check {
             headers,
             scroll: Tweener::new(0.0),
             back_flash: Tweener::new(0.0),
+            text: String::new(),
+            text_scroll: 0.0,
         }
+        .with_text_of(0)
+    }
+
+    fn with_text_of(mut self, item: usize) -> Self {
+        self.set_text(item);
+        self
+    }
+
+    /// `0x7100094480`: the testimony of the picked person, or the picked piece of evidence; scrolled to the top
+    fn set_text(&mut self, item: usize) {
+        let address = if self.mode == 0 {
+            TESTIMONIES + 8 * NODES[self.items[item].id].id as u64
+        } else {
+            let entry = (self.items[item].rect[1] / ROW) as u64;
+            EVIDENCE + EVIDENCE_ENTRY * entry + EVIDENCE_BODY
+        };
+        self.text = executable::text_at_pointer(address).unwrap_or_default();
+        self.text_scroll = 0.0;
+    }
+
+    /// The text the screen shows (laid out by the layer)
+    pub fn text(&self) -> &str {
+        &self.text
     }
 
     fn height(&self) -> f32 {
@@ -148,6 +180,7 @@ impl Check {
             });
             self.cursor = index;
         }
+        self.set_text(index);
         if self.mode == 0 {
             // victims have no bust, and picking them keeps the previous one
             if let Some(bust) = BUSTS[NODES[self.items[index].id].id as usize] {
@@ -238,6 +271,12 @@ impl Check {
                 return;
             }
         }
+        if !input.cancel && input.text_scroll != 0.0 {
+            // the right stick scrolls the text, 32 px per frame at full tilt
+            let limit = (shared.text_height - VIEW).max(0.0);
+            self.text_scroll = (self.text_scroll + input.text_scroll * 32.0).clamp(0.0, limit);
+            return;
+        }
         if input.cancel {
             shared.sounds.push(SOUND_CANCEL);
             minigame::flash(&mut self.back_flash);
@@ -321,13 +360,7 @@ impl Check {
             }
             let chapter = drawer.texture("chapter");
             for header in &self.headers {
-                // a header sticks to the top until the next one pushes it up
-                let d = header.y - scroll;
-                let shown = if d >= 0.0 {
-                    d
-                } else {
-                    (header.next_y - scroll - ROW).min(0.0)
-                };
+                let shown = header_shown(header, scroll);
                 let v = header.row / CHAPTERS;
                 let sprite = Sprite::new(chapter, [166.0, shown + 181.0, 646.0, shown + 269.0])
                     .uv([0.0, v, 1.0, v + 1.0 / CHAPTERS])
@@ -356,6 +389,134 @@ impl Check {
                 ..Sprite::new(hana, [1160.0, 272.0, 1920.0, 1152.0])
             });
         }
+        let text_height = drawer.text_height();
+        if self.mode == 0 && text_height > VIEW {
+            draw_scroll_hint(drawer);
+        }
+        // the text object is offset by -3 so its outline padding sits left of x 726 (`0x71001019f0`)
+        drawer.clip_to(CLIP);
+        drawer.draw_text(vec2(726.0 - TEXT_OUTLINE, 180.0 - self.text_scroll));
+        drawer.unclip();
+        if text_height > VIEW {
+            draw_scroll_bar(drawer, (1762.0, 180.0), self.text_scroll, text_height);
+        }
         draw_back(drawer, &self.back_flash);
+    }
+}
+
+/// The text object's layout (`0x7100094480`, built by `TextObject::layout` `0x7100101360`): 1024 px wide (1030 less
+/// the 3 px outline on each side), size 32, no padding, and room for rubi above every line (the rubi size 0 becomes
+/// 0.4 x the text size), which makes the lines 48 px apart
+pub fn text_layout() -> LayoutParams {
+    LayoutParams {
+        layout_width: 1024.0,
+        text_alignment: MessageTextLayout::Left,
+        line_padding_above: 0.0,
+        line_padding_below: 0.0,
+        line_padding_between: 0.0,
+        rubi_size: 32.0 * 0.4,
+        text_size: 32.0,
+        base_font_horizontal_scale: 1.0,
+        follow_kinsoku_shori_rules: true,
+        always_leave_space_for_rubi: true,
+        perform_soft_breaks: true,
+    }
+}
+
+pub const TEXT_OUTLINE: f32 = 3.0;
+
+/// The testimonies by person (`0x71001db528`, 17 pointers) and the evidence list (`0x71001db270`, 29 entries of
+/// (index, flags, title, body))
+const TESTIMONIES: u64 = 0x71_001d_b528;
+const EVIDENCE: u64 = 0x71_001d_b270;
+const EVIDENCE_ENTRY: u64 = 0x18;
+const EVIDENCE_BODY: u64 = 0x10;
+
+/// The button hint "Scroll" with the right stick glyph, right-aligned at (1790, 920) (`0x71000964c0`, hint 3):
+/// `help_chars` row at 144 of 336, 176 px wide, and glyph 9 of `key` (8 x 2 glyphs of 48 px) 48 px to its left
+fn draw_scroll_hint(drawer: &mut Drawer) {
+    const RIGHT: f32 = 1790.0;
+    const TOP: f32 = 920.0;
+    const WIDTH: f32 = 176.0;
+    const GLYPH: u32 = 9;
+    let label = drawer.texture("help_chars");
+    let v = 144.0 / 336.0;
+    drawer.sprite(
+        Sprite::new(label, [RIGHT - WIDTH, TOP, RIGHT, TOP + 48.0]).uv([0.0, v, WIDTH / 320.0, v + 1.0 / 7.0]),
+    );
+    let key = drawer.texture("key");
+    let x = RIGHT - WIDTH + 2.0 - 48.0;
+    let (u, v) = ((GLYPH & 7) as f32 / 8.0, (GLYPH >> 3) as f32 / 2.0);
+    drawer.sprite(Sprite::new(key, [x, TOP, x + 48.0, TOP + 48.0]).uv([u, v, u + 0.125, v + 0.5]));
+}
+
+/// Where a header is drawn in the list: it sticks to the top until the next one pushes it up
+fn header_shown(header: &Header, scroll: f32) -> f32 {
+    let d = header.y - scroll;
+    if d >= 0.0 { d } else { (header.next_y - scroll - ROW).min(0.0) }
+}
+
+/// Pointer slots 10-17 (`0x7100097020`-`0x7100097880`); dragging the list and the text is not done
+impl Check {
+    pub fn pointer_hit(&self, position: Vec2) -> Option<Target> {
+        if self.state != State::Idle {
+            return None;
+        }
+        if back_hit(position) {
+            return Some(Target::Back);
+        }
+        let scroll = self.scroll.value();
+        if let Some(header) = self.headers.iter().position(|header| {
+            let y = header_shown(header, scroll) + 180.0;
+            contains([146.0, y, 666.0, y + ROW], position)
+        }) {
+            return Some(Target::Header(header));
+        }
+        if !contains([146.0, 180.0, 666.0, 900.0], position) {
+            return None;
+        }
+        // the current item is skipped (`0x7100096c50`)
+        let local = if self.mode == 0 {
+            position - vec2(NODE_ORIGIN.0, NODE_ORIGIN.1)
+        } else {
+            position - vec2(146.0, 180.0 - scroll)
+        };
+        (0..self.items.len())
+            .filter(|&i| i != self.cursor)
+            .filter(|&i| self.mode != 0 || !NODES[self.items[i].id].victim)
+            .find(|&i| contains(self.items[i].rect, local))
+            .map(Target::Item)
+    }
+
+    fn target_flash(&mut self, target: Target) -> &mut Tweener {
+        match target {
+            Target::Item(item) => &mut self.items[item].flash,
+            Target::Header(header) => &mut self.headers[header].flash,
+            Target::Back => &mut self.back_flash,
+        }
+    }
+
+    pub fn pointer_press(&mut self, target: Target) {
+        minigame::raise(self.target_flash(target));
+        if let Target::Item(item) = target {
+            self.select(item);
+        }
+    }
+
+    pub fn pointer_release(&mut self, target: Target, shared: &mut Shared) {
+        shared.sounds.push(SOUND_DECIDE);
+        minigame::flash(self.target_flash(target));
+        match target {
+            Target::Item(item) => self.select(item),
+            Target::Header(header) => {
+                let goal = self.headers[header].y.clamp(0.0, self.height() - VIEW);
+                self.scroll.enqueue_now(goal, frames(4.0, Easing::Linear));
+            }
+            Target::Back => self.state = State::Leaving,
+        }
+    }
+
+    pub fn pointer_cancel(&mut self, target: Target) {
+        minigame::lower(self.target_flash(target));
     }
 }

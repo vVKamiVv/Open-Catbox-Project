@@ -456,6 +456,13 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
         }
     }
 
+    /// Limits drawing to a rect of the target, in its pixels (x, y, width, height); `None` lifts the limit, given
+    /// the target's size
+    pub fn set_scissor(&mut self, rect: Option<(u32, u32, u32, u32)>, target_size: (u32, u32)) {
+        let (x, y, width, height) = rect.unwrap_or((0, 0, target_size.0, target_size.1));
+        self.pass.set_scissor_rect(x, y, width, height);
+    }
+
     #[tracing::instrument(skip_all)]
     pub fn clear(&mut self, color: Option<UnormColor>, stencil: Option<u8>, depth: Option<f32>) {
         let z = match depth {

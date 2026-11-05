@@ -2,17 +2,19 @@
 //! `0x710008e670`, keys `0x710008efa0`): six episode thumbnails in a 3 x 2 grid. Picking one zooms its thumbnail to
 //! full screen and answers with its index (0-5).
 
-use glam::vec2;
+use glam::{Vec2, vec2};
 use shin_core::time::{Easing, Ticks, Tweener};
 
 use super::{
-    Handover, SOUND_CANCEL, Screen, Shared,
+    Handover, SOUND_CANCEL, Screen, Shared, Target,
     draw::{Drawer, SCREEN, lerp2, rect, white},
     move_highlight,
-    rule::draw_back,
+    rule::{back_hit, draw_back},
     top_menu::TopMenu,
 };
-use crate::layer::user::minigame::{self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, frames};
+use crate::layer::user::minigame::{
+    self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, contains, frames,
+};
 
 const ITEMS: usize = 6;
 const COLUMNS: usize = 3;
@@ -199,6 +201,60 @@ impl ReplayMenu {
             let large = drawer.texture(LARGE[self.cursor]);
             drawer.sprite(Sprite::new(small, bounds));
             drawer.sprite(Sprite::new(large, bounds).alpha(z));
+        }
+    }
+}
+
+/// Pointer slots 10-17 (`0x710008f2a0`-`0x710008f820`)
+impl ReplayMenu {
+    pub fn pointer_hit(&self, position: Vec2) -> Option<Target> {
+        if self.state != State::Idle {
+            return None;
+        }
+        if back_hit(position) {
+            return Some(Target::Back);
+        }
+        (0..ITEMS)
+            .find(|&i| contains(item_rect(i), position))
+            .map(Target::Item)
+    }
+
+    fn point_at(&mut self, item: usize) {
+        if item != self.cursor {
+            move_highlight(&mut self.items, self.cursor, item, |item| &mut item.highlight);
+            self.cursor = item;
+        }
+    }
+
+    pub fn pointer_press(&mut self, target: Target) {
+        match target {
+            Target::Item(item) => {
+                minigame::raise(&mut self.items[item].flash);
+                self.point_at(item);
+            }
+            _ => minigame::raise(&mut self.back_flash),
+        }
+    }
+
+    pub fn pointer_release(&mut self, target: Target, shared: &mut Shared) {
+        shared.sounds.push(SOUND_DECIDE);
+        match target {
+            Target::Item(item) => {
+                self.point_at(item);
+                minigame::flash(&mut self.items[item].flash);
+                self.state = State::Picked;
+            }
+            _ => {
+                minigame::flash(&mut self.back_flash);
+                self.state = State::Leaving;
+            }
+        }
+    }
+
+    pub fn pointer_cancel(&mut self, target: Target) {
+        match target {
+            Target::Item(item) => minigame::lower(&mut self.items[item].flash),
+            _ => minigame::lower(&mut self.back_flash),
         }
     }
 }

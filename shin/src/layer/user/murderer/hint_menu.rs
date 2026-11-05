@@ -2,16 +2,19 @@
 //! `0x7100091a80`, keys `0x7100092770`): a scrolling list of the hints unlocked so far. The layer's parameter `p`
 //! (the attempt count) unlocks hints 0..p; the newest one shows as "??????????". Picking hint i answers i + 6.
 
+use glam::Vec2;
 use shin_core::time::{Easing, Ticks, Tweener};
 
 use super::{
-    Handover, SOUND_CANCEL, Screen, Shared,
+    Handover, SOUND_CANCEL, Screen, Shared, Target,
     draw::{self, Drawer, Rect, SCREEN},
     move_highlight,
-    rule::draw_back,
+    rule::{back_hit, draw_back},
     top_menu::TopMenu,
 };
-use crate::layer::user::minigame::{self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, frames};
+use crate::layer::user::minigame::{
+    self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, contains, frames,
+};
 
 const MAX_HINTS: i32 = 21;
 const ROW: f32 = 90.0;
@@ -255,6 +258,61 @@ pub fn draw_scroll_bar(drawer: &mut Drawer, (x, y): (f32, f32), scroll: f32, hei
         piece(drawer, u0, start - 8.0, start, 0.0);
         piece(drawer, u0, start, end, 0.25);
         piece(drawer, u0, end, end + 8.0, 0.5);
+    }
+}
+
+/// Pointer slots 10-17 (`0x7100092d20`-`0x7100093380`); dragging and flinging the list are not done
+impl HintMenu {
+    pub fn pointer_hit(&self, position: Vec2) -> Option<Target> {
+        if self.state != State::Idle {
+            return None;
+        }
+        if back_hit(position) {
+            return Some(Target::Back);
+        }
+        if !contains(LIST_CLIP, position) {
+            return None;
+        }
+        let scroll = self.scroll.value();
+        (0..self.items.len())
+            .find(|&i| {
+                let top = i as f32 * ROW + LIST_TOP - scroll;
+                contains([320.0, top, 1600.0, top + ROW], position)
+            })
+            .map(Target::Item)
+    }
+
+    pub fn pointer_press(&mut self, target: Target) {
+        match target {
+            Target::Item(item) => {
+                minigame::raise(&mut self.items[item].flash);
+                self.set_cursor(item);
+            }
+            _ => minigame::raise(&mut self.back_flash),
+        }
+    }
+
+    pub fn pointer_release(&mut self, target: Target, shared: &mut Shared) {
+        shared.sounds.push(SOUND_DECIDE);
+        match target {
+            Target::Item(item) => {
+                self.set_cursor(item);
+                minigame::flash(&mut self.items[item].flash);
+                self.delay.enqueue(0.0, frames(60.0, Easing::Linear));
+                self.state = State::Picked;
+            }
+            _ => {
+                minigame::flash(&mut self.back_flash);
+                self.state = State::Leaving;
+            }
+        }
+    }
+
+    pub fn pointer_cancel(&mut self, target: Target) {
+        match target {
+            Target::Item(item) => minigame::lower(&mut self.items[item].flash),
+            _ => minigame::lower(&mut self.back_flash),
+        }
     }
 }
 
