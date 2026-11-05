@@ -13,7 +13,7 @@ use shin_core::{
     vm::command::types::{LayerId, LayerbankId, MaskFlags, PlaneId},
 };
 use shin_tasks::AsyncTask;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::{
     adv::{AdvState, VmState},
@@ -91,6 +91,10 @@ impl SceneRestore {
             let audio_manager = adv_state.audio_manager.clone();
             let scenario = scenario.clone();
             let params = state.params;
+            debug!(
+                "Restoring layer {:?} on plane {:?} (bank {:?}): {:?} {:?}",
+                state.layer_id, state.plane, layerbank, layer_type, params
+            );
             layers.push(PendingLayer {
                 plane: state.plane,
                 layerbank,
@@ -166,6 +170,7 @@ fn restore_audio(
             .load_sync(info.path())
             .expect("Failed to load BGM track");
         adv_state.bgm_player.play(
+            bgm.bgm_id,
             track,
             info.display_name.as_str(),
             true,
@@ -182,6 +187,7 @@ fn restore_audio(
             .expect("Failed to load sound effect");
         adv_state.se_player.play(
             slot as i32,
+            se.se_id,
             sound,
             true,
             se.volume,

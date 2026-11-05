@@ -18,7 +18,7 @@ impl StartableCommand for command::runtime::SESTOPALL {
     ) -> CommandStartResult {
         adv_state
             .se_player
-            .stop_all(Tween::linear(self.fade_out_time));
+            .stop_all(Tween::linear(if adv_state.skipping { Ticks::ZERO } else { self.fade_out_time }));
         self.token.finish().into()
     }
 }

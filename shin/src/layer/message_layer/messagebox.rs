@@ -68,8 +68,8 @@ impl MessageLayer {
                 }
                 .as_source();
 
-                // TODO: need settings handle to get v13_msgwinalpha
-                let msgwinalpha = 0.85;
+                // the window opacity setting (`MessageLayer::vfunc_9`)
+                let msgwinalpha = self.settings.v13_msgwinalpha as f32 * 0.01;
 
                 let transform = transform
                     * Mat4::from_translation(vec3(

@@ -10,7 +10,12 @@ use super::prelude::*;
 // context field is known (see docs/engine-internals.md, open questions).
 impl StartableCommand for command::runtime::SYSCALL {
     type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {}
+    /// `0x7100002ce0`: SYSCALL 0 sets whether the system (skip, auto, menus) is enabled
+    fn apply_state(&self, state: &mut VmState) {
+        if self.call_id == 0 {
+            state.save.system_enabled = self.argument != 0;
+        }
+    }
 
     fn start(
         self,
@@ -18,10 +23,12 @@ impl StartableCommand for command::runtime::SYSCALL {
         _scenario: &Arc<Scenario>,
         _vm_state: &mut VmState,
         _state_info: (),
-        _adv_state: &mut AdvState,
+        adv_state: &mut AdvState,
     ) -> CommandStartResult {
         if self.call_id == 0 {
-            warn!("SYSCALL 0: context fade not implemented (argument {})", self.argument);
+            // `0x7100007c10`: skip and auto turn off
+            // TODO: it also fades out the touch screen's on-screen buttons, which the port does not draw
+            adv_state.skip_auto = 0;
         }
         self.token.finish().into()
     }

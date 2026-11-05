@@ -35,11 +35,12 @@ impl StartableCommand for command::runtime::BGMPLAY {
             .expect("Failed to load BGM track");
 
         adv_state.bgm_player.play(
+            self.bgm_data_id,
             audio,
             display_name.as_str(),
             !self.no_repeat,
             self.volume,
-            Tween::linear(self.fade_in_time),
+            Tween::linear(if adv_state.skipping { Ticks::ZERO } else { self.fade_in_time }),
         );
 
         self.token.finish().into()

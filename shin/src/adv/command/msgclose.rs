@@ -9,14 +9,16 @@ pub struct MSGCLOSE {
 }
 
 impl StartableCommand for command::runtime::MSGCLOSE {
-    type StateInfo = ();
-    fn apply_state(&self, state: &mut VmState) {
+    /// Whether a line that was not waited for may still be playing: then MSGCLOSE does nothing
+    type StateInfo = bool;
+    fn apply_state(&self, state: &mut VmState) -> bool {
         state.messagebox_state.messagebox_shown = false;
         state.messagebox_state.text = None;
         // `0x7100000c10`
         if !state.save.message_pending {
             state.save.message_current = false;
         }
+        state.save.message_pending
     }
 
     fn start(
@@ -24,9 +26,13 @@ impl StartableCommand for command::runtime::MSGCLOSE {
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
         _vm_state: &mut VmState,
-        _state_info: (),
+        line_pending: bool,
         adv_state: &mut AdvState,
     ) -> CommandStartResult {
+        // `0x7100005880`: after a line the script did not wait for, the box stays open
+        if line_pending {
+            return self.token.finish().into();
+        }
         adv_state.root_layer_group.message_layer_mut().close(true);
 
         if !self.wait_for_close {

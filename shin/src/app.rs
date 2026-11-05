@@ -11,7 +11,10 @@ use shin_core::{
     primitives::update::FrameId,
     time::Ticks,
 };
-use shin_input::{Action, ActionState, Pointer, RawInputState, inputs::MouseButton};
+use shin_input::{
+    Action, ActionState, Pointer, RawInputState,
+    inputs::{GamepadButton, MouseButton, VirtualGamepadButton},
+};
 use shin_render::render_pass::RenderPass;
 use shin_window::{AppContext, RenderContext, ShinApp};
 use tracing::{debug, error, info, warn};
@@ -28,44 +31,79 @@ use crate::{
     update::UpdateContext,
 };
 
+/// The player's inputs, in the roles of the Switch's buttons (`0x71000c4300`); a gamepad maps directly (Nintendo
+/// layout: A confirms, B cancels), the keyboard and mouse stand in for them
 #[derive(Debug, Enum)]
 pub enum AppAction {
     ToggleFullscreen,
     Act,
+    /// A: confirm, advance
     Enter,
+    /// B: cancel
     Cancel,
     AnyDown,
     AnyUp,
     AnyLeft,
     AnyRight,
+    /// The right stick, which scrolls texts
     PageUp,
     PageDown,
+    /// A PC extra: skip while held (still under the skip rules)
     HoldSkip,
+    /// L: toggles auto mode
+    AutoToggle,
+    /// R: toggles skip mode
+    SkipToggle,
+    /// X and Y: each stops auto and skip (the backlog and the system menu in the original)
+    ButtonX,
+    ButtonY,
     /// shortcut: the port has no save menu yet, so F5 saves to the slot the menu would open at
     Save,
 }
 
 impl Action for AppAction {
     fn lower(raw_input_state: &RawInputState) -> EnumMap<Self, bool> {
+        let key = |code| raw_input_state.keyboard.contains(&code);
+        let pad = |button| raw_input_state.gamepads.is_held(button);
+        let stick = |direction| raw_input_state.gamepads.is_vheld(direction);
         EnumMap::from_fn(|action| match action {
-            AppAction::ToggleFullscreen => raw_input_state.keyboard.contains(&KeyCode::F11),
-            AppAction::Act => {
-                raw_input_state.keyboard.contains(&KeyCode::Space)
-                    || raw_input_state.mouse.buttons[MouseButton::Left]
-            }
+            AppAction::ToggleFullscreen => key(KeyCode::F11),
+            AppAction::Act => key(KeyCode::Space) || raw_input_state.mouse.buttons[MouseButton::Left],
             AppAction::Enter => {
-                raw_input_state.keyboard.contains(&KeyCode::Space)
-                    | raw_input_state.keyboard.contains(&KeyCode::Enter)
+                key(KeyCode::Space) || key(KeyCode::Enter) || pad(GamepadButton::A)
             }
-            AppAction::Cancel => raw_input_state.keyboard.contains(&KeyCode::Backspace),
-            AppAction::AnyDown => raw_input_state.keyboard.contains(&KeyCode::ArrowDown),
-            AppAction::AnyUp => raw_input_state.keyboard.contains(&KeyCode::ArrowUp),
-            AppAction::AnyLeft => raw_input_state.keyboard.contains(&KeyCode::ArrowLeft),
-            AppAction::AnyRight => raw_input_state.keyboard.contains(&KeyCode::ArrowRight),
-            AppAction::PageUp => raw_input_state.keyboard.contains(&KeyCode::PageUp),
-            AppAction::PageDown => raw_input_state.keyboard.contains(&KeyCode::PageDown),
-            AppAction::HoldSkip => raw_input_state.keyboard.contains(&KeyCode::ControlLeft),
-            AppAction::Save => raw_input_state.keyboard.contains(&KeyCode::F5),
+            AppAction::Cancel => {
+                key(KeyCode::Backspace)
+                    || key(KeyCode::Escape)
+                    || raw_input_state.mouse.buttons[MouseButton::Right]
+                    || pad(GamepadButton::B)
+            }
+            AppAction::AnyDown => {
+                key(KeyCode::ArrowDown)
+                    || pad(GamepadButton::Down)
+                    || stick(VirtualGamepadButton::StickLDown)
+            }
+            AppAction::AnyUp => {
+                key(KeyCode::ArrowUp) || pad(GamepadButton::Up) || stick(VirtualGamepadButton::StickLUp)
+            }
+            AppAction::AnyLeft => {
+                key(KeyCode::ArrowLeft)
+                    || pad(GamepadButton::Left)
+                    || stick(VirtualGamepadButton::StickLLeft)
+            }
+            AppAction::AnyRight => {
+                key(KeyCode::ArrowRight)
+                    || pad(GamepadButton::Right)
+                    || stick(VirtualGamepadButton::StickLRight)
+            }
+            AppAction::PageUp => key(KeyCode::PageUp) || stick(VirtualGamepadButton::StickRUp),
+            AppAction::PageDown => key(KeyCode::PageDown) || stick(VirtualGamepadButton::StickRDown),
+            AppAction::HoldSkip => key(KeyCode::ControlLeft),
+            AppAction::AutoToggle => key(KeyCode::KeyA) || pad(GamepadButton::L),
+            AppAction::SkipToggle => key(KeyCode::KeyS) || pad(GamepadButton::R),
+            AppAction::ButtonX => pad(GamepadButton::X),
+            AppAction::ButtonY => pad(GamepadButton::Y),
+            AppAction::Save => key(KeyCode::F5),
         })
     }
 }
@@ -144,6 +182,7 @@ impl ShinApp for App {
         let effect_textures = adv_assets.effect_textures.clone();
         let mut adv = Adv::new(
             audio_manager.clone(),
+            asset_server.clone(),
             adv_assets,
             save,
             entry,

@@ -20,7 +20,7 @@ impl StartableCommand for command::runtime::SEVOL {
     ) -> CommandStartResult {
         adv_state
             .se_player
-            .set_volume(self.se_slot, self.volume, Tween::linear(self.fade_in_time));
+            .set_volume(self.se_slot, self.volume, Tween::linear(if adv_state.skipping { Ticks::ZERO } else { self.fade_in_time }));
 
         self.token.finish().into()
     }

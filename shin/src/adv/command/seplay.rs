@@ -1,6 +1,6 @@
 use std::ops::Not;
 
-use shin_core::time::Tween;
+use shin_core::{time::Tween, vm::command::types::AudioWaitStatus};
 
 use super::prelude::*;
 use crate::adv::vm_state::audio::SeState;
@@ -28,6 +28,14 @@ impl StartableCommand for command::runtime::SEPLAY {
             warn!("TODO: SEPLAY: ignoring play_speed={}", self.play_speed);
         }
 
+        // `0x7100006ec0`: while skipping, a one-shot sound stops its slot and does not play
+        if adv_state.skipping && self.no_repeat {
+            if adv_state.se_player.get_wait_status(self.se_slot).contains(AudioWaitStatus::PLAYING) {
+                adv_state.se_player.stop(self.se_slot, Tween::linear(Ticks::ZERO));
+            }
+            return self.token.finish().into();
+        }
+
         let se_info = scenario.info_tables().se_info(self.se_data_id);
 
         let audio = context
@@ -38,11 +46,12 @@ impl StartableCommand for command::runtime::SEPLAY {
 
         adv_state.se_player.play(
             self.se_slot,
+            self.se_data_id,
             audio,
             !self.no_repeat,
             self.volume,
             self.pan,
-            Tween::linear(self.fade_in_time),
+            Tween::linear(if adv_state.skipping { Ticks::ZERO } else { self.fade_in_time }),
         );
 
         self.token.finish().into()

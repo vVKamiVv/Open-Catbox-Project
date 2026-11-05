@@ -20,7 +20,7 @@ impl StartableCommand for command::runtime::SEPAN {
     ) -> CommandStartResult {
         adv_state
             .se_player
-            .set_panning(self.se_slot, self.pan, Tween::linear(self.fade_in_time));
+            .set_panning(self.se_slot, self.pan, Tween::linear(if adv_state.skipping { Ticks::ZERO } else { self.fade_in_time }));
 
         self.token.finish().into()
     }

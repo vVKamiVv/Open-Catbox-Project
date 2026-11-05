@@ -10,7 +10,10 @@ use glam::{Mat4, Vec2, vec2, vec3};
 use interpolators::{Countdown, HeightInterpolator, SlideInterpolator, SlideInterpolatorDirection};
 use itertools::{Either, Itertools};
 use shin_core::{
-    format::scenario::{Scenario, instruction_elements::MessageId},
+    format::{
+        save::Settings,
+        scenario::{Scenario, instruction_elements::MessageId},
+    },
     layout::{
         LayoutParams, MessageLayerLayouter, MessageTextLayouterDefaults,
         commands::{CharFontType, Command},
@@ -127,6 +130,11 @@ pub struct MessageLayer {
     autoplay_voice_delay: Countdown,
     is_voice_playing: bool,
     disable_voice: bool,
+    /// The player's settings (text speed, auto speed, voice volume, window opacity), refreshed every frame
+    settings: Settings,
+    /// A line that has finished since the last [`Self::take_finished`] (the original tells its listener,
+    /// `0x7100014f50`, which marks it read)
+    finished: Option<MessageId>,
     completed_sections: u32,
     received_syncs: u32,
     ticks_since_last_wait: Ticks,
@@ -160,6 +168,37 @@ pub struct MessageLayer {
 }
 
 impl MessageLayer {
+    /// The player's settings, as the original reads them from the save data each time (`*0x71002264f0 + 0xb0`)
+    pub fn set_settings(&mut self, settings: Settings) {
+        self.settings = settings;
+        self.voice_player
+            .set_settings(settings.v2_voicevol, settings.v19);
+    }
+
+    /// VOICEPLAY (`0x7100007420`): a voice outside a line, through the same player
+    pub fn play_voice_command(
+        &mut self,
+        scenario: &Scenario,
+        spec: &str,
+        volume: Volume,
+        flags: VoicePlayFlags,
+    ) {
+        if self.settings.v2_voicevol == 0 {
+            return;
+        }
+        self.voice_player.play(scenario, spec, 0, 0, flags, volume);
+    }
+
+    /// Auto mode is on this frame: lines advance by themselves once typed and voiced
+    pub fn request_autoplay(&mut self) {
+        self.autoplay_requested = true;
+    }
+
+    /// The line that finished since the last call, if any
+    pub fn take_finished(&mut self) -> Option<MessageId> {
+        self.finished.take()
+    }
+
     pub fn new(
         adv_fonts: AdvFonts,
         messagebox_textures: Arc<MessageboxTextures>,
@@ -185,6 +224,8 @@ impl MessageLayer {
             autoplay_voice_delay: Countdown::new(0.0),
             is_voice_playing: false,
             disable_voice: false,
+            settings: Settings::default(),
+            finished: None,
             completed_sections: 0,
             received_syncs: 0,
             ticks_since_last_wait: Ticks::ZERO,
@@ -288,9 +329,7 @@ impl MessageLayer {
                 self.blocks[voice_index].ty
             )
         };
-        // TODO: need a settings handle here
-        let voicevol = 90;
-        if self.disable_voice == true || voicevol == 0 {
+        if self.disable_voice || self.settings.v2_voicevol == 0 {
             return;
         }
 
@@ -407,10 +446,11 @@ impl MessageLayer {
         };
         let defaults = MessageTextLayouterDefaults {
             color: 999,
+            // the text speed setting (`0x71000b049c`), full speed for the text-less box
             draw_speed: if self.messagebox_type == MessageboxType::NoText {
                 100
             } else {
-                80 // TODO: this comes from settings
+                self.settings.v9_msgspeed as i32
             },
             fade: 200,
         };
@@ -604,15 +644,13 @@ impl MessageLayer {
                     self.autoplay_voice_delay.set_time_left(0.0);
                 }
                 WaitKind::Last | WaitKind::AutoClick => {
-                    // TODO: we need a settings handle here
-                    let v6 = false;
-                    if !v6 {
+                    // setting v6 keeps the voice playing past the click (`0x71000b1cb4`)
+                    if !self.settings.v6 {
                         self.voice_player.stop();
                         self.is_voice_playing = false;
                         self.autoplay_voice_delay.set_time_left(0.0);
                     }
-                    // TODO: notify the message listener
-                    // self.message_layer_listener.on_message_done();
+                    self.finished = Some(self.message_id);
                 }
             }
 
@@ -682,6 +720,7 @@ impl Clone for MessageLayer {
 impl AdvUpdatable for MessageLayer {
     fn update(&mut self, context: &AdvUpdateContext) {
         let dt = context.delta_ticks;
+        self.voice_player.publish_lipsync();
 
         let autoplay_requested = self.autoplay_requested;
         self.autoplay_requested = false;
@@ -712,8 +751,11 @@ impl AdvUpdatable for MessageLayer {
                 .get_wait_status()
                 .contains(AudioWaitStatus::PLAYING)
             {
-                // TODO: need to access the settings here
-                // if voice volume is set to 0, stop the player & reset all the voice stuff
+                // a voice volume of 0 stops the voice (`0x71000b1ff0`)
+                if self.settings.v2_voicevol == 0 {
+                    self.voice_player.stop();
+                    self.is_voice_playing = false;
+                }
             } else {
                 // voice player no longer playing, auto mode can proceed
                 self.is_voice_playing = false;
@@ -736,7 +778,7 @@ impl AdvUpdatable for MessageLayer {
                 && self.autoplay_voice_delay.update(dt)
             {
                 if matches!(wait_kind, WaitKind::Last | WaitKind::AutoClick) {
-                    // TODO: notify the listener that the message is done
+                    self.finished = Some(self.message_id);
                 }
                 self.wait_kind = None;
                 self.current_block_index += 1;
@@ -785,10 +827,10 @@ impl AdvUpdatable for MessageLayer {
                             });
 
                             self.ticks_since_last_wait = Ticks::ZERO;
-                            // TODO: need to access the settings here to get v10_skipspeed
-                            let skip_speed = 80;
+                            // the auto-advance speed setting (`0x71000b1ff0`)
+                            let auto_speed = self.settings.v10_skipspeed as f32;
                             self.time_to_skip_wait.set_time_left(
-                                wait.wait_auto_delay * (100 - skip_speed) as f32 * 0.01,
+                                wait.wait_auto_delay * (100.0 - auto_speed) * 0.01,
                             );
                             debug!("Waiting on block {}", self.current_block_index);
                             break;
@@ -801,7 +843,7 @@ impl AdvUpdatable for MessageLayer {
                             break;
                         }
                         if wait.is_last_wait {
-                            // TODO: notify the listener that the message is done
+                            self.finished = Some(self.message_id);
                         }
                     }
                     BlockType::Section(section) => {
@@ -897,7 +939,7 @@ impl Layer for MessageLayer {
                 }
                 BlockType::Wait(wait) => {
                     if wait.is_last_wait {
-                        // TODO: notify the listener that the message is done
+                        self.finished = Some(self.message_id);
                     }
                 }
                 BlockType::Section(section) => {

@@ -142,7 +142,7 @@ impl UserLayer {
                     .await
                     .expect("Failed to load bustup");
 
-                BustupLayer::new(bup, Some(name.to_string())).into()
+                BustupLayer::new(bup, Some(name.to_string()), *lipsync_character_id).into()
             }
             LayerType::Movie => {
                 let (movie_id, volume, repeat, ..): TypedNumberArray<MovieId, Volume> =

@@ -121,6 +121,8 @@ pub struct AudioSound<S: AudioFrameSource + Send> {
     panning: Tweener,
     volume_fade: Tweener,
     sample_provider: SampleProvider<S>,
+    /// The loudest sample since the amplitude was last published (for lip-sync)
+    peak: f32,
 }
 
 impl<S: AudioFrameSource + Send> AudioSound<S> {
@@ -141,6 +143,7 @@ impl<S: AudioFrameSource + Send> AudioSound<S> {
             panning: Tweener::new(data.settings.pan.0),
             volume_fade,
             sample_provider: SampleProvider::new(data.source, data.settings.loop_start),
+            peak: 0.0,
         };
 
         // make sure the wait_status is reflective of the actual state right after the handle creation
@@ -205,7 +208,11 @@ impl<S: AudioFrameSource + Send> Sound for AudioSound<S> {
             self.wait_status().bits(),
             std::sync::atomic::Ordering::SeqCst,
         );
-        // TODO: compute the amplitude
+        // the loudest sample of the last processed chunk, before volume and panning
+        self.shared.amplitude.store(
+            std::mem::take(&mut self.peak).to_bits(),
+            std::sync::atomic::Ordering::SeqCst,
+        );
         let position = self.sample_provider.source.current_samples_position() as u64 * 1000
             / self.sample_provider.source.sample_rate() as u64;
         self.shared.position.store(
@@ -232,6 +239,7 @@ impl<S: AudioFrameSource + Send> Sound for AudioSound<S> {
         }
 
         let mut f = self.sample_provider.next(dt);
+        self.peak = self.peak.max(f.left.abs()).max(f.right.abs());
 
         if self.sample_provider.reached_eof && self.sample_provider.resampler.outputting_silence() {
             self.state = PlaybackState::Stopped;

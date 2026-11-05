@@ -14,16 +14,17 @@ use itertools::Itertools;
 use shin_audio::AudioManager;
 use shin_core::{
     format::{
-        save::{GameData, GameDataEntry, SaveData},
+        save::{GameData, GameDataEntry, SaveData, Settings},
         scenario::{Scenario, instruction_elements::CodeAddress},
     },
     primitives::color::UnormColor,
+    time::Ticks,
     vm::{
         Scripter,
         breakpoint::BreakpointObserver,
         command::{
             CommandResult, RuntimeCommand,
-            types::{LayerId, PLANES_COUNT, PlaneId, VLayerId, VLayerIdRepr},
+            types::{AudioWaitStatus, LayerId, PLANES_COUNT, PlaneId, VLayerId, VLayerIdRepr},
         },
     },
 };
@@ -41,6 +42,7 @@ use winit::keyboard::KeyCode;
 use crate::{
     adv::assets::{AdvAssets, AdvFonts},
     app::AppAction,
+    asset::system::AssetServer,
     audio::{BgmPlayer, SePlayer, VoicePlayer, play_sys_se},
     capture::CaptureTargets,
     layer::{
@@ -111,6 +113,8 @@ pub struct Adv {
     play_frames: f64,
     /// The save file should be written (the original writes it when leaving the adventure screen)
     write_requested: bool,
+    /// L and R as last frame, as the original toggles auto and skip on release
+    toggles_held: (bool, bool),
 }
 
 /// Where a load's replay left the script
@@ -131,6 +135,7 @@ impl Adv {
     /// point first (`0x7100019930`, the replay job `0x710001b340`)
     pub fn new(
         audio_manager: Arc<AudioManager>,
+        asset_server: Arc<AssetServer>,
         assets: AdvAssets,
         global: SaveData,
         entry: GameDataEntry,
@@ -139,7 +144,7 @@ impl Adv {
         let scenario = assets.scenario.clone();
         let play_frames = global.play_seconds as f64 * 60.0;
         let (scripter, vm_state, load) = replay(&scenario, global, entry, entry_point);
-        let adv_state = AdvState::new(audio_manager, assets);
+        let adv_state = AdvState::new(audio_manager, asset_server, assets);
 
         Self {
             scenario,
@@ -154,6 +159,7 @@ impl Adv {
             load: load.map(LoadState::Replayed),
             play_frames,
             write_requested: false,
+            toggles_held: (false, false),
         }
     }
 
@@ -209,13 +215,79 @@ impl Adv {
         more
     }
 
+    /// `isSkipping` (`0x7100012430`): the skip mode is on (or the PC's Ctrl is held), the system is enabled, no event
+    /// plays, nothing waits for the player, and the line was read before unless setting v11 lets unread lines pass;
+    /// debug fast-forwarding skips regardless
     fn is_fast_forwarding(&self, button_held: bool) -> bool {
-        button_held
-            || self.fast_forward_to_bp.is_some()
+        if self.fast_forward_to_bp.is_some()
             || self
                 .capture
                 .as_ref()
                 .is_some_and(CaptureTargets::is_seeking)
+        {
+            return true;
+        }
+        let skip_on = self.adv_state.skip_auto & SKIP != 0 || button_held;
+        let save = &self.vm_state.save;
+        skip_on
+            && self.modes_allowed()
+            && (!self.vm_state.global.settings.v11_disallowskipunread || save.line_read)
+    }
+
+    /// `isAuto` (`0x71000122f0`): the same gates as skipping, without the read test
+    fn is_auto(&self) -> bool {
+        self.adv_state.skip_auto & AUTO != 0 && self.modes_allowed()
+    }
+
+    /// What both modes need: the system enabled, no event, no choice or minigame waiting for the player
+    fn modes_allowed(&self) -> bool {
+        let save = &self.vm_state.save;
+        save.system_enabled
+            && save.event.is_none()
+            && self.adv_state.select_layer.is_none()
+            && !matches!(self.current_command, Some(ExecutingCommand::QUIZ(_)))
+    }
+
+    /// The ADV's mode buttons (`0x7100011f08`): L toggles auto and R toggles skip when released (sounds `son` on,
+    /// `cancel` off); while either mode is on, X, Y or cancel turn both off. Returns whether the press was used
+    fn handle_mode_buttons(
+        &mut self,
+        state: &EnumMap<AppAction, ActionState>,
+        assets: &AssetServer,
+    ) -> bool {
+        let held = (
+            state[AppAction::AutoToggle].is_held,
+            state[AppAction::SkipToggle].is_held,
+        );
+        let released = (
+            self.toggles_held.0 && !held.0,
+            self.toggles_held.1 && !held.1,
+        );
+        self.toggles_held = held;
+
+        let audio = self.adv_state.audio_manager.clone();
+        let sound = |on: bool| {
+            play_sys_se(&audio, assets, if on { "son" } else { "cancel" }, Default::default())
+        };
+        if self.vm_state.save.system_enabled {
+            for (was_released, bit) in [(released.0, AUTO), (released.1, SKIP)] {
+                if was_released {
+                    self.adv_state.skip_auto ^= bit;
+                    sound(self.adv_state.skip_auto & bit != 0);
+                    return true;
+                }
+            }
+        }
+        if self.adv_state.skip_auto != 0
+            && (state[AppAction::ButtonX].is_clicked
+                || state[AppAction::ButtonY].is_clicked
+                || state[AppAction::Cancel].is_clicked)
+        {
+            self.adv_state.skip_auto = 0;
+            sound(false);
+            return true;
+        }
+        false
     }
 
     // TODO: impl Scene for Adv
@@ -301,7 +373,13 @@ impl Adv {
         // }
 
         // TODO: tasks from task pool can steal focus
-        self.handle_input(input_state, pointer, true);
+        if !self.handle_mode_buttons(&input_state, context.asset_server) {
+            self.handle_input(input_state, pointer, true);
+        }
+        self.adv_state.skipping = self.is_fast_forwarding(fast_forward_button_held);
+        if self.is_auto() {
+            self.adv_state.message_layer_mut().request_autoplay();
+        }
 
         if self.is_fast_forwarding(fast_forward_button_held) {
             self.adv_state.root_layer_group_mut().fast_forward();
@@ -309,6 +387,11 @@ impl Adv {
                 back_layer_group.fast_forward();
             }
         }
+
+        // the subsystems read the settings from the save data, as the original does each time it needs one
+        let settings = self.vm_state.global.settings;
+        self.adv_state
+            .apply_settings(&settings, context.delta_ticks);
 
         // `0x7100026d50`: the play time counts every frame
         self.play_frames += context.delta_ticks.as_f32() as f64;
@@ -422,6 +505,17 @@ impl Adv {
         }
 
         self.adv_state.update(context);
+
+        // `0x7100014f50`: a finished line is marked read (by the script's id - 1)
+        if let Some(id) = self.adv_state.message_layer_mut().take_finished() {
+            if let Some(index) = id.0.checked_sub(1) {
+                self.vm_state
+                    .global
+                    .save_vectors
+                    .seen_messages
+                    .add(index as usize);
+            }
+        }
 
         if let Some(capture) = &mut self.capture {
             // a question line before a choice does not wait for a click: the menu waits instead
@@ -579,6 +673,10 @@ fn replay(
 //     }
 // }
 
+/// The bits of [`AdvState::skip_auto`]
+const AUTO: u8 = 1;
+const SKIP: u8 = 2;
+
 /// Contains all the state of the ADV system NOT pertaining to the VM
 ///
 /// This is the object the VM manipulates
@@ -595,16 +693,53 @@ pub struct AdvState {
     pub select_layer: Option<SelectLayer>,
     /// Set while the script is fast-forwarded for debugging: SELECT then picks the first option itself
     pub auto_choose: bool,
+    /// The voice-focus factor for music and looping sounds (1, or down to 0.5 while a voice plays)
+    voice_duck: f32,
+    /// The player's modes (`ADV+0x47c`): bit 0 auto, bit 1 skip
+    pub skip_auto: u8,
+    /// Whether the script is being skipped this frame (`isSkipping` `0x7100012430`), for the commands as they start
+    pub skipping: bool,
 }
 
 impl AdvState {
-    pub fn new(audio_manager: Arc<AudioManager>, assets: AdvAssets) -> Self {
+    /// Hands the player's settings to the message layer and the sound players, and moves the voice focus: with
+    /// setting v4, music and looping sounds go down to half while a voice plays, by 0.04 per frame
+    /// (`0x7100010fb0`)
+    pub fn apply_settings(&mut self, settings: &Settings, delta: Ticks) {
+        self.root_layer_group.message_layer_mut().set_settings(*settings);
+
+        let voice_playing = self
+            .root_layer_group
+            .message_layer()
+            .voice_wait_status()
+            .contains(AudioWaitStatus::PLAYING);
+        let target = if settings.v4_voicefocus && voice_playing { 0.5 } else { 1.0 };
+        let step = 0.04 * delta.as_f32();
+        self.voice_duck = if self.voice_duck < target {
+            (self.voice_duck + step).min(target)
+        } else {
+            (self.voice_duck - step).max(target)
+        };
+
+        self.bgm_player.set_gain(settings.v0_bgmvol, self.voice_duck);
+        self.se_player.set_gain(settings.v1_sfxvol, self.voice_duck);
+        crate::audio::sys_se::set_setting_volume(settings.v3_sysvol);
+    }
+
+    pub fn new(
+        audio_manager: Arc<AudioManager>,
+        asset_server: Arc<AssetServer>,
+        assets: AdvAssets,
+    ) -> Self {
         Self {
             root_layer_group: RootLayerGroup::new(
                 assets.fonts.clone(),
                 assets.messagebox_textures.clone(),
-                VoicePlayer::new(audio_manager.clone()),
+                VoicePlayer::new(audio_manager.clone(), asset_server),
             ),
+            voice_duck: 1.0,
+            skip_auto: 0,
+            skipping: false,
             back_layer_group: None,
             audio_manager: audio_manager.clone(),
             bgm_player: BgmPlayer::new(audio_manager.clone()),

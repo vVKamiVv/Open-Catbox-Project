@@ -285,7 +285,7 @@ impl SaveVectors {
 }
 
 /// Stores game settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     // it appears that some settings do not have an in-game toggle
     pub v0_bgmvol: u8,

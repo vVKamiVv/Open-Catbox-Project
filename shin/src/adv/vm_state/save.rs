@@ -31,6 +31,10 @@ pub struct SaveState {
     pub message_current: bool,
     /// Whether the next MSGCLOSE really clears the line (`+0x90e8`)
     pub message_pending: bool,
+    /// The current line has been read before (`+0x2dd9`): skipping may pass it when only read lines are skipped
+    pub line_read: bool,
+    /// SYSCALL 0 clears it for the end of a piece (`+0x913c`): no skip, auto or menus then
+    pub system_enabled: bool,
     /// SSETs not written to the persistent data yet, applied at the next save point (`+0x9158`)
     pending_sset: Vec<(i32, i32)>,
 }
@@ -49,6 +53,9 @@ impl SaveState {
             exit_seen: false,
             message_current: false,
             message_pending: false,
+            line_read: false,
+            // shortcut: the Context's initial value was not decoded; the game plays as with it set
+            system_enabled: true,
             pending_sset: Vec::new(),
         }
     }
