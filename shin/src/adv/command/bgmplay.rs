@@ -45,6 +45,10 @@ impl StartableCommand for command::runtime::BGMPLAY {
 
         if started {
             crate::adv::unlocks::bgm_started(&mut vm_state.global.save_vectors, scenario, self.bgm_data_id);
+            // `0x710009e160`: the song title slides in
+            adv_state
+                .hud
+                .show_song_title(context.pre_render, display_name.as_str());
         }
 
         self.token.finish().into()

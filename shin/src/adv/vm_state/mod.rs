@@ -51,6 +51,12 @@ pub struct VmState {
     pub save: SaveState,
     pub layers: LayersState,
     pub audio: AudioState,
+    /// NOTIFYSET's level (`+0x9138`): 0 no banners, 1 or 2 the "updated" banners' sound
+    pub notify_level: i32,
+    /// CHARS' arguments (`+0x9118`), for the character screen
+    pub chars: (i32, i32),
+    /// The tips TIPSGET gave in this playthrough (`+0x9120`), for the tips screen
+    pub tips: Vec<i32>,
 }
 
 impl VmState {
@@ -64,6 +70,9 @@ impl VmState {
             save: SaveState::new(entry),
             layers: LayersState::new(),
             audio: AudioState::new(),
+            notify_level: 0,
+            chars: (0, 0),
+            tips: Vec::new(),
         }
     }
 }

@@ -1,5 +1,6 @@
 pub mod assets;
 mod command;
+pub mod hud;
 mod restore;
 mod unlocks;
 mod vm_state;
@@ -343,6 +344,13 @@ impl Adv {
             return;
         }
 
+        // inside an event (system enabled), confirm shows "Press B to Skip." (`0x7100011f2c`)
+        let save = &self.vm_state.save;
+        if save.event.is_some() && save.system_enabled && state[AppAction::Enter].is_clicked {
+            self.adv_state.hud.show_event_hint();
+            return;
+        }
+
         // a click advances the text too, as a touch does in the original
         if state[AppAction::Enter].is_clicked || state[AppAction::Act].is_clicked {
             self.adv_state.message_layer_mut().try_advance();
@@ -517,6 +525,21 @@ impl Adv {
         }
 
         self.adv_state.update(context);
+
+        let settings = &self.vm_state.global.settings;
+        let modes = hud::HudModes {
+            skip_on: self.adv_state.skip_auto & SKIP != 0,
+            auto_on: self.adv_state.skip_auto & AUTO != 0,
+            skipping: self.adv_state.skipping,
+            auto: self.is_auto(),
+            skip_read_only: settings.v11_disallowskipunread,
+            show_scene_title: settings.v14_showscenetitle,
+            show_song_title: settings.v15_showsongtitle,
+        };
+        let audio = self.adv_state.audio_manager.clone();
+        self.adv_state
+            .hud
+            .update(context.delta_ticks.as_f32(), modes, &audio, context.asset_server);
 
         // `0x7100014f50`: a finished line is marked read (by the script's id - 1)
         if let Some(id) = self.adv_state.message_layer_mut().take_finished() {
@@ -711,6 +734,8 @@ pub struct AdvState {
     pub skip_auto: u8,
     /// Whether the script is being skipped this frame (`isSkipping` `0x7100012430`), for the commands as they start
     pub skipping: bool,
+    /// What the screen draws over its layers: banners, icons, notifications
+    pub hud: hud::AdvHud,
 }
 
 impl AdvState {
@@ -757,6 +782,7 @@ impl AdvState {
             voice_duck: 1.0,
             skip_auto: 0,
             skipping: false,
+            hud: hud::AdvHud::new(assets.hud_textures.clone(), assets.fonts.system_font.clone()),
             back_layer_group: None,
             audio_manager: audio_manager.clone(),
             bgm_player: BgmPlayer::new(audio_manager.clone()),
@@ -831,6 +857,7 @@ impl AdvState {
         if let Some(select_layer) = &self.select_layer {
             select_layer.render(pass, &self.messagebox_textures);
         }
+        self.hud.render(pass);
     }
 }
 

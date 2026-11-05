@@ -10,16 +10,18 @@ impl StartableCommand for command::runtime::AUTOSAVE {
 
     fn start(
         self,
-        _context: &mut UpdateContext,
+        context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
         vm_state: &mut VmState,
         _state_info: (),
-        _adv_state: &mut AdvState,
+        adv_state: &mut AdvState,
     ) -> CommandStartResult {
         // `0x71000078d0`: refreshes the auto slot, which reaches the file at the next write (the command writes
         // nothing itself)
         vm_state.save.snapshot(&mut vm_state.global);
-        // TODO: the scene-title banner with the level-1 SAVEINFO text (`0x7100064240`)
+        // the scene-title banner with the level-1 SAVEINFO text (`0x7100064240`)
+        let title = vm_state.save_info.info[1].clone();
+        adv_state.hud.show_scene_title(context.pre_render, &title);
         self.token.finish().into()
     }
 }

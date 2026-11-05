@@ -2,19 +2,29 @@ use super::prelude::*;
 
 impl StartableCommand for command::runtime::TIPSGET {
     type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {
-        warn!("TODO: TIPSGET state: {:?}", self);
+    /// `0x710000da40`: the tips join the playthrough's tips
+    fn apply_state(&self, state: &mut VmState) {
+        for &tip in self.tip_ids.iter() {
+            if !state.tips.contains(&tip) {
+                state.tips.push(tip);
+            }
+        }
     }
 
     fn start(
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &mut VmState,
+        vm_state: &mut VmState,
         _state_info: (),
-        _adv_state: &mut AdvState,
+        adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        warn!("TODO: TIPSGET: {:?}", self);
+        // `0x710000dc80`: "Tips updated."
+        if vm_state.notify_level > 0 {
+            adv_state
+                .hud
+                .queue_notification((16 * (vm_state.notify_level - 1)) as u8 | 1);
+        }
         self.token.finish().into()
     }
 }

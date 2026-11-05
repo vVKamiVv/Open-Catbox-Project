@@ -6,7 +6,7 @@ use shin_core::format::{font::FontLazy, scenario::Scenario};
 use shin_derive::RenderClone;
 
 use crate::{
-    asset::{asset_paths, font::GpuFontLazy, system::AssetServer},
+    asset::{asset_paths, font::GpuFontLazy, system::AssetServer, texture_archive::NamedTextures},
     layer::{message_layer::MessageboxTextures, user::EffectTextures},
 };
 
@@ -18,6 +18,8 @@ pub struct AdvAssets {
     pub messagebox_textures: Arc<MessageboxTextures>,
     /// Shared by every layer's effects, like the original's global effect archive (`0x7100226850`)
     pub effect_textures: Arc<EffectTextures>,
+    /// `/adv.txa`: the skip/auto icons, the notification and the event-skip hint
+    pub hud_textures: Arc<NamedTextures>,
 }
 
 #[derive(Clone, RenderClone)]
@@ -34,6 +36,7 @@ impl AdvAssets {
             AdvFonts::load(asset_server),
             asset_server.load(asset_paths::MSGTEX),
             asset_server.load(asset_paths::EFFECTS),
+            asset_server.load(asset_paths::ADV_TXA),
         )?;
 
         Ok(Self {
@@ -41,6 +44,7 @@ impl AdvAssets {
             fonts: result.1,
             messagebox_textures: result.2,
             effect_textures: result.3,
+            hud_textures: result.4,
         })
     }
 }

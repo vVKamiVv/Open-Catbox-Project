@@ -19,6 +19,7 @@ pub mod asset_paths {
     pub const EFFECTS: &str = "/effects.txa";
     /// The quiz's answer buttons
     pub const QUIZ: &str = "/quiz.txa";
+    pub const ADV_TXA: &str = "/adv.txa";
     /// The cake game's cake, slices, finger and banner
     pub const CAKE: &str = "/cake.txa";
     /// The last choice's two doors

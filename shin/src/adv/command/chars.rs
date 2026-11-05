@@ -2,19 +2,25 @@ use super::prelude::*;
 
 impl StartableCommand for command::runtime::CHARS {
     type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {
-        warn!("TODO: CHARS state: {:?}", self);
+    /// `0x7100004370`: the character screen's state
+    fn apply_state(&self, state: &mut VmState) {
+        state.chars = (self.arg1, self.arg2);
     }
 
     fn start(
         self,
         _context: &mut UpdateContext,
         _scenario: &Arc<Scenario>,
-        _vm_state: &mut VmState,
+        vm_state: &mut VmState,
         _state_info: (),
-        _adv_state: &mut AdvState,
+        adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        warn!("TODO: CHARS: {:?}", self);
+        // `0x710000da00`: "Characters updated."
+        if vm_state.notify_level > 0 {
+            adv_state
+                .hud
+                .queue_notification((16 * (vm_state.notify_level - 1)) as u8);
+        }
         self.token.finish().into()
     }
 }

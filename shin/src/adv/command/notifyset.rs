@@ -2,8 +2,9 @@ use super::prelude::*;
 
 impl StartableCommand for command::runtime::NOTIFYSET {
     type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {
-        warn!("TODO: NOTIFYSET state: {:?}", self);
+    /// `0x7100004830`: the level of the "updated" banners (0 none)
+    fn apply_state(&self, state: &mut VmState) {
+        state.notify_level = self.arg;
     }
 
     fn start(
@@ -14,7 +15,6 @@ impl StartableCommand for command::runtime::NOTIFYSET {
         _state_info: (),
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        warn!("TODO: NOTIFYSET: {:?}", self);
         self.token.finish().into()
     }
 }
