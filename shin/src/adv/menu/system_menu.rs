@@ -25,6 +25,7 @@ use super::{
 };
 use crate::{
     adv::hud::{OUTLINE, draw_text, text_layout},
+    asset::executable::EngineText,
     layer::{
         text_block::TextBlock,
         user::minigame::{self, Sprite},
@@ -45,8 +46,10 @@ const TIPS: u8 = 4;
 const MANUAL: u8 = 5;
 const TITLE: u8 = 6;
 
-/// "Go back to the title screen?" (`0x7100162ebe`, English IPS)
-const TITLE_QUESTION: &str = "Go back to the title screen?";
+const TITLE_QUESTION: EngineText = EngineText(0x7100162ebe, "Go back to the title screen?");
+/// The play time's `sprintf` formats: minutes ("%d分"), and hours and minutes ("%d時間 %d分")
+const MINUTES: EngineText = EngineText(0x7100164021, "%dm");
+const HOURS_MINUTES: EngineText = EngineText(0x710015b467, "%dh %dm");
 
 /// Item layout: 396 x 120 at x 24 when shown, 504 further left when hidden, from y 72 every 128 px
 const ITEM_X: f32 = 24.0;
@@ -116,9 +119,12 @@ fn play_time_string(play_seconds: u32) -> String {
         (999, 59)
     };
     if hours == 0 {
-        format!("{minutes}m")
+        MINUTES.get().replacen("%d", &minutes.to_string(), 1)
     } else {
-        format!("{hours}h {minutes}m")
+        HOURS_MINUTES
+            .get()
+            .replacen("%d", &hours.to_string(), 1)
+            .replacen("%d", &minutes.to_string(), 1)
     }
 }
 
@@ -216,7 +222,7 @@ impl SystemMenu {
                 self.child = Some(Child::Title(Dialog::yes_no(
                     cx.pre_render,
                     &self.assets,
-                    TITLE_QUESTION,
+                    &TITLE_QUESTION.get(),
                     1,
                 )));
             }

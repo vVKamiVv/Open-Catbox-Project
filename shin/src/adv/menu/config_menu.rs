@@ -14,7 +14,7 @@ use tracing::warn;
 
 use super::{MenuAssets, Task, TaskCx, dialog::Dialog, save_notice::SaveNotice};
 use crate::{
-    asset::texture_archive::NamedTextures,
+    asset::{executable::EngineText, texture_archive::NamedTextures},
     layer::user::minigame::{self, Sprite},
     ui::{
         self, NineSlice,
@@ -23,11 +23,12 @@ use crate::{
 };
 use shin_core::primitives::color::FloatColor4;
 
-/// "Reset ALL settings to default?" (`0x710015f87a`, English IPS)
-const RESET_QUESTION: &str = "Reset ALL settings to default?";
-/// The notice of the standby setting (`0x7100161d8e`, English IPS)
-const STANDBY_NOTICE: &str =
-    "Automatic sleep will now be disabled@rwhen using Auto Mode and the Music Box.";
+const RESET_QUESTION: EngineText = EngineText(0x710015f87a, "Reset ALL settings to default?");
+/// The notice of the standby setting
+const STANDBY_NOTICE: EngineText = EngineText(
+    0x7100161d8e,
+    "Automatic sleep will now be disabled@rwhen using Auto Mode and the Music Box.",
+);
 
 /// The list's viewport: items from (136, 252), 1648 wide
 const LIST_X: f32 = 136.0;
@@ -446,7 +447,7 @@ impl ConfigMenu {
             self.child = Some(Child::Notice(Dialog::ok(
                 cx.pre_render,
                 &self.assets,
-                STANDBY_NOTICE,
+                &STANDBY_NOTICE.get(),
             )));
         }
     }
@@ -822,7 +823,7 @@ impl Task for ConfigMenu {
                         self.child = Some(Child::Reset(Dialog::yes_no(
                             cx.pre_render,
                             &self.assets,
-                            RESET_QUESTION,
+                            &RESET_QUESTION.get(),
                             1,
                         )));
                     }

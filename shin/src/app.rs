@@ -178,19 +178,18 @@ impl ShinApp for App {
     fn init(context: AppContext<Self>, cli: Self::Parameters) -> anyhow::Result<Self> {
         let audio_manager = Arc::new(AudioManager::new());
 
+        let (asset_io, assets_dir) = locate_assets(cli.assets_dir.as_deref(), cli.patch_dir.as_deref()).context("Failed to locate assets. Consult the README for instructions on how to set up the game.")?;
         crate::asset::executable::load(
             &[
                 cli.exefs.clone(),
                 std::env::var_os("SHIN_EXEFS").map(PathBuf::from),
-                cli.assets_dir.as_ref().map(|dir| dir.join("exefs")),
-                std::env::var_os("SHIN_ASSETS").map(|dir| PathBuf::from(dir).join("exefs")),
-                std::env::current_dir().ok().map(|dir| dir.join("assets").join("exefs")),
+                // wherever the assets were found (next to the executable, the shared data dir, ...)
+                Some(assets_dir.join("exefs")),
             ]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>(),
         );
-        let asset_io = locate_assets(cli.assets_dir.as_deref()).context("Failed to locate assets. Consult the README for instructions on how to set up the game.")?;
 
         debug!("Asset IO: {:#?}", asset_io);
 

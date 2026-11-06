@@ -34,7 +34,7 @@ use tracing::{info, warn};
 use crate::{
     adv::menu::{AdvRequest, MenuAssets, Task, TaskCx, dialog::Dialog},
     app::AppAction,
-    asset::{system::AssetServer, texture_archive::NamedTextures},
+    asset::{executable::EngineText, system::AssetServer, texture_archive::NamedTextures},
     audio::{BgmPlayer, play_sys_se},
     layer::{
         apply_region_blur,
@@ -48,9 +48,11 @@ use crate::{
     update::UpdateContext,
 };
 
-/// "Start the game?" (`0x710016468c`) and the unlock-all question (`0x710016119c`), English IPS
-const START_QUESTION: &str = "Start the game?";
-const UNLOCK_QUESTION: &str = "All eight main Episodes@rwill be marked as read.@rThe story cannot be experienced@rout of intended order.@rYou should not use this option to skip content@ryou have never read before.@r@rDo you accept?";
+const START_QUESTION: EngineText = EngineText(0x710016468c, "Start the game?");
+const UNLOCK_QUESTION: EngineText = EngineText(
+    0x710016119c,
+    "All eight main Episodes@rwill be marked as read.@rThe story cannot be experienced@rout of intended order.@rYou should not use this option to skip content@ryou have never read before.@r@rDo you accept?",
+);
 
 /// The tabs (`0x7100174768`): the first scenario, how many, the first `menu` cell and the details picture (`None`:
 /// one per scenario, numbered like it)
@@ -381,7 +383,12 @@ impl ScenarioSelect {
             self.decide(context);
         } else if plus && self.can_unlock {
             self.sound(context, "decide");
-            let dialog = Dialog::yes_no(&*context.pre_render, &self.assets, UNLOCK_QUESTION, 1);
+            let dialog = Dialog::yes_no(
+                &*context.pre_render,
+                &self.assets,
+                &UNLOCK_QUESTION.get(),
+                1,
+            );
             self.child = Some(Child::Unlock(dialog));
         }
     }
@@ -621,7 +628,7 @@ impl ScenarioSelect {
                             let dialog = Dialog::yes_no(
                                 &*context.pre_render,
                                 &self.assets,
-                                START_QUESTION,
+                                &START_QUESTION.get(),
                                 1,
                             );
                             self.child = Some(Child::Start(dialog));

@@ -14,6 +14,10 @@ pub struct Cli {
     /// Consult the README for more information.
     #[clap(short, long)]
     pub assets_dir: Option<PathBuf>,
+    /// The folder whose `patch.rom` (a translation) is layered over the assets' `data.rom`; by default the assets
+    /// directory itself. Without a `patch.rom` there (the original Japanese), `data.rom` is used alone.
+    #[clap(long)]
+    pub patch_dir: Option<PathBuf>,
     /// A folder with the game's executable (`main`) and a translation's `.ips` patches, for the texts the engine
     /// keeps there; by default `SHIN_EXEFS`, or an `exefs` folder next to the assets
     #[clap(long)]

@@ -5,10 +5,12 @@
 use shin_render::render_pass::RenderPass;
 
 use super::{AdvRequest, MenuAssets, Task, TaskCx, dialog::Dialog};
-use crate::render::PreRenderContext;
+use crate::{asset::executable::EngineText, render::PreRenderContext};
 
-/// `0x710015f024`, English IPS
-const WRITING: &str = "Writing save data.@rPlease do not close the game.";
+const WRITING: EngineText = EngineText(
+    0x710015f024,
+    "Writing save data.@rPlease do not close the game.",
+);
 /// How long the notice stays up (the original's write takes at least a second)
 const MIN_FRAMES: f32 = 60.0;
 
@@ -23,7 +25,7 @@ pub struct SaveNotice {
 impl SaveNotice {
     pub fn new(ctx: &PreRenderContext, assets: &MenuAssets, then: Option<AdvRequest>) -> Self {
         Self {
-            dialog: Dialog::new(ctx, assets, WRITING, &[], -1, false),
+            dialog: Dialog::new(ctx, assets, &WRITING.get(), &[], -1, false),
             elapsed: 0.0,
             requested: false,
             then,

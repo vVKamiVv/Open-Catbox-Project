@@ -18,15 +18,16 @@ use shin_render::render_pass::RenderPass;
 use super::{MenuAssets, Task, TaskCx};
 use crate::{
     adv::hud::{OUTLINE, text_layout},
+    asset::executable::EngineText,
     layer::{text_block::TextBlock, user::minigame},
     render::PreRenderContext,
     ui::{self, NineSlice},
 };
 
-/// The English IPS's button labels (はい / いいえ / 確認)
-pub const YES: &str = "Yes";
-pub const NO: &str = "No";
-pub const OK: &str = "OK";
+/// The button labels (はい / いいえ / 確認)
+const YES: EngineText = EngineText(0x7100161a50, "Yes");
+const NO: EngineText = EngineText(0x7100161d57, "No");
+const OK: EngineText = EngineText(0x7100163da3, "OK");
 
 /// `0x7100024590`'s tables (insets `0x7100166514`, u `0x7100166554`, v `0x7100166594`): the frame, a button (also
 /// the pressed flash) and the cursor's button
@@ -206,12 +207,12 @@ impl Dialog {
 
     /// A Yes/No question (`0x71000222d0`), the cursor on `cursor` (the original's callers start on No, 1)
     pub fn yes_no(ctx: &PreRenderContext, assets: &MenuAssets, message: &str, cursor: i32) -> Self {
-        Self::new(ctx, assets, message, &[YES, NO], cursor, true)
+        Self::new(ctx, assets, message, &[&YES.get(), &NO.get()], cursor, true)
     }
 
     /// A notice with an OK button (`0x71000223a0`)
     pub fn ok(ctx: &PreRenderContext, assets: &MenuAssets, message: &str) -> Self {
-        Self::new(ctx, assets, message, &[OK], 0, true)
+        Self::new(ctx, assets, message, &[&OK.get()], 0, true)
     }
 
     /// The abort predicate came true (`0x71000239c0` state 2): the dialog closes with button -2

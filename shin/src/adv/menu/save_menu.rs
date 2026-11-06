@@ -30,7 +30,7 @@ use crate::{
         Bookmark,
         hud::{OUTLINE, text_layout},
     },
-    asset::texture_archive::NamedTextures,
+    asset::{executable::EngineText, texture_archive::NamedTextures},
     layer::{
         text_block::TextBlock,
         user::minigame::{self, Sprite},
@@ -48,14 +48,15 @@ pub enum Mode {
     Load,
 }
 
-/// The English IPS's texts (`0x7100162fd0`, `0x7100162147`, `0x7100162c2a`, `0x7100162c58`, `0x710015f8f8`)
-const MOVE_QUESTION: &str = "Move this bookmark to the current page?";
-const PLACE_QUESTION: &str = "Place this bookmark on the current page?";
-const LOAD_QUESTION: &str = "Continue reading from this bookmark?";
-const DELETE_QUESTION: &str = "Remove this bookmark?";
-const UNUSED: &str = "Unused bookmark";
-/// An executable literal the IPS leaves alone
-const LOADING: &str = "loading...";
+const MOVE_QUESTION: EngineText =
+    EngineText(0x7100162fd0, "Move this bookmark to the current page?");
+const PLACE_QUESTION: EngineText =
+    EngineText(0x7100162147, "Place this bookmark on the current page?");
+const LOAD_QUESTION: EngineText = EngineText(0x7100162c2a, "Continue reading from this bookmark?");
+const DELETE_QUESTION: EngineText = EngineText(0x7100162c58, "Remove this bookmark?");
+const UNUSED: EngineText = EngineText(0x710015f8f8, "Unused bookmark");
+/// The same in every language (the IPS leaves it alone)
+const LOADING: EngineText = EngineText(0x71001632c1, "loading...");
 
 const SLOTS: usize = 100;
 /// A bookmark every 186 px, 172 tall, in a 730 px view from y 188
@@ -460,7 +461,7 @@ impl SaveMenu {
             Ask::Load => LOAD_QUESTION,
             Ask::Delete => DELETE_QUESTION,
         };
-        self.dialog = Some((ask, Dialog::yes_no(cx.pre_render, &self.assets, message, 1)));
+        self.dialog = Some((ask, Dialog::yes_no(cx.pre_render, &self.assets, &message.get(), 1)));
     }
 
     /// Drops what the bookmark showed, so it is rebuilt from its new contents
@@ -564,8 +565,8 @@ impl SaveMenu {
             let text = |s: &str| TextBlock::new(cx.pre_render, font, s, slot_layout(), OUTLINE);
             self.slots[index].texts =
                 Some(match (&self.saves[index], &self.slots[index].bookmark) {
-                    (None, _) => SlotTexts::One(text(UNUSED)),
-                    (Some(_), None) => SlotTexts::One(text(LOADING)),
+                    (None, _) => SlotTexts::One(text(&UNUSED.get())),
+                    (Some(_), None) => SlotTexts::One(text(&LOADING.get())),
                     (Some(_), Some(bookmark)) => {
                         let [first, second] = &bookmark.info;
                         SlotTexts::Two(text(first), text(second))

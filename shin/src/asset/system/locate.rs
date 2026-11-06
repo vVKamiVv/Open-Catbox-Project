@@ -6,22 +6,27 @@ use tracing::{debug, instrument, trace};
 use crate::asset::system::LayeredAssetIo;
 
 #[instrument]
-fn try_assets_directory(path: &Path) -> anyhow::Result<Option<LayeredAssetIo>> {
+fn try_assets_directory(
+    path: &Path,
+    patch_base: Option<&Path>,
+) -> anyhow::Result<Option<LayeredAssetIo>> {
     debug!("Trying assets directory {:?}...", path);
     if !path.is_dir() {
         debug!("Cannot use {:?} as assets directory, not a directory", path);
         return Ok(None);
     }
     let mut result = LayeredAssetIo::new();
+    // a language's patch lives in its own folder (`--patch-dir`); without one, next to the data
+    let patch_base = patch_base.unwrap_or(path);
     // try to use "data" directory first and them data.rom file
-    if let Ok(patch_dir) = path.join("patch").canonicalize() {
+    if let Ok(patch_dir) = patch_base.join("patch").canonicalize() {
         trace!("Trying patch directory {:?}...", patch_dir);
         match result.try_with_dir(&patch_dir) {
             Ok(_) => trace!("Using patch directory {:?}", patch_dir),
             Err(err) => trace!("Cannot use {:?} as assets directory: {}", path, err),
         }
     }
-    if let Ok(patch_rom) = path.join("patch.rom").canonicalize() {
+    if let Ok(patch_rom) = patch_base.join("patch.rom").canonicalize() {
         trace!("Trying patch ROM {:?}...", patch_rom);
         match result.try_with_rom(&patch_rom) {
             Ok(_) => trace!("Using patch ROM {:?}", patch_rom),
@@ -64,9 +69,15 @@ fn try_assets_directory(path: &Path) -> anyhow::Result<Option<LayeredAssetIo>> {
 /// 4. The directory "assets" in the current working directory
 /// 5. The user's shared data directory (see [`dirs_next::data_dir`], `/home/alice/.local/share/shin/assets` / `C:\Users\Alice\AppData\Roaming\shin\assets` / `/Users/Alice/Library/Application Support/shin/assets`)
 ///
-/// The used asset directory is the first one having a "data" directory or a "data.rom" file.
+/// The used asset directory is the first one having a "data" directory or a "data.rom" file; it is returned too.
+///
+/// The "patch" directory and "patch.rom" are looked for in `patch_dir` (`--patch-dir`) when given, else in the asset
+/// directory. A `patch_dir` without them (the untranslated Japanese) leaves the data alone.
 #[allow(clippy::match_result_ok)]
-pub fn locate_assets(cli_assets: Option<&Path>) -> anyhow::Result<LayeredAssetIo> {
+pub fn locate_assets(
+    cli_assets: Option<&Path>,
+    patch_dir: Option<&Path>,
+) -> anyhow::Result<(LayeredAssetIo, PathBuf)> {
     // First, try the assets directory specified on the command line
     // Then, try the assets directory specified in the environment
     // Then, try the assets directory next to the executable
@@ -101,8 +112,8 @@ pub fn locate_assets(cli_assets: Option<&Path>) -> anyhow::Result<LayeredAssetIo
     }
 
     for path in try_list.iter() {
-        if let Some(result) = try_assets_directory(path)? {
-            return Ok(result);
+        if let Some(result) = try_assets_directory(path, patch_dir)? {
+            return Ok((result, path.clone()));
         }
     }
 

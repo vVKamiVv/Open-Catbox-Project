@@ -26,7 +26,7 @@ use super::{
 };
 use crate::{
     adv::{Log, LogKind},
-    asset::texture_archive::NamedTextures,
+    asset::{executable::EngineText, texture_archive::NamedTextures},
     audio::{VoicePlayFlags, VoicePlayer},
     layer::{
         text_block::TextBlock,
@@ -38,8 +38,7 @@ use crate::{
     },
 };
 
-/// "Start reading from the selected line?" (`0x710015c8eb`, English IPS)
-const JUMP_QUESTION: &str = "Start reading from the selected line?";
+const JUMP_QUESTION: EngineText = EngineText(0x710015c8eb, "Start reading from the selected line?");
 
 const VIEW: f32 = 730.0;
 const LIST_X: f32 = 136.0;
@@ -541,7 +540,7 @@ impl Task for Backlog {
                     self.dialog = Some(Dialog::yes_no(
                         cx.pre_render,
                         &self.assets,
-                        JUMP_QUESTION,
+                        &JUMP_QUESTION.get(),
                         1,
                     ));
                 }

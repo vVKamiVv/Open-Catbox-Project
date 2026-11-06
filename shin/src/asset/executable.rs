@@ -53,15 +53,24 @@ fn load_from(dir: &Path) -> Result<Executable> {
     Executable::load(&nso, &patches.iter().map(Vec::as_slice).collect::<Vec<_>>())
 }
 
-/// The string at `address`, decoded (Shift-JIS)
+// the executable keeps its texts in UTF-8 (the Japanese release's too), unlike the scenario's Shift-JIS
+
+/// The string at `address`
 pub fn text_at(address: u64) -> Option<String> {
-    let bytes = executable()?.c_string(address)?;
-    shin_core::format::text::read_sjis_string(&mut std::io::Cursor::new(bytes), Some(bytes.len()))
-        .ok()
+    std::str::from_utf8(executable()?.c_string(address)?).ok().map(str::to_owned)
 }
 
-/// The string a pointer at `address` points to, decoded (Shift-JIS, which covers the ASCII of translations)
+/// The string a pointer at `address` points to
 pub fn text_at_pointer(address: u64) -> Option<String> {
-    let bytes = executable()?.string_at_pointer(address)?;
-    shin_core::format::text::read_sjis_string(&mut std::io::Cursor::new(bytes), Some(bytes.len())).ok()
+    std::str::from_utf8(executable()?.string_at_pointer(address)?).ok().map(str::to_owned)
+}
+
+/// A UI text the original reads from its executable, where a translation's `.ips` rewrites it in place: its address,
+/// and the English patch's text for when no executable was found
+pub struct EngineText(pub u64, pub &'static str);
+
+impl EngineText {
+    pub fn get(&self) -> String {
+        text_at(self.0).unwrap_or_else(|| self.1.to_owned())
+    }
 }

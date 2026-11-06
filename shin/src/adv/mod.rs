@@ -52,7 +52,7 @@ use shin_render::render_texture::RenderTexture;
 use crate::{
     adv::assets::{AdvAssets, AdvFonts},
     app::AppAction,
-    asset::system::AssetServer,
+    asset::{executable::EngineText, system::AssetServer},
     audio::{BgmPlayer, SePlayer, VoicePlayer, play_sys_se},
     capture::CaptureTargets,
     layer::{
@@ -227,18 +227,17 @@ impl Adv {
             play_sys_se(&self.adv_state.audio_manager, context.asset_server, "error", Default::default());
             return;
         };
-        // the English patch translates only the first text (`0x71001619f6`); with setting v11 on the original
-        // shows its Japanese one (`0x710015eedb`)
+        // the English patch translates only the first text; with setting v11 on, the original shows its Japanese one
         let text = if stop_unread {
-            "次のチャプター、未読メッセージ、選択肢まで@rスキップします。よろしいですか？"
+            EngineText(0x710015eedb, "次のチャプター、未読メッセージ、選択肢まで@rスキップします。よろしいですか？")
         } else {
-            "Skip this chapter?"
+            EngineText(0x71001619f6, "Skip this chapter?")
         };
         self.pending_jump = Some(target);
         let dialog = JumpDialog::new(Dialog::yes_no(
             context.pre_render,
             &self.adv_state.menu_assets,
-            text,
+            &text.get(),
             1,
         ));
         self.tasks.push(Box::new(dialog));
@@ -252,7 +251,7 @@ impl Adv {
         let dialog = JumpDialog::new(Dialog::yes_no(
             context.pre_render,
             &self.adv_state.menu_assets,
-            "Return to the last chapter?",
+            &EngineText(0x710015fb2d, "Return to the last chapter?").get(),
             1,
         ));
         self.tasks.push(Box::new(dialog));
