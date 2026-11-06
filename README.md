@@ -55,7 +55,8 @@ You need:
 2. **The English patch**: copy the `patch.rom` from
    [umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english) into the same `assets` folder. The
    port layers it over `data.rom`, just like the console does.
-3. **ffmpeg** on your `PATH`, for the movies.
+3. On Linux and macOS, **ffmpeg** on your `PATH`, for the movies. Windows decodes them itself (Media Foundation)
+   and only falls back to ffmpeg on editions without it (the "N" editions lacking the Media Feature Pack).
 
 Then build and run (requires [Rust](https://www.rust-lang.org/)):
 

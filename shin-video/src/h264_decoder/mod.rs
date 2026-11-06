@@ -21,6 +21,12 @@ cfg_if! {
     if #[cfg(feature = "gstreamer")] {
         mod gstreamer;
         pub use self::gstreamer::GStreamerH264Decoder as H264Decoder;
+    } else if #[cfg(windows)] {
+        // Windows' own decoder, ffmpeg when it cannot decode
+        mod y4m;
+        mod spawn_ffmpeg;
+        mod media_foundation;
+        pub use media_foundation::AutoH264Decoder as H264Decoder;
     } else {
         // pub use y4m::{BitsPerSample, Colorspace, FrameSize, PlanarFrame, PlaneSize};
         mod y4m;
