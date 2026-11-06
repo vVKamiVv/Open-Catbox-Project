@@ -43,7 +43,7 @@ pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
 
 use menu::{
-    AdvRequest, Task, TaskCx, backlog::Backlog, dialog::Dialog, hidden_window::HiddenWindow, jump::JumpDialog,
+    AdvRequest, Task, TaskCx, backlog::Backlog, save_notice::SaveNotice, dialog::Dialog, hidden_window::HiddenWindow, jump::JumpDialog,
     system_menu::SystemMenu,
 };
 use shin_core::{primitives::color::FloatColor4, time::{Tween, Tweener}};
@@ -454,10 +454,8 @@ impl Adv {
                         }
                     }
                 }
-                AdvRequest::SaveToSlot(slot) => {
-                    self.save_to_slot(slot);
-                    self.write_requested = true;
-                }
+                // the save menu's notice writes the file
+                AdvRequest::SaveToSlot(slot) => self.save_to_slot(slot),
                 AdvRequest::LoadSlot(slot) => {
                     let global = &mut self.vm_state.global;
                     if let Some(data) = &global.manual_save_slots[slot] {
@@ -468,9 +466,14 @@ impl Adv {
                 }
                 AdvRequest::ExitToTitle => {
                     info!("Returning to the title");
-                    self.write_requested = true;
-                    self.exit_to_title = true;
+                    let notice = SaveNotice::new(
+                        context.pre_render,
+                        &self.adv_state.menu_assets,
+                        Some(AdvRequest::LeaveForTitle),
+                    );
+                    self.tasks.push(Box::new(notice));
                 }
+                AdvRequest::LeaveForTitle => self.exit_to_title = true,
             }
         }
         true
@@ -879,8 +882,12 @@ impl Adv {
             if *wait <= 0.0 && self.adv_state.message_layer().is_closed() && self.tasks.is_empty() {
                 self.exit_wait = None;
                 info!("The piece is over; returning to the title");
-                self.write_requested = true;
-                self.exit_to_title = true;
+                let notice = SaveNotice::new(
+                    context.pre_render,
+                    &self.adv_state.menu_assets,
+                    Some(AdvRequest::LeaveForTitle),
+                );
+                self.tasks.push(Box::new(notice));
             }
         }
 

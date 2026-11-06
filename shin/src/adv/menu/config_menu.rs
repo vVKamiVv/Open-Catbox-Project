@@ -12,7 +12,7 @@ use shin_core::{format::save::Settings, time::Tweener};
 use shin_render::{ColorBlendType, RenderRequestBuilder, render_pass::RenderPass};
 use tracing::warn;
 
-use super::{AdvRequest, MenuAssets, Task, TaskCx, dialog::Dialog};
+use super::{MenuAssets, Task, TaskCx, dialog::Dialog, save_notice::SaveNotice};
 use crate::{
     asset::texture_archive::NamedTextures,
     layer::user::minigame::{self, Sprite},
@@ -298,6 +298,8 @@ pub struct ConfigMenu {
     /// The reset dialog waits for the Reset button's flash
     reset_pending: bool,
     child: Option<Child>,
+    /// The save notice while closing writes the changed settings
+    saving: Option<SaveNotice>,
     pointer_held: bool,
     /// The slider being dragged, with the pointer's x at the last frame
     drag: Option<(usize, f32)>,
@@ -343,6 +345,7 @@ impl ConfigMenu {
             live: settings,
             reset_pending: false,
             child: None,
+            saving: None,
             pointer_held: false,
             drag: None,
             drag_value: 0.0,
@@ -666,11 +669,18 @@ impl Task for ConfigMenu {
                 }
             }
             State::Closing => {
-                if self.close_flash.is_idle() {
-                    if cx.global.settings != self.opened_with {
-                        cx.requests.push(AdvRequest::WriteSave);
+                // `$_17`: after the flash, changed settings are written behind the save notice
+                if let Some(notice) = &mut self.saving {
+                    if !notice.update(&mut cx.reborrow(cx.focused)) {
+                        self.saving = None;
+                        self.state = State::FadingOut;
                     }
-                    self.state = State::FadingOut;
+                } else if self.close_flash.is_idle() {
+                    if cx.global.settings != self.opened_with {
+                        self.saving = Some(SaveNotice::new(cx.pre_render, &self.assets, None));
+                    } else {
+                        self.state = State::FadingOut;
+                    }
                 }
             }
             State::FadingOut => {
@@ -810,6 +820,9 @@ impl Task for ConfigMenu {
 
         if let Some(Child::Reset(dialog) | Child::Notice(dialog)) = &self.child {
             dialog.render(pass);
+        }
+        if let Some(notice) = &self.saving {
+            notice.render(pass);
         }
     }
 }

@@ -11,6 +11,7 @@ pub mod dialog;
 pub mod hidden_window;
 pub mod jump;
 pub mod save_menu;
+pub mod save_notice;
 pub mod system_menu;
 pub mod thumbnail;
 
@@ -65,6 +66,8 @@ pub enum AdvRequest {
     SystemMenuClosed,
     /// "Return to title" (`ADV::ExitGame` `0x71000147e0`): write the save file, then go to the title
     ExitToTitle,
+    /// The save notice of "Return to title" or EXIT is gone: the title opens (`ExitGame $_6` `0x71000187c0`)
+    LeaveForTitle,
     /// Write the save file (a `SaveGame` task, `0x71000d52f0`)
     WriteSave,
     /// Put the current page in this bookmark and write the save file (`0x71000da920`)

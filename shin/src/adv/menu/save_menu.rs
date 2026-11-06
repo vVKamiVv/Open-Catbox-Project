@@ -23,6 +23,7 @@ use tracing::warn;
 use super::{
     AdvRequest, MenuAssets, Task, TaskCx,
     dialog::Dialog,
+    save_notice::SaveNotice,
     thumbnail::{THUMBNAIL_UV, ThumbnailBuild},
 };
 use crate::{
@@ -178,6 +179,8 @@ pub struct SaveMenu {
     drawing: Option<(usize, ThumbnailBuild)>,
     asking: Option<Ask>,
     dialog: Option<(Ask, Dialog)>,
+    /// The save notice after a save or a removal
+    saving: Option<SaveNotice>,
     load_requested: bool,
     target_size: (u32, u32),
     pointer_held: bool,
@@ -229,6 +232,7 @@ impl SaveMenu {
             saves: cx.global.manual_save_slots.to_vec(),
             building: None,
             drawing: None,
+            saving: None,
             asking: None,
             dialog: None,
             load_requested: false,
@@ -445,6 +449,7 @@ impl SaveMenu {
                 (Ask::Save, (0, 0)) => {
                     cx.requests.push(AdvRequest::SaveToSlot(self.cursor));
                     self.forget(self.cursor);
+                    self.saving = Some(SaveNotice::new(cx.pre_render, &self.assets, None));
                 }
                 // `0x71000db120`: the screen fades out and the bookmark is loaded
                 (Ask::Load, (1, 0)) => {
@@ -454,8 +459,8 @@ impl SaveMenu {
                 // `0x71000db5c0`
                 (Ask::Delete, (0, 0)) => {
                     cx.global.manual_save_slots[self.cursor] = None;
-                    cx.requests.push(AdvRequest::WriteSave);
                     self.forget(self.cursor);
+                    self.saving = Some(SaveNotice::new(cx.pre_render, &self.assets, None));
                 }
                 _ => {}
             }
@@ -671,7 +676,11 @@ impl Task for SaveMenu {
                 }
             }
             State::Active => {
-                if self.dialog.is_some() {
+                if let Some(notice) = &mut self.saving {
+                    if !notice.update(&mut cx.reborrow(cx.focused)) {
+                        self.saving = None;
+                    }
+                } else if self.dialog.is_some() {
                     self.update_dialog(cx);
                 } else if let Some(ask) = self.asking {
                     if self.slots[self.cursor].flash.is_idle() {
@@ -825,6 +834,9 @@ impl Task for SaveMenu {
 
         if let Some((_, dialog)) = &self.dialog {
             dialog.render(pass);
+        }
+        if let Some(notice) = &self.saving {
+            notice.render(pass);
         }
     }
 }

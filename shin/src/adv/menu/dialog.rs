@@ -214,6 +214,17 @@ impl Dialog {
         Self::new(ctx, assets, message, &[OK], 0, true)
     }
 
+    /// The abort predicate came true (`0x71000239c0` state 2): the dialog closes with button -2
+    pub fn close_now(&mut self) {
+        if self.state == State::Active {
+            if self.cursor >= 0 {
+                minigame::tween_now(&mut self.buttons[self.cursor as usize].highlight, 0.0, 0.1);
+            }
+            self.cursor = -2;
+            self.state = State::Closing;
+        }
+    }
+
     /// What happened since the last call: `(0, button)` as the dialog starts closing, `(1, button)` once it is gone
     pub fn take_events(&mut self) -> Vec<(u8, i32)> {
         std::mem::take(&mut self.events)
