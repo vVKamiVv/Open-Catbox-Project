@@ -3,7 +3,6 @@
 //! number, date and the SAVEINFO texts of its scene, which the original gets by replaying the save in the background;
 //! saving, loading and removing ask first.
 //!
-//! shortcut: the list cannot be dragged or flung with the pointer.
 
 use std::sync::Arc;
 
@@ -36,7 +35,11 @@ use crate::{
         text_block::TextBlock,
         user::minigame::{self, Sprite},
     },
-    ui::{self, NineSlice},
+    ui::{
+        self,
+        NineSlice,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -183,8 +186,11 @@ pub struct SaveMenu {
     saving: Option<SaveNotice>,
     load_requested: bool,
     target_size: (u32, u32),
-    pointer_held: bool,
-    pressed: Option<Target>,
+    /// The touch input (`GestureRecognizer` with long presses, `0x71000d5b40`)
+    gestures: GestureRecognizer,
+    coast: Coast,
+    /// What the current touch brightened
+    raised: Option<Target>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,8 +243,9 @@ impl SaveMenu {
             dialog: None,
             load_requested: false,
             target_size: (1920, 1080),
-            pointer_held: false,
-            pressed: None,
+            gestures: GestureRecognizer::new(true),
+            coast: Coast::default(),
+            raised: None,
         })
     }
 
@@ -370,43 +377,80 @@ impl SaveMenu {
             .map(Target::Slot)
     }
 
-    /// A press flashes the bookmark (or the close button); releasing on it decides
+    /// The save list's gesture listener (`0x71000da150` and its neighbours): a touch outside the list is not
+    /// tracked, a press brightens the bookmark, a tap decides, a long press removes it (save screen), and drags and
+    /// flicks scroll the list
     fn handle_pointer(&mut self, cx: &mut TaskCx) {
-        let pointer = cx.input.pointer;
-        let went_down = pointer.held && !self.pointer_held;
-        let went_up = !pointer.held && self.pointer_held;
-        self.pointer_held = pointer.held;
-        let hit = pointer.position.and_then(|p| self.target_at(p));
-        if went_down {
-            match hit {
-                Some(Target::Slot(slot)) => {
-                    minigame::raise(&mut self.slots[slot].flash);
-                    self.cursor = slot;
-                    self.scroll_into_view();
+        for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+            match gesture {
+                Gesture::Down(at) => {
+                    // touching a coasting list stops it, and that touch does not tap
+                    if self.coast.is_moving() {
+                        self.coast.stop();
+                        self.gestures.cancel();
+                    } else if self.target_at(at).is_none() {
+                        self.gestures.cancel();
+                    }
                 }
-                Some(Target::Close) => minigame::raise(&mut self.close_flash),
-                None => {}
-            }
-            self.pressed = hit;
-        } else if went_up {
-            let Some(pressed) = self.pressed.take() else {
-                return;
-            };
-            if hit != Some(pressed) {
-                match pressed {
-                    Target::Slot(slot) => minigame::lower(&mut self.slots[slot].flash),
-                    Target::Close => minigame::lower(&mut self.close_flash),
+                Gesture::Press => {
+                    let at = cx.input.pointer.position.unwrap_or_default();
+                    match self.target_at(at) {
+                        Some(Target::Slot(slot)) => minigame::raise(&mut self.slots[slot].flash),
+                        Some(Target::Close) => minigame::raise(&mut self.close_flash),
+                        None => {}
+                    }
+                    self.raised = self.target_at(at);
                 }
-                return;
-            }
-            match pressed {
-                Target::Slot(_) => self.decide(cx),
-                Target::Close => {
-                    cx.sound("decide");
-                    self.close(cx);
+                Gesture::Tap(at) => {
+                    self.lower_raised();
+                    match self.target_at(at) {
+                        Some(Target::Slot(slot)) => {
+                            self.cursor = slot;
+                            self.scroll_into_view();
+                            self.decide(cx);
+                        }
+                        Some(Target::Close) => {
+                            cx.sound("decide");
+                            self.close(cx);
+                        }
+                        None => {}
+                    }
                 }
+                Gesture::LongPress => {
+                    self.lower_raised();
+                    let at = cx.input.pointer.position.unwrap_or_default();
+                    if let (Mode::Save, Some(Target::Slot(slot))) = (self.mode, self.target_at(at)) {
+                        self.cursor = slot;
+                        self.scroll_into_view();
+                        self.delete(cx);
+                    }
+                }
+                Gesture::Drag(from, to) => {
+                    self.lower_raised();
+                    let scroll = (self.scroll.value() - (to.y - from.y)).clamp(0.0, MAX_SCROLL);
+                    self.scroll.fast_forward_to(scroll);
+                    self.keep_cursor_in_view();
+                }
+                Gesture::Flick(velocity) => self.coast.start(velocity.y),
+                Gesture::End => self.lower_raised(),
             }
         }
+    }
+
+    fn lower_raised(&mut self) {
+        match self.raised.take() {
+            Some(Target::Slot(slot)) => minigame::lower(&mut self.slots[slot].flash),
+            Some(Target::Close) => minigame::lower(&mut self.close_flash),
+            None => {}
+        }
+    }
+
+    /// Dragging and coasting move only the cursor along, so it stays inside the 730 px view; nothing snaps
+    fn keep_cursor_in_view(&mut self) {
+        let scroll = self.scroll.value();
+        let first = (scroll / PITCH).ceil() as usize;
+        let last = ((scroll + VIEW - SLOT_H) / PITCH).floor().max(0.0) as usize;
+        self.cursor = self.cursor.clamp(first.min(SLOTS - 1), last.clamp(first, SLOTS - 1));
     }
 
     fn open_dialog(&mut self, cx: &TaskCx, ask: Ask) {
@@ -689,7 +733,16 @@ impl Task for SaveMenu {
                     }
                 } else if cx.focused {
                     self.handle_pointer(cx);
-                    if self.pressed.is_none()
+                    if self.coast.is_moving() {
+                        let scroll =
+                            self.coast
+                                .update(self.scroll.value(), 0.0, MAX_SCROLL, cx.frames);
+                        self.scroll.fast_forward_to(scroll);
+                        self.keep_cursor_in_view();
+                    }
+                    // touches and the list moving hold the buttons off (`0x710006b860`)
+                    if !self.gestures.is_active()
+                        && !self.coast.is_moving()
                         && self.scroll.is_idle()
                         && self.state == State::Active
                     {
