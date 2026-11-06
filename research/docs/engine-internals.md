@@ -919,18 +919,56 @@ has played, else the one before (`+0x2dbc[(+0x2dd0 > 1)]`); rollback goes to the
 (`+0x2db4`) once two lines have played. With v11 on, the + dialog shows a Japanese text the English patch does not
 translate (`0x710015eedb`).
 
-In the port: `app.rs` (scenes), `title_demo.rs`, `title.rs`, `scenario_select.rs`, `adv/menu/` (dialog, system menu,
-hidden window, config, save menu, thumbnails, jump dialog, backlog) and `ui/` (drawing and input helpers).
+In the port: `app.rs` (scenes), `title_demo.rs`, `title.rs`, `scenario_select.rs`, `picture_box.rs`, `music_box.rs`,
+`movie_box.rs`, `adv/menu/` (dialog, system menu, hidden window, config, save menu, thumbnails, jump dialog, backlog
+and its chapter list, characters, tips, manual) and `ui/` (drawing and input helpers).
 
 **The backlog** (X, `0x71000a20b0`, `/logview.txa`): the LogBuilder replays the current chapter from its start through
 the current line and on through read text (stopping at an unread line with v11, a choice or minigame not played,
 or EXIT), collecting lines (colour 999), choices `@r《prompt》@r option` (977), chapter titles from SAVEINFO 0 and 1
 at each AUTOSAVE (799) and minigames (977). Lines are newrodin at size 40, 97 % width, 1480 wide, at least 76 tall
 when voiced, plus 20, 14 px apart, the current one at 0. A replays a voiced line, L/R move between markers, Y asks
-"Start reading from the selected line?" and rebuilds there.
+"Start reading from the selected line?" and rebuilds there. X opens the **chapter list**
+(`0x71000a83d0`): start, markers, the cursor and the game's line ("Current position" when they are one) and end,
+sorted by (line, kind), right-aligned system.fnt labels of size 48 at x 1800, 60 px apart; moving through it moves
+the backlog's cursor. Its fixed labels are engine strings (English in the patch's IPS).
 
-shortcuts: no backlog chapter list, galleries, Characters, Tips or manual yet; the backlog's text starts at a guessed
-x; the scenario select fades in instead of the curtain mask wipe;
+**The galleries** are scenes of their own, entered over a 60-frame crossfade while the title's music fades over 60:
+the **Picture Box** (`CGMode`, `/cgmode.txa`) lists PictureBoxInfo four to a row (logo card when locked, a `u/n`
+counter when partly unlocked) and plays BGM 6 (unlocking it); its viewer shows an entry's unlocked pictures with
+30-frame crossfades from a snapshot, page marks (Y), fit (X) and d-pad panning. The **Music Box** (`BGMMode`) plays
+MusicBoxInfo tracks in two columns; the **Movie Box** (`MovieMode`) the ten openings after a fade to black. Leaving
+returns to the title with the cursor on the gallery while the music fades over 30 frames.
+
+**Characters, Tips and the manual** are tasks over the title (through its episode list, `Title::SubMenu`, for
+Characters and Tips) or the system menu, opening over 10 frames between translucent `obi` bands. **Characters**
+(`CharsMode`, `/chars.txa`): a grid of portraits (CharsGridInfo; grids 0-7 are the title's episodes, others the
+script's CHARS) on up to four pages, connectors in red/blue/yellow, the chosen state's full picture
+(`/chars/<name>.txa`), name and profile. From the title Y switches the life state, X the outfit, A a cell's
+sub-characters; the d-pad picks the nearest cell scored as `|d| / cos⁴`. Portraits are drawn over the `non` card by
+programs 48-51, measured in Eden: alive as is, dead `rgb × (1, 0.1, 0.1)`, missing BT.601 grey, half dead red below
+the top-right-to-bottom-left diagonal. **Tips** (`TipsMode`, `/tips.txa`): an episode's tips from the title, the
+collected ones (TIPSGET) from the system menu; title 48 and text 32 in system.fnt, 1222 wide. **The manual**
+(`ManualViewer`, `/manual.txa`, only in data.rom, so Japanese in the English release too): pages `001`..`024`
+1500 px apart, turned in 15 frames. The key-help rows differ per screen: Tips put the glyphs right at the label and
+10 px apart, the manual and Characters 2 px in and 16 apart.
+
+shortcuts: the galleries, Characters, Tips and the chapter list take no pointer drags or flicks; the backlog's
+opening scroll measures the whole current line, while the original measures the part shown so far (seen in Eden
+when the game waits inside a paragraph); the scenario select fades in instead of the curtain mask wipe;
 the bridge has no bloom glow; the dialog fades its pieces instead of a render texture; the BGM player is per scene
 instead of shared, so music does not carry across scenes. Keyboard: Y and X keys for the Y and X buttons, = and -
 for + and -.
+
+## 16. Voices: panning and lip-sync **confirmed** (code; the pans and level tables checked in the port's log, not by ear)
+
+Every frame each bustup with property 27 set and mouth frames asks the voice player about its character
+(`0x7100119ef0`): it pans every voice whose speakers include the character to the bustup's own screen x over the
+half-width, clamped to -1..1 (`0x7100036900`, the layer's own transform only), or to 0 when setting v5 is off, and
+gets the mouth level of the first playing such voice. The mixer (`0x710002bc40`) pans by a linear balance: full
+level on the near side, `1 - |pan|` on the far one. The level comes from a table each stream fills while decoding
+(`0x71000f55d0`): per 50 ms window the peak of every sample of every channel, through hysteresis (closed -> half
+open above 0.12, half open -> closed below 0.10, -> open above 0.55, open -> half open below 0.45; half open closes
+after 4 windows without a change), read at the playing position (`0x71000f54e0`). The mouth frame is
+`level × count / 3`. In the port: `audio/voice_player.rs` (the table is made off the main thread when a voice
+starts), `layer/user/bustup_layer.rs`, `shin-audio/src/sound.rs`.
