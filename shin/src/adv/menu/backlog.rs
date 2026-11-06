@@ -1,8 +1,9 @@
 //! The backlog (`shin::MessageBrowser`, ctor `0x71000a20b0`, update `0x71000a3d40`, render `0x71000a4020`, keys
 //! `0x71000a6930`): the current chapter's lines, choices and chapter titles from its replay, in newrodin at size 40
 //! over `/logview.txa`. A voiced line plays its voice again on A; Y asks to start reading from the selected line.
+//! With the pointer (`0x71000a7450` and its neighbours) the list drags and flicks vertically, a tap left of x 272
+//! replays a line's voice and elsewhere asks to jump to it, and a flick to the left opens the chapter list.
 //!
-//! shortcut: the chapter list (X) is not there, and the list cannot be dragged or flung with the pointer.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -31,7 +32,10 @@ use crate::{
         text_block::TextBlock,
         user::minigame::{self, Sprite},
     },
-    ui::{self, NineSlice},
+    ui::{
+        self, NineSlice,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
 };
 
 /// "Start reading from the selected line?" (`0x710015c8eb`, English IPS)
@@ -145,6 +149,8 @@ pub struct Backlog {
     texts: HashMap<usize, TextBlock>,
     /// The game's current line
     current: usize,
+    gestures: GestureRecognizer,
+    coast: Coast,
     /// X: the chapter list over the backlog (`+0xf8`)
     chapters: Option<ChapterList>,
     voice: VoicePlayer,
@@ -221,6 +227,8 @@ impl Backlog {
             texts: HashMap::new(),
             current,
             chapters: None,
+            gestures: GestureRecognizer::new(false),
+            coast: Coast::default(),
             voice: VoicePlayer::new(cx.audio.clone(), cx.asset_server.clone()),
             target_size: (1920, 1080),
         })
@@ -342,23 +350,78 @@ impl Backlog {
         } else if input.y {
             self.ask_jump(cx);
         } else if input.x {
-            cx.sound("decide");
-            let markers = self
-                .lines
-                .iter()
-                .map(|line| (line.kind, line.label.as_str()))
-                .collect::<Vec<_>>();
-            self.chapters = Some(ChapterList::new(&markers, self.cursor, self.current));
+            self.open_chapters(cx);
         } else if input.scroll != 0.0 {
-            let scroll =
-                (self.scroll.value() + input.scroll * 32.0).clamp(self.top, self.max_scroll());
-            self.scroll = Tweener::new(scroll);
-            // the cursor onto a line fully in view
-            let in_view = |line: &Line| line.y >= scroll && line.y + line.height <= scroll + VIEW;
-            if !in_view(&self.lines[self.cursor]) {
-                if let Some(i) = (0..self.lines.len()).find(|&i| in_view(&self.lines[i])) {
-                    self.cursor = i;
+            let scroll = self.scroll.value() + input.scroll * 32.0;
+            self.scroll_by_pointer(scroll);
+        }
+    }
+
+    /// Scrolls to `scroll` (clamped) at once and moves the cursor onto a line fully in view
+    fn scroll_by_pointer(&mut self, scroll: f32) {
+        let scroll = scroll.clamp(self.top, self.max_scroll());
+        self.scroll = Tweener::new(scroll);
+        let in_view = |line: &Line| line.y >= scroll && line.y + line.height <= scroll + VIEW;
+        if !in_view(&self.lines[self.cursor]) {
+            if let Some(i) = (0..self.lines.len()).find(|&i| in_view(&self.lines[i])) {
+                self.cursor = i;
+            }
+        }
+    }
+
+    fn open_chapters(&mut self, cx: &TaskCx) {
+        cx.sound("decide");
+        let markers = self
+            .lines
+            .iter()
+            .map(|line| (line.kind, line.label.as_str()))
+            .collect::<Vec<_>>();
+        self.chapters = Some(ChapterList::new(&markers, self.cursor, self.current));
+    }
+
+    /// The backlog's gesture listener
+    fn handle_pointer(&mut self, cx: &mut TaskCx) {
+        // within 30 degrees of the horizontal (`tan 30`)
+        let flat = |v: glam::Vec2| v.y.abs() <= v.x.abs() * 0.577_350_3;
+        for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+            match gesture {
+                Gesture::Down(_) => {
+                    // a touch stops a coasting list and does not tap (`+0x284 = -1`)
+                    if self.coast.is_moving() {
+                        self.coast.stop();
+                        self.gestures.cancel();
+                    }
                 }
+                Gesture::Tap(at) => {
+                    if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+                        cx.sound("decide");
+                        self.close(cx);
+                        return;
+                    }
+                    let y = at.y - LIST_Y + self.scroll.value();
+                    if let Some(i) = (0..self.lines.len()).find(|&i| {
+                        (self.lines[i].y..self.lines[i].y + self.lines[i].height).contains(&y)
+                    }) {
+                        self.cursor = i;
+                        if at.x < 272.0 {
+                            self.play_voice();
+                        } else {
+                            self.ask_jump(cx);
+                        }
+                        return;
+                    }
+                }
+                // only drags 30 to 150 degrees from the horizontal scroll the list
+                Gesture::Drag(from, to) if !flat(to - from) => {
+                    let scroll = self.scroll.value() - (to.y - from.y);
+                    self.scroll_by_pointer(scroll);
+                }
+                Gesture::Flick(v) if flat(v) && v.x < 0.0 => {
+                    self.open_chapters(cx);
+                    return;
+                }
+                Gesture::Flick(v) if !flat(v) => self.coast.start(v.y),
+                _ => {}
             }
         }
     }
@@ -432,8 +495,25 @@ impl Task for Backlog {
                     if !chapters.is_done() {
                         self.chapters = Some(chapters);
                     }
-                } else if cx.focused && self.scroll.is_idle() {
-                    self.handle_keys(cx);
+                } else if cx.focused {
+                    self.handle_pointer(cx);
+                    if self.coast.is_moving() {
+                        let scroll = self.coast.update(
+                            self.scroll.value(),
+                            self.top,
+                            self.max_scroll(),
+                            frames,
+                        );
+                        self.scroll_by_pointer(scroll);
+                    }
+                    if self.state == State::Active
+                        && self.chapters.is_none()
+                        && !self.gestures.is_active()
+                        && !self.coast.is_moving()
+                        && self.scroll.is_idle()
+                    {
+                        self.handle_keys(cx);
+                    }
                 }
             }
             State::Asking => {

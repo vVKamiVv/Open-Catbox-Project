@@ -3,8 +3,10 @@
 //! backlog's cursor and the game's current line, and its end, as right-aligned labels 60 px apart. Moving through it
 //! moves the backlog's cursor to the entry's line; A plays that line's voice and Y jumps there, as in the backlog.
 //!
-//! shortcut: the list cannot be dragged or flung with the pointer, and the minigames are all labelled "quiz" (the
-//! port's log does not keep the minigame's kind).
+//! With the pointer the list drags and flicks vertically and a flick to the right closes it, as the backlog does.
+//!
+//! shortcut: the minigames are all labelled "quiz" (the port's log does not keep the minigame's kind), and a tap
+//! only selects the row under it (what the original's tap does here was not traced).
 
 use std::collections::HashMap;
 
@@ -24,7 +26,10 @@ use crate::{
     },
     asset::{executable::text_at, texture_archive::NamedTextures},
     layer::{text_block::TextBlock, user::minigame::Sprite},
-    ui,
+    ui::{
+        self,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
 };
 
 const ROW: f32 = 60.0;
@@ -69,6 +74,9 @@ pub(super) struct ChapterList {
     open: f32,
     /// The rows' scroll in pixels (`+0x88`)
     scroll: Tweener,
+    gestures: GestureRecognizer,
+    /// The flick's speed (`+0xec`)
+    coast: Coast,
     rows: HashMap<usize, TextBlock>,
     state: State,
 }
@@ -146,6 +154,8 @@ impl ChapterList {
             open: 0.0,
             scroll: Tweener::new((first / ROW).floor() * ROW),
             rows: HashMap::new(),
+            gestures: GestureRecognizer::new(false),
+            coast: Coast::default(),
             state: State::Opening,
         }
     }
@@ -185,6 +195,22 @@ impl ChapterList {
     }
 
     /// `0x71000a8e90`; `flash_done` is whether the backlog's close button has stopped flashing
+    /// Scrolls to `scroll` (clamped) at once; the cursor follows onto the nearest row fully in view (`0x71000a9590`)
+    fn scroll_by_pointer(&mut self, scroll: f32) -> Option<ListEvent> {
+        let scroll = scroll.clamp(0.0, self.max_scroll());
+        self.scroll = Tweener::new(scroll);
+        let top = (scroll / ROW).ceil() as usize;
+        let bottom = (((scroll + VIEW) / ROW).floor() as usize).saturating_sub(1);
+        let follow = self
+            .cursor
+            .clamp(top, bottom.max(top))
+            .min(self.entries.len() - 1);
+        (follow != self.cursor).then(|| {
+            self.cursor = follow;
+            ListEvent::Select(self.entries[follow].line)
+        })
+    }
+
     pub fn update(&mut self, cx: &mut TaskCx, assets: &MenuAssets, flash_done: bool) -> ListEvent {
         let mut event = ListEvent::None;
         let mut stick = false;
@@ -195,7 +221,45 @@ impl ChapterList {
                     self.state = State::Active;
                 }
             }
-            State::Active if cx.focused && self.scroll.is_idle() => {
+            State::Active if cx.focused => {
+                let flat = |v: glam::Vec2| v.y.abs() <= v.x.abs() * 0.577_350_3;
+                for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+                    match gesture {
+                        Gesture::Down(_) if self.coast.is_moving() => {
+                            self.coast.stop();
+                            self.gestures.cancel();
+                        }
+                        Gesture::Tap(at) if (240.0..960.0).contains(&at.y) => {
+                            let row = ((at.y - 240.0 + self.scroll.value()) / ROW) as usize;
+                            if row < self.entries.len() && row != self.cursor {
+                                cx.sound("move");
+                                event = self.select(row);
+                            }
+                        }
+                        Gesture::Drag(from, to) if !flat(to - from) => {
+                            let scroll = self.scroll.value() - (to.y - from.y);
+                            event = self.scroll_by_pointer(scroll).unwrap_or(event);
+                            stick = true;
+                        }
+                        Gesture::Flick(v) if flat(v) && v.x > 0.0 => {
+                            cx.sound("cancel");
+                            self.state = State::Closing;
+                            return ListEvent::Close;
+                        }
+                        Gesture::Flick(v) if !flat(v) => self.coast.start(v.y),
+                        _ => {}
+                    }
+                }
+                if self.coast.is_moving() {
+                    let scroll =
+                        self.coast
+                            .update(self.scroll.value(), 0.0, self.max_scroll(), cx.frames);
+                    event = self.scroll_by_pointer(scroll).unwrap_or(event);
+                    stick = true;
+                }
+                if self.gestures.is_active() || self.coast.is_moving() || !self.scroll.is_idle() {
+                    return event;
+                }
                 let input = cx.input;
                 let n = self.entries.len() as i32;
                 let c = self.cursor as i32;
@@ -232,21 +296,9 @@ impl ChapterList {
                 } else if input.y {
                     event = ListEvent::Jump;
                 } else if input.scroll != 0.0 {
-                    // the cursor follows onto the nearest row fully in view (`0x71000a9590`)
-                    let scroll =
-                        (self.scroll.value() + input.scroll * 32.0).clamp(0.0, self.max_scroll());
-                    self.scroll = Tweener::new(scroll);
+                    let scroll = self.scroll.value() + input.scroll * 32.0;
+                    event = self.scroll_by_pointer(scroll).unwrap_or(event);
                     stick = true;
-                    let top = (scroll / ROW).ceil() as usize;
-                    let bottom = ((scroll + VIEW) / ROW).floor() as usize - 1;
-                    let follow = self
-                        .cursor
-                        .clamp(top, bottom.max(top))
-                        .min(self.entries.len() - 1);
-                    if follow != self.cursor {
-                        self.cursor = follow;
-                        event = ListEvent::Select(self.entries[follow].line);
-                    }
                 }
             }
             State::Active => {}
