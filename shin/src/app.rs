@@ -10,12 +10,13 @@ use shin_core::{
     },
     primitives::update::FrameId,
     time::Ticks,
+    vm::command::types::{MaskFlags, MaskParam},
 };
 use shin_input::{
     Action, ActionState, Pointer, RawInputState,
     inputs::{GamepadButton, MouseButton, VirtualGamepadButton},
 };
-use shin_render::render_pass::RenderPass;
+use shin_render::{RenderRequestBuilder, render_pass::RenderPass};
 use shin_window::{AppContext, RenderContext, ShinApp};
 use tracing::{debug, error, info, warn};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
@@ -32,13 +33,17 @@ use crate::{
     title::{Title, TitleExit},
     title_demo::TitleDemo,
     ui,
-    asset::system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
+    asset::{
+        mask::MaskTexture,
+        system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
+    },
     capture::{self, CaptureTargets, PendingCapture},
     cli::Cli,
     layer::user::EffectTextures,
     render::PreRenderContext,
     savedata,
     update::UpdateContext,
+    wiper::{mask::MaskWiperImpl, timed::TimedWiper},
 };
 
 /// The player's inputs, in the roles of the Switch's buttons (`0x71000c4300`); a gamepad maps directly (Nintendo
@@ -511,6 +516,17 @@ impl ShinApp for App {
         if let Some(next) = next {
             self.switch_scene(&mut pre_render_context, next);
         }
+        // a masked fade wipes to the new screen, which it needs as a picture of its own
+        let Self { fade, scene, .. } = self;
+        if let Some((_, to)) = fade.as_mut().and_then(|fade| fade.mask.as_mut()) {
+            let depth_stencil = pre_render_context.depth_stencil;
+            let mut pass = pre_render_context.begin_pass(
+                to.as_texture_target(),
+                Some(depth_stencil),
+                "scene_fade/new",
+            );
+            scene.render(&mut pass);
+        }
 
         if self.pending_capture.is_none() {
             if let Scene::Adv(adv) = &self.scene {
@@ -693,7 +709,18 @@ impl App {
                 ) {
                     Ok(select) => {
                         self.scene = Scene::ScenarioSelect(select);
-                        self.fade = Some(SceneFade::new(Some(old), 60.0));
+                        // `ScenarioSelect::First`: a soft wipe through `/curtain.msk` (softness 0.5) over 60 frames
+                        let mut fade = SceneFade::new(Some(old), 60.0);
+                        match self.asset_server.load_sync::<MaskTexture>("/curtain.msk") {
+                            Ok(mask) => {
+                                let wiper =
+                                    MaskWiperImpl::new(mask, MaskParam(0.5), MaskFlags::empty());
+                                let to = ctx.new_render_texture("scene_fade/new".to_string());
+                                fade.mask = Some((wiper, to));
+                            }
+                            Err(e) => warn!("Could not load /curtain.msk: {e:?}"),
+                        }
+                        self.fade = Some(fade);
                     }
                     Err(e) => error!("Could not open the scenario select: {e:?}"),
                 }
@@ -810,6 +837,8 @@ struct SceneFade {
     from: Option<RenderTexture>,
     elapsed: f32,
     duration: f32,
+    /// A mask wipe instead of the crossfade (program 0x20), with the new screen rendered each frame
+    mask: Option<(MaskWiperImpl, RenderTexture)>,
 }
 
 impl SceneFade {
@@ -818,11 +847,23 @@ impl SceneFade {
             from,
             elapsed: 0.0,
             duration,
+            mask: None,
         }
     }
 
     fn render(&self, pass: &mut RenderPass) {
-        let alpha = 1.0 - (self.elapsed / self.duration).clamp(0.0, 1.0);
+        let progress = (self.elapsed / self.duration).clamp(0.0, 1.0);
+        if let (Some((wiper, to)), Some(from)) = (&self.mask, &self.from) {
+            wiper.render(
+                pass,
+                RenderRequestBuilder::new(),
+                to.as_texture_source(),
+                from.as_texture_source(),
+                progress,
+            );
+            return;
+        }
+        let alpha = 1.0 - progress;
         let full = [0.0, 0.0, 1920.0, 1080.0];
         match &self.from {
             Some(texture) => ui::draw_texture(

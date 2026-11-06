@@ -117,6 +117,17 @@ impl TimedWiper for MaskWiperImpl {
     }
 }
 
+impl MaskWiperImpl {
+    /// The wipe alone, for a transition the caller times itself (the scenes' `0x7100062d50`)
+    pub fn new(mask: Arc<MaskTexture>, param2: MaskParam, flags: MaskFlags) -> Self {
+        Self {
+            mask,
+            param2,
+            flags,
+        }
+    }
+}
+
 pub type MaskWiper = TimedWiperWrapper<MaskWiperImpl>;
 
 impl MaskWiper {

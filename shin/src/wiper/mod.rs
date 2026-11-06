@@ -1,7 +1,7 @@
 mod default;
 mod glass;
-mod mask;
-mod timed;
+pub mod mask;
+pub mod timed;
 mod whirl;
 
 use from_variants::FromVariants;
