@@ -259,6 +259,40 @@ pub fn apply_blur(
     std::mem::swap(source, scratch);
 }
 
+/// The system menu's backdrop (`0x7100013af0`): `source` blurred horizontally into `scratch`, then vertically back,
+/// at full size with taps 0.75, 2.25, 3.75 and 5.25 px apart (radius 1.5) and the blur's weights
+pub fn apply_backdrop_blur(context: &mut PreRenderContext, source: &mut RenderTexture, scratch: &mut RenderTexture) {
+    backdrop_blur_pass(context, source, scratch, Vec2::X);
+    backdrop_blur_pass(context, scratch, source, Vec2::Y);
+}
+
+fn backdrop_blur_pass(
+    context: &mut PreRenderContext,
+    from: &RenderTexture,
+    to: &mut RenderTexture,
+    direction: Vec2,
+) {
+    let vertices = &build_quad_vertices(|t| PosTexVertex {
+        position: t * VIRTUAL_CANVAS_SIZE_VEC,
+        texture_position: t,
+    });
+    let mut pass = context.begin_pass(to.as_texture_target(), None, "backdrop_blur");
+    pass.run(
+        RenderRequestBuilder::new()
+            .color_blend_type(ColorBlendType::Opaque)
+            .build(
+                RenderProgramWithArguments::Blur {
+                    vertices: VertexSource::VertexData { vertices },
+                    texture: from.as_texture_source(),
+                    transform: top_left_projection_matrix(),
+                    offsets: blur_offsets(1.5, direction),
+                    weights: blur_weights(),
+                },
+                DrawPrimitive::TrianglesStrip,
+            ),
+    );
+}
+
 /// Ripple parameters for the shader: (frequency, amplitude, phase, 0). `amplitude` is property 82 in canvas pixels,
 /// `wavelength` property 83 (in thousandths of a doubled uv radius), `phase` the running phase
 fn ripple_params(amplitude: f32, wavelength: f32, phase: f32) -> Vec4 {

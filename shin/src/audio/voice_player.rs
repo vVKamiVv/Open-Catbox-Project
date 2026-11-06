@@ -149,6 +149,13 @@ impl VoicePlayer {
         }
     }
 
+    /// Holds the voices where they are, or lets them go on (`0x710011aab0`)
+    pub fn set_paused(&mut self, paused: bool) {
+        for voice in &mut self.playing {
+            let _ = voice.handle.set_paused(paused);
+        }
+    }
+
     /// Playing while any voice of the line still plays (stopping ones no longer count)
     pub fn get_wait_status(&self) -> AudioWaitStatus {
         if self

@@ -57,6 +57,13 @@ impl AudioHandle {
             .map_err(|_| anyhow!("Command queue full"))
     }
 
+    /// Holds the sound where it is, or lets it go on
+    pub fn set_paused(&mut self, paused: bool) -> anyhow::Result<()> {
+        self.command_producer
+            .try_push(Command::SetPaused(paused))
+            .map_err(|_| anyhow!("Command queue full"))
+    }
+
     /// Returns the current playback position of the sound.
     pub fn position(&self) -> Ticks {
         Ticks::from_millis(

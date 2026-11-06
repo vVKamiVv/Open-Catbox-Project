@@ -600,6 +600,21 @@ impl MessageLayer {
         self.reset_message();
     }
 
+    /// Holds the line's voices where they are, or lets them go on (the system menu's pause)
+    pub fn set_voices_paused(&mut self, paused: bool) {
+        self.voice_player.set_paused(paused);
+    }
+
+    /// The hidden flag (`0x71000b1ab0`, the window's `+0x38`) the menus and the hidden window set: the box slides
+    /// out at 0.1 per frame, and back in when cleared
+    pub fn set_hidden(&mut self, hidden: bool) {
+        self.modal_slide.set_direction(if hidden {
+            SlideInterpolatorDirection::Decreasing
+        } else {
+            SlideInterpolatorDirection::Increasing
+        });
+    }
+
     pub fn try_advance(&mut self) -> bool {
         if !self
             .modal_slide

@@ -20,6 +20,7 @@ mod random;
 mod render;
 mod savedata;
 mod time;
+mod ui;
 mod update;
 mod wiper;
 // mod window;

@@ -54,7 +54,7 @@ pub enum AppAction {
     AutoToggle,
     /// R: toggles skip mode
     SkipToggle,
-    /// X and Y: each stops auto and skip (the backlog and the system menu in the original)
+    /// X (backlog) and Y (system menu); either also stops auto and skip. The keyboard's X and Y keys
     ButtonX,
     ButtonY,
     /// shortcut: the port has no save menu yet, so F5 saves to the slot the menu would open at
@@ -101,8 +101,8 @@ impl Action for AppAction {
             AppAction::HoldSkip => key(KeyCode::ControlLeft),
             AppAction::AutoToggle => key(KeyCode::KeyA) || pad(GamepadButton::L),
             AppAction::SkipToggle => key(KeyCode::KeyS) || pad(GamepadButton::R),
-            AppAction::ButtonX => pad(GamepadButton::X),
-            AppAction::ButtonY => pad(GamepadButton::Y),
+            AppAction::ButtonX => key(KeyCode::KeyX) || pad(GamepadButton::X),
+            AppAction::ButtonY => key(KeyCode::KeyY) || pad(GamepadButton::Y),
             AppAction::Save => key(KeyCode::F5),
         })
     }
@@ -352,6 +352,11 @@ impl ShinApp for App {
         }
         if self.adv.take_write_request() {
             self.write_save();
+        }
+        if self.adv.take_exit_to_title() {
+            // shortcut: the port has no title screen yet, so returning to it closes the game
+            info!("No title screen yet; closing");
+            context.event_loop.exit();
         }
 
         if self.pending_capture.is_none() {

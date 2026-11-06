@@ -27,6 +27,8 @@ pub enum Command {
     SetVolume(Volume, Tween),
     SetPanning(Pan, Tween),
     Stop(Tween),
+    /// Holds playback where it is (the menus pause voices and sound effects)
+    SetPaused(bool),
 }
 
 pub(crate) struct Shared {
@@ -117,6 +119,7 @@ pub struct AudioSound<S: AudioFrameSource + Send> {
     command_consumer: HeapCons<Command>,
     shared: Arc<Shared>,
     state: PlaybackState,
+    paused: bool,
     volume: Tweener,
     panning: Tweener,
     volume_fade: Tweener,
@@ -139,6 +142,7 @@ impl<S: AudioFrameSource + Send> AudioSound<S> {
             command_consumer,
             shared,
             state: PlaybackState::Playing,
+            paused: false,
             volume: Tweener::new(data.settings.volume.0),
             panning: Tweener::new(data.settings.pan.0),
             volume_fade,
@@ -201,6 +205,7 @@ impl<S: AudioFrameSource + Send> Sound for AudioSound<S> {
                 Command::SetVolume(volume, tween) => self.volume.enqueue_now(volume.0, tween),
                 Command::SetPanning(panning, tween) => self.panning.enqueue_now(panning.0, tween),
                 Command::Stop(tween) => self.stop(tween),
+                Command::SetPaused(paused) => self.paused = paused,
             }
         }
 
@@ -227,6 +232,9 @@ impl<S: AudioFrameSource + Send> Sound for AudioSound<S> {
         _clock_info_provider: &ClockInfoProvider,
         _modulator_value_provider: &ModulatorValueProvider,
     ) -> Frame {
+        if self.paused {
+            return Frame::ZERO;
+        }
         let dt_ticks = Ticks::from_seconds(dt as f32);
 
         // update tweeners

@@ -71,6 +71,13 @@ impl SePlayer {
         }
     }
 
+    /// Holds every sound effect where it is, or lets them go on (`0x71000f3090`)
+    pub fn set_paused(&mut self, paused: bool) {
+        for handle in self.se_slots.iter_mut().flatten().chain(&mut self.once_slots) {
+            let _ = handle.set_paused(paused);
+        }
+    }
+
     /// Plays `se` once on the first automatic channel that is not playing and returns that channel (-1, -2, ...)
     pub fn play_once(&mut self, se: Arc<AudioFile>, volume: Volume, pan: Pan) -> i32 {
         let kira_data = AudioData::from_audio_file(se, AudioSettings {

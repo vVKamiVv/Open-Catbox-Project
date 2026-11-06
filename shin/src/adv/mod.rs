@@ -1,6 +1,7 @@
 pub mod assets;
 mod command;
 pub mod hud;
+pub mod menu;
 mod restore;
 mod unlocks;
 mod vm_state;
@@ -41,6 +42,10 @@ use vm_state::layers::ITER_VLAYER_SMALL_VECTOR_SIZE;
 pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
 
+use menu::{AdvRequest, Task, TaskCx, hidden_window::HiddenWindow, system_menu::SystemMenu};
+use shin_core::{primitives::color::FloatColor4, time::Tweener};
+use shin_render::render_texture::RenderTexture;
+
 use crate::{
     adv::assets::{AdvAssets, AdvFonts},
     app::AppAction,
@@ -50,16 +55,17 @@ use crate::{
     layer::{
         AnyLayer, AnyLayerMut, Layer as _, LayerGroup, PageLayer, RootLayerGroup, ScreenLayer,
         message_layer::{MessageLayer, MessageboxTextures},
-        render_layer_without_bg,
+        apply_backdrop_blur, render_layer_without_bg,
         render_params::TransformParams,
         select_layer::{SelectInput, SelectLayer},
-        user::minigame::{Directions, MinigameInput, PointerTracker},
+        user::minigame::{self, Directions, MinigameInput, PointerTracker},
         user::UserLayer,
     },
     render::{
         PreRenderContext,
         overlay::{OverlayCollector, OverlayVisitable},
     },
+    ui::{self, MenuInput},
     update::{AdvUpdatable, AdvUpdateContext, Updatable, UpdateContext},
 };
 
@@ -117,6 +123,14 @@ pub struct Adv {
     write_requested: bool,
     /// L and R as last frame, as the original toggles auto and skip on release
     toggles_held: (bool, bool),
+    /// The task pool (`ADV+0x158`): the windows and menus over the scene, the last one on top
+    tasks: Vec<Box<dyn Task>>,
+    /// The interface's hide counter (`ADV+0x478`) and the pause counter (`ADV+0x474`), which stops the script, voices
+    /// and sounds
+    hide_count: u32,
+    pause_count: u32,
+    /// "Return to title" was chosen and the save is written; the app takes it from here
+    exit_to_title: bool,
 }
 
 /// Where a load's replay left the script
@@ -162,7 +176,123 @@ impl Adv {
             play_frames,
             write_requested: false,
             toggles_held: (false, false),
+            tasks: Vec::new(),
+            hide_count: 0,
+            pause_count: 0,
+            exit_to_title: false,
         }
+    }
+
+    /// Whether the player chose "Return to title" (once)
+    pub fn take_exit_to_title(&mut self) -> bool {
+        std::mem::take(&mut self.exit_to_title)
+    }
+
+    /// `0x71000145f0`: the message window and the banners hide while the counter is above 0
+    fn hide_interface(&mut self, hide: bool) {
+        if hide {
+            self.hide_count += 1;
+        } else {
+            self.hide_count = self.hide_count.saturating_sub(1);
+        }
+        let hidden = self.hide_count > 0;
+        self.adv_state.message_layer_mut().set_hidden(hidden);
+        self.adv_state.hud.set_hidden(hidden);
+    }
+
+    /// The pause counter (`ADV+0x474`): voices and sounds hold while it is above 0, and the script waits
+    fn pause(&mut self, pause: bool) {
+        let was_paused = self.pause_count > 0;
+        if pause {
+            self.pause_count += 1;
+        } else {
+            self.pause_count = self.pause_count.saturating_sub(1);
+        }
+        let paused = self.pause_count > 0;
+        if paused != was_paused {
+            self.adv_state.message_layer_mut().set_voices_paused(paused);
+            self.adv_state.se_player.set_paused(paused);
+        }
+    }
+
+    /// Y (`0x7100013320`): the system menu over the blurred scene, which pauses and hides everything else
+    fn open_system_menu(&mut self, context: &mut UpdateContext) {
+        play_sys_se(&self.adv_state.audio_manager, context.asset_server, "page", Default::default());
+        self.adv_state.skip_auto = 0;
+        // `0x7100013a70`
+        self.adv_state.capture_backdrop(context.pre_render);
+        minigame::tween_now(&mut self.adv_state.backdrop_alpha, 1.0, 0.1);
+        self.hide_interface(true);
+        self.pause(true);
+        let menu = SystemMenu::new(
+            context.pre_render,
+            &self.adv_state.menu_assets,
+            &self.vm_state.save_info.info[1],
+            self.vm_state.chars.0,
+            !self.vm_state.tips.is_empty(),
+            self.vm_state.global.play_seconds,
+        );
+        self.tasks.push(Box::new(menu));
+    }
+
+    /// B (`0x7100013720`): hides the message window and the banners until the next press
+    fn open_hidden_window(&mut self) {
+        self.adv_state.skip_auto = 0;
+        self.hide_interface(true);
+        self.tasks.push(Box::new(HiddenWindow::default()));
+    }
+
+    /// Runs the task pool; true when a task has the input this frame
+    fn update_tasks(
+        &mut self,
+        context: &mut UpdateContext,
+        input_state: &EnumMap<AppAction, ActionState>,
+        pointer: Pointer,
+    ) -> bool {
+        if self.tasks.is_empty() {
+            return false;
+        }
+        let mut requests = Vec::new();
+        let top = self.tasks.len() - 1;
+        let input = MenuInput::new(input_state, pointer);
+        let audio = self.adv_state.audio_manager.clone();
+        let frames = context.delta_ticks.as_f32();
+        let pre_render = &*context.pre_render;
+        let asset_server = context.asset_server;
+        let global = &mut self.vm_state.global;
+        let mut index = 0;
+        self.tasks.retain_mut(|task| {
+            let focused = index == top;
+            index += 1;
+            task.update(&mut TaskCx {
+                frames,
+                focused,
+                input: if focused { input } else { MenuInput::released(pointer) },
+                pre_render,
+                audio: &audio,
+                assets: asset_server,
+                global,
+                requests: &mut requests,
+            })
+        });
+
+        for request in requests {
+            match request {
+                AdvRequest::Unhide => self.hide_interface(false),
+                AdvRequest::SystemMenuClosed => {
+                    // `0x7100014570`
+                    self.pause(false);
+                    self.hide_interface(false);
+                    minigame::tween_now(&mut self.adv_state.backdrop_alpha, 0.0, 0.1);
+                }
+                AdvRequest::ExitToTitle => {
+                    info!("Returning to the title");
+                    self.write_requested = true;
+                    self.exit_to_title = true;
+                }
+            }
+        }
+        true
     }
 
     /// The save file's contents
@@ -244,7 +374,8 @@ impl Adv {
     /// What both modes need: the system enabled, no event, no choice or minigame waiting for the player
     fn modes_allowed(&self) -> bool {
         let save = &self.vm_state.save;
-        save.system_enabled
+        self.tasks.is_empty()
+            && save.system_enabled
             && save.event.is_none()
             && self.adv_state.select_layer.is_none()
             && !matches!(self.current_command, Some(ExecutingCommand::QUIZ(_)))
@@ -296,18 +427,17 @@ impl Adv {
     #[tracing::instrument(skip_all)]
     pub fn render(&self, pass: &mut RenderPass) {
         self.adv_state.render(pass);
+        for task in &self.tasks {
+            task.render(pass);
+        }
     }
 
     pub fn handle_input(
         &mut self,
+        context: &mut UpdateContext,
         state: EnumMap<AppAction, ActionState>,
         pointer: Pointer,
-        is_focused: bool,
     ) {
-        if !is_focused {
-            return;
-        }
-
         if let Some(select_layer) = &mut self.adv_state.select_layer {
             for (action, input) in [
                 (AppAction::AnyUp, SelectInput::Up),
@@ -342,6 +472,20 @@ impl Adv {
             };
             quiz.handle_input(input, pointer);
             return;
+        }
+
+        // with the system enabled, outside events and with auto and skip off: Y opens the system menu, B hides the
+        // window (`0x7100011f08`)
+        let save = &self.vm_state.save;
+        if save.system_enabled && save.event.is_none() && self.adv_state.skip_auto == 0 {
+            if state[AppAction::ButtonY].is_clicked {
+                self.open_system_menu(context);
+                return;
+            }
+            if state[AppAction::Cancel].is_clicked {
+                self.open_hidden_window();
+                return;
+            }
         }
 
         // inside an event (system enabled), confirm shows "Press B to Skip." (`0x7100011f2c`)
@@ -381,9 +525,10 @@ impl Adv {
         //         .advance();
         // }
 
-        // TODO: tasks from task pool can steal focus
-        if !self.handle_mode_buttons(&input_state, context.asset_server) {
-            self.handle_input(input_state, pointer, true);
+        // a task in the pool takes the input; the ADV's buttons only work without one (`0x7100011ea0`)
+        let task_has_input = self.update_tasks(context, &input_state, pointer);
+        if !task_has_input && !self.handle_mode_buttons(&input_state, context.asset_server) {
+            self.handle_input(context, input_state, pointer);
         }
         self.adv_state.skipping = self.is_fast_forwarding(fast_forward_button_held);
         if self.is_auto() {
@@ -460,7 +605,8 @@ impl Adv {
             }
         }
 
-        while !self.script_exited {
+        // while the system menu is up the script waits (`ADV+0x474`)
+        while !self.script_exited && self.pause_count == 0 {
             // check the fast-forward breakpoint; delete if hit
             if self
                 .fast_forward_to_bp
@@ -736,6 +882,10 @@ pub struct AdvState {
     pub skipping: bool,
     /// What the screen draws over its layers: banners, icons, notifications
     pub hud: hud::AdvHud,
+    pub menu_assets: menu::MenuAssets,
+    /// The blurred capture of the scene behind the system menu (`ADV+0x190`) and its alpha (`ADV+0x198`)
+    backdrop: Option<RenderTexture>,
+    pub backdrop_alpha: Tweener,
 }
 
 impl AdvState {
@@ -783,6 +933,13 @@ impl AdvState {
             skip_auto: 0,
             skipping: false,
             hud: hud::AdvHud::new(assets.hud_textures.clone(), assets.fonts.system_font.clone()),
+            menu_assets: menu::MenuAssets {
+                system_textures: assets.system_textures.clone(),
+                adv_textures: assets.hud_textures.clone(),
+                system_font: assets.fonts.system_font.clone(),
+            },
+            backdrop: None,
+            backdrop_alpha: Tweener::new(0.0),
             back_layer_group: None,
             audio_manager: audio_manager.clone(),
             bgm_player: BgmPlayer::new(audio_manager.clone()),
@@ -850,12 +1007,35 @@ impl AdvState {
         // self.back_layer_group = Some(self.root_layer_group.render_clone(ctx));
     }
 
+    /// `0x7100013af0`: the scene without the message window and the overlay, rendered and blurred, for the system
+    /// menu's backdrop
+    pub fn capture_backdrop(&mut self, ctx: &mut PreRenderContext) {
+        let mut texture = ctx.new_render_texture("backdrop".to_string());
+        let mut scratch = ctx.new_render_texture("backdrop/scratch".to_string());
+        let depth_stencil = ctx.depth_stencil;
+        {
+            let mut pass = ctx.begin_pass(texture.as_texture_target(), Some(depth_stencil), "backdrop");
+            pass.clear(Some(UnormColor::BLACK), Some(0), Some(1.0));
+            render_layer_without_bg(&mut pass, &TransformParams::default(), self.screen_layer(), 0);
+        }
+        apply_backdrop_blur(ctx, &mut texture, &mut scratch);
+        self.backdrop = Some(texture);
+    }
+
     #[tracing::instrument(skip_all)]
     pub fn render(&self, pass: &mut RenderPass) {
         pass.clear(Some(UnormColor::BLACK), Some(0), Some(1.0));
-        render_layer_without_bg(pass, &TransformParams::default(), &self.root_layer_group, 0);
-        if let Some(select_layer) = &self.select_layer {
-            select_layer.render(pass, &self.messagebox_textures);
+        let backdrop_alpha = self.backdrop_alpha.value();
+        let backdrop = self.backdrop.as_ref().filter(|_| backdrop_alpha > 0.0);
+        // with the backdrop fully up the scene is not drawn (ADV render)
+        if backdrop.is_none() || backdrop_alpha < 1.0 {
+            render_layer_without_bg(pass, &TransformParams::default(), &self.root_layer_group, 0);
+            if let Some(select_layer) = &self.select_layer {
+                select_layer.render(pass, &self.messagebox_textures);
+            }
+        }
+        if let Some(backdrop) = backdrop {
+            draw_backdrop(pass, backdrop, backdrop_alpha);
         }
         self.hud.render(pass);
     }
@@ -880,6 +1060,11 @@ impl Updatable for AdvState {
 
         self.root_layer_group.update(&adv_update_context);
 
+        ui::advance(&mut self.backdrop_alpha, context.delta_ticks.as_f32());
+        if self.backdrop_alpha.is_idle() && self.backdrop_alpha.value() <= 0.0 {
+            self.backdrop = None;
+        }
+
         let transform = TransformParams::default();
 
         self.root_layer_group
@@ -897,4 +1082,36 @@ impl Updatable for AdvState {
             }
         }
     }
+}
+
+/// The backdrop over the whole screen at half brightness, faded by `alpha`: colour (0.5a, 0.5a, 0.5a, a) with blend 5
+/// (premultiplied) while it fades, opaque once it is up (ADV render `0x71000126b4`)
+fn draw_backdrop(pass: &mut RenderPass, backdrop: &RenderTexture, alpha: f32) {
+    use shin_render::{
+        DrawPrimitive, RenderProgramWithArguments,
+        shaders::types::{buffer::VertexSource, vertices::PosColTexVertex},
+    };
+    let grey = 0.5 * alpha;
+    let color = FloatColor4::from_rgba(grey, grey, grey, alpha).into_unorm();
+    let blend = if alpha < 1.0 {
+        shin_render::ColorBlendType::LayerPremultiplied1
+    } else {
+        shin_render::ColorBlendType::Opaque
+    };
+    let vertex = |x: f32, y: f32| PosColTexVertex {
+        position: glam::vec3(x * 1920.0, y * 1080.0, 0.0),
+        color,
+        texture_position: glam::vec2(x, y),
+    };
+    let vertices = [vertex(0.0, 0.0), vertex(1.0, 0.0), vertex(0.0, 1.0), vertex(1.0, 1.0)];
+    pass.run(shin_render::RenderRequestBuilder::new().color_blend_type(blend).build(
+        RenderProgramWithArguments::Sprite {
+            vertices: VertexSource::VertexData {
+                vertices: &vertices,
+            },
+            sprite: backdrop.as_texture_source(),
+            transform: ui::projection(),
+        },
+        DrawPrimitive::TrianglesStrip,
+    ));
 }

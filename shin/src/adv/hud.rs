@@ -2,8 +2,7 @@
 //! song-title banner (a new BGM), the skip and auto icons, the "Characters/Tips updated" notification and the
 //! event-skip hint, all in 1920x1080 top-left space with textures from `/adv.txa`.
 //!
-//! shortcut: the touch screen's on-screen buttons (`navi`) are not drawn, the port having no touch input; hiding the
-//! interface (the hidden window, menus) does not hide the banners yet.
+//! shortcut: the touch screen's on-screen buttons (`navi`) are not drawn, the port having no touch input.
 
 use std::{collections::VecDeque, sync::Arc};
 
@@ -22,7 +21,7 @@ use crate::{
 };
 
 /// A text object's outline mode 1: a 3 px outline inside 3 px of padding (`0x7100101360`)
-const OUTLINE: f32 = 3.0;
+pub(crate) const OUTLINE: f32 = 3.0;
 
 /// One step of the original's tweener (`0x71000bb620`)
 #[derive(Debug, Clone, Copy)]
@@ -128,7 +127,7 @@ fn stop_hold(value: f32, frames: f32) -> Step {
 }
 
 /// The layout of a HUD text object: `width` wide with mode-1 padding, `size`, justified, room for rubi
-fn text_layout(width: f32, size: f32) -> LayoutParams {
+pub(crate) fn text_layout(width: f32, size: f32) -> LayoutParams {
     LayoutParams {
         layout_width: width - 2.0 * OUTLINE,
         text_alignment: MessageTextLayout::Justify,
@@ -145,7 +144,7 @@ fn text_layout(width: f32, size: f32) -> LayoutParams {
 }
 
 /// Draws a text object whose top-left corner (including its padding) is at the origin of `transform`
-fn draw_text(pass: &mut RenderPass, text: &TextBlock, transform: Mat4, tint: FloatColor4, alpha: f32) {
+pub(crate) fn draw_text(pass: &mut RenderPass, text: &TextBlock, transform: Mat4, tint: FloatColor4, alpha: f32) {
     text.render(
         pass,
         RenderRequestBuilder::new().color_blend_type(ColorBlendType::Layer1),
@@ -197,6 +196,8 @@ pub struct AdvHud {
     /// Seconds since the screen started, for the icons' pulse (`ADV+0x498`)
     clock: f32,
     modes: HudModes,
+    /// The banners' hidden flags (`0x7100064230`, `0x710009e150`), set while the interface is hidden
+    hidden: bool,
 }
 
 impl AdvHud {
@@ -213,6 +214,7 @@ impl AdvHud {
             hint_alpha: Steps::default(),
             clock: 0.0,
             modes: HudModes::default(),
+            hidden: false,
         }
     }
 
@@ -285,6 +287,11 @@ impl AdvHud {
         true
     }
 
+    /// Hides the scene-title and song-title banners, or shows them again
+    pub fn set_hidden(&mut self, hidden: bool) {
+        self.hidden = hidden;
+    }
+
     /// Advances the HUD by `frames` (`0x7100010fb0`)
     pub fn update(&mut self, frames: f32, modes: HudModes, audio: &shin_audio::AudioManager, assets: &AssetServer) {
         self.modes = modes;
@@ -347,14 +354,14 @@ impl AdvHud {
         let projection = top_left_projection_matrix();
         let modes = self.modes;
 
-        if let Some(scene) = &self.scene_title.as_ref().filter(|_| modes.show_scene_title) {
+        if let Some(scene) = &self.scene_title.as_ref().filter(|_| modes.show_scene_title && !self.hidden) {
             // bottom-left corner at (4, 1076)
             let top = 1076.0 - scene.text.size().y;
             let transform = projection * Mat4::from_translation(vec3(4.0, top, 0.0));
             draw_text(pass, &scene.text, transform, FloatColor4::WHITE, scene.alpha.value());
         }
 
-        if let Some(song) = &self.song_title.as_ref().filter(|_| modes.show_song_title) {
+        if let Some(song) = &self.song_title.as_ref().filter(|_| modes.show_song_title && !self.hidden) {
             let y = song.y.value();
             let [w, h] = song.note.size().to_array();
             let tint = FloatColor4::from_rgba(0.75, 1.0, 1.0, 1.0);

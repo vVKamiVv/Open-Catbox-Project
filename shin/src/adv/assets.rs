@@ -20,6 +20,8 @@ pub struct AdvAssets {
     pub effect_textures: Arc<EffectTextures>,
     /// `/adv.txa`: the skip/auto icons, the notification and the event-skip hint
     pub hud_textures: Arc<NamedTextures>,
+    /// `/systex.txa`: the dialogs' frames and buttons, shared by every screen (`*0x7100226808`)
+    pub system_textures: Arc<NamedTextures>,
 }
 
 #[derive(Clone, RenderClone)]
@@ -37,6 +39,7 @@ impl AdvAssets {
             asset_server.load(asset_paths::MSGTEX),
             asset_server.load(asset_paths::EFFECTS),
             asset_server.load(asset_paths::ADV_TXA),
+            asset_server.load(asset_paths::SYSTEX),
         )?;
 
         Ok(Self {
@@ -45,6 +48,7 @@ impl AdvAssets {
             messagebox_textures: result.2,
             effect_textures: result.3,
             hud_textures: result.4,
+            system_textures: result.5,
         })
     }
 }

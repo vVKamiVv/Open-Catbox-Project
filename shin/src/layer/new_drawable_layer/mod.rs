@@ -1,4 +1,4 @@
-mod effect_passes;
+pub(crate) mod effect_passes;
 
 use glam::{Vec2, Vec4};
 use shin_core::{

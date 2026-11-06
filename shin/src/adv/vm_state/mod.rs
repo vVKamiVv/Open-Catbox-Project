@@ -71,7 +71,9 @@ impl VmState {
             layers: LayersState::new(),
             audio: AudioState::new(),
             notify_level: 0,
-            chars: (0, 0),
+            // below 0 until the first CHARS: the system menu has no Characters item at the start of a game (as on
+            // the Switch)
+            chars: (-1, -1),
             tips: Vec::new(),
         }
     }
