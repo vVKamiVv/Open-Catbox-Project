@@ -8,12 +8,16 @@
 pub mod config_menu;
 pub mod dialog;
 pub mod hidden_window;
+pub mod save_menu;
 pub mod system_menu;
 
 use std::sync::Arc;
 
 use shin_audio::AudioManager;
-use shin_core::{format::save::SaveData, vm::command::types::Volume};
+use shin_core::{
+    format::{save::SaveData, scenario::Scenario},
+    vm::command::types::Volume,
+};
 use shin_render::render_pass::RenderPass;
 
 use crate::{
@@ -31,6 +35,8 @@ pub struct MenuAssets {
     /// `/adv.txa`
     pub adv_textures: Arc<NamedTextures>,
     pub system_font: Arc<GpuFontLazy>,
+    /// For replaying bookmarks
+    pub scenario: Arc<Scenario>,
 }
 
 /// What a task asks of the adventure screen
@@ -44,6 +50,10 @@ pub enum AdvRequest {
     ExitToTitle,
     /// Write the save file (a `SaveGame` task, `0x71000d52f0`)
     WriteSave,
+    /// Put the current page in this bookmark and write the save file (`0x71000da920`)
+    SaveToSlot(usize),
+    /// Leave for this bookmark: a new adventure screen loads it (`0x7100016410`)
+    LoadSlot(usize),
 }
 
 /// What a task gets each frame

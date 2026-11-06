@@ -11,10 +11,18 @@ use shin_render::{
     ColorBlendType, DrawPrimitive, RenderProgramWithArguments, RenderRequestBuilder,
     gpu_texture::GpuTexture,
     render_pass::RenderPass,
-    shaders::types::{buffer::VertexSource, vertices::PosColVertex},
+    shaders::types::{
+        buffer::VertexSource,
+        vertices::{PosColTexVertex, PosColVertex},
+    },
 };
 
-use crate::{app::AppAction, layer::user::minigame::Sprite, render::top_left_projection_matrix};
+use crate::{
+    adv::hud::OUTLINE,
+    app::AppAction,
+    layer::{text_block::TextBlock, user::minigame::Sprite},
+    render::top_left_projection_matrix,
+};
 
 /// The blend most menu draws use (the original's blend 2: straight alpha)
 pub fn builder() -> RenderRequestBuilder {
@@ -179,4 +187,114 @@ impl MenuInput {
             ..Default::default()
         }
     }
+}
+
+/// A text object in `tint` with its outline in `border`, its padded top-left corner at the origin of `transform`
+pub fn draw_text(
+    pass: &mut RenderPass,
+    text: &TextBlock,
+    transform: Mat4,
+    tint: FloatColor4,
+    border: FloatColor4,
+) {
+    text.render(
+        pass,
+        builder(),
+        transform * Mat4::from_translation(vec3(OUTLINE, OUTLINE, 0.0)),
+        tint,
+        border,
+    );
+}
+
+/// A textured quad whose colour goes from `top` to `bottom` (the list edges' fades)
+pub fn gradient_sprite(
+    pass: &mut RenderPass,
+    texture: &GpuTexture,
+    transform: Mat4,
+    [x0, y0, x1, y1]: [f32; 4],
+    [u0, v0, u1, v1]: [f32; 4],
+    top: FloatColor4,
+    bottom: FloatColor4,
+) {
+    let (top, bottom) = (top.into_unorm(), bottom.into_unorm());
+    let vertex = |x: f32, y: f32, u: f32, v: f32, color| PosColTexVertex {
+        position: vec3(x, y, 0.0),
+        color,
+        texture_position: glam::vec2(u, v),
+    };
+    let vertices = [
+        vertex(x0, y0, u0, v0, top),
+        vertex(x1, y0, u1, v0, top),
+        vertex(x0, y1, u0, v1, bottom),
+        vertex(x1, y1, u1, v1, bottom),
+    ];
+    pass.run(builder().build(
+        RenderProgramWithArguments::Sprite {
+            vertices: VertexSource::VertexData {
+                vertices: &vertices,
+            },
+            sprite: texture.as_source(),
+            transform,
+        },
+        DrawPrimitive::TrianglesStrip,
+    ));
+}
+
+/// The engine's vertical scroll bar (`0x71000ef580`): a track `view` long at `origin` and a thumb for `scroll` of
+/// `height`, from systex's `scroll` (64 x 64: track on the left half, thumb on the right, each in 8 px caps and a
+/// stretched middle); nothing when everything fits
+pub fn draw_scroll_bar(
+    pass: &mut RenderPass,
+    texture: &GpuTexture,
+    transform: Mat4,
+    (x, y): (f32, f32),
+    view: f32,
+    scroll: f32,
+    height: f32,
+) {
+    let scroll = scroll.trunc();
+    if height <= view || scroll < 0.0 || scroll + view > height {
+        return;
+    }
+    let length = view - 16.0;
+    // the bar's own coordinates start 8 px down so its caps fit inside the view
+    let top = y + 8.0;
+    let mut piece = |u0: f32, y0: f32, y1: f32, v0: f32| {
+        Sprite::new(texture, [x, top + y0, x + 16.0, top + y1])
+            .uv([u0, v0, u0 + 0.5, v0 + 0.25])
+            .draw(pass, builder(), transform);
+    };
+    for (u0, start, end) in [
+        (0.0, 0.0, length),
+        (
+            0.5,
+            length * scroll / height,
+            length * (scroll + view) / height,
+        ),
+    ] {
+        piece(u0, start - 8.0, start, 0.0);
+        piece(u0, start, end, 0.25);
+        piece(u0, end, end + 8.0, 0.5);
+    }
+}
+
+/// Limits drawing to `rect` (1920x1080 top-left space) on a target of `target_size` pixels, or lifts the limit
+pub fn clip(pass: &mut RenderPass, rect: Option<[f32; 4]>, target_size: (u32, u32)) {
+    let Some([x0, y0, x1, y1]) = rect else {
+        pass.set_scissor(None, target_size);
+        return;
+    };
+    let (w, h) = (target_size.0 as f32, target_size.1 as f32);
+    let px = |x: f32, full: f32, max: f32| (x / full * max).round().clamp(0.0, max) as u32;
+    let (left, top) = (px(x0, 1920.0, w), px(y0, 1080.0, h));
+    let (right, bottom) = (px(x1, 1920.0, w), px(y1, 1080.0, h));
+    pass.set_scissor(
+        Some((
+            left,
+            top,
+            right.saturating_sub(left),
+            bottom.saturating_sub(top),
+        )),
+        target_size,
+    );
 }

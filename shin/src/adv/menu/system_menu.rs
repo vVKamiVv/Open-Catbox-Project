@@ -3,8 +3,7 @@
 //! scene's title and the play time. An item flashes, then opens its screen while the menu slides away, and the menu
 //! slides back when that screen closes.
 //!
-//! shortcut: Save, Load, Characters, Tips and Manual do not exist in the port yet; choosing them plays the error
-//! sound.
+//! shortcut: Characters, Tips and Manual do not exist in the port yet; choosing them plays the error sound.
 
 use glam::{Mat4, vec3};
 use shin_core::{
@@ -15,7 +14,12 @@ use shin_core::{
 use shin_render::render_pass::RenderPass;
 use tracing::warn;
 
-use super::{AdvRequest, MenuAssets, Task, TaskCx, config_menu::ConfigMenu, dialog::Dialog};
+use super::{
+    AdvRequest, MenuAssets, Task, TaskCx,
+    config_menu::ConfigMenu,
+    dialog::Dialog,
+    save_menu::{Mode, SaveMenu},
+};
 use crate::{
     adv::hud::{OUTLINE, draw_text, text_layout},
     layer::{
@@ -211,7 +215,17 @@ impl SystemMenu {
                     return;
                 }
             },
-            SAVE | LOAD | CHARACTERS | TIPS | MANUAL => {
+            SAVE | LOAD => {
+                let mode = if id == SAVE { Mode::Save } else { Mode::Load };
+                match SaveMenu::new(cx, &self.assets, mode) {
+                    Some(menu) => self.child = Some(Child::Screen(Box::new(menu))),
+                    None => {
+                        cx.sound("error");
+                        return;
+                    }
+                }
+            }
+            CHARACTERS | TIPS | MANUAL => {
                 warn!("System menu item {id} has no screen in the port yet");
                 cx.sound("error");
                 return;

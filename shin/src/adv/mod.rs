@@ -43,7 +43,7 @@ pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
 
 use menu::{AdvRequest, Task, TaskCx, hidden_window::HiddenWindow, system_menu::SystemMenu};
-use shin_core::{primitives::color::FloatColor4, time::Tweener};
+use shin_core::{primitives::color::FloatColor4, time::{Tween, Tweener}};
 use shin_render::render_texture::RenderTexture;
 
 use crate::{
@@ -131,6 +131,8 @@ pub struct Adv {
     pause_count: u32,
     /// "Return to title" was chosen and the save is written; the app takes it from here
     exit_to_title: bool,
+    /// A bookmark was chosen in the load screen; the app replaces this screen with one that loads it
+    load_request: Option<GameDataEntry>,
 }
 
 /// Where a load's replay left the script
@@ -180,7 +182,21 @@ impl Adv {
             hide_count: 0,
             pause_count: 0,
             exit_to_title: false,
+            load_request: None,
         }
+    }
+
+    /// The bookmark the player chose to load (once)
+    pub fn take_load_request(&mut self) -> Option<GameDataEntry> {
+        self.load_request.take()
+    }
+
+    /// Stops this screen's sounds before it is replaced (the original destroys its players with it)
+    pub fn shutdown(&mut self) {
+        let quick = Tween::linear(Ticks::ZERO);
+        self.adv_state.bgm_player.stop(quick);
+        self.adv_state.se_player.stop_all(quick);
+        self.adv_state.message_layer_mut().stop_voices();
     }
 
     /// Whether the player chose "Return to title" (once)
@@ -286,6 +302,18 @@ impl Adv {
                     minigame::tween_now(&mut self.adv_state.backdrop_alpha, 0.0, 0.1);
                 }
                 AdvRequest::WriteSave => self.write_requested = true,
+                AdvRequest::SaveToSlot(slot) => {
+                    self.save_to_slot(slot);
+                    self.write_requested = true;
+                }
+                AdvRequest::LoadSlot(slot) => {
+                    let global = &mut self.vm_state.global;
+                    if let Some(data) = &global.manual_save_slots[slot] {
+                        // the position is remembered in memory only (`0x71000db120`)
+                        global.save_menu_position = slot as u8;
+                        self.load_request = Some(data.entry.clone());
+                    }
+                }
                 AdvRequest::ExitToTitle => {
                     info!("Returning to the title");
                     self.write_requested = true;
@@ -712,6 +740,14 @@ impl Adv {
     }
 }
 
+/// The SAVEINFO texts (levels 0 and 1) at a bookmark's save point, for the save and load screens; replays it like a
+/// load does (`ThumbMaker::StateBuilder`)
+pub(crate) fn replay_save_info(scenario: &Scenario, global: SaveData, entry: GameDataEntry) -> [String; 2] {
+    let (_, vm_state, _) = replay(scenario, global, entry, None);
+    let [first, second, ..] = vm_state.save_info.info;
+    [first, second]
+}
+
 /// Replays the script of `entry` to its save point (`0x710001b340`); for a new game just sets the VM up
 fn replay(
     scenario: &Scenario,
@@ -938,6 +974,7 @@ impl AdvState {
                 system_textures: assets.system_textures.clone(),
                 adv_textures: assets.hud_textures.clone(),
                 system_font: assets.fonts.system_font.clone(),
+                scenario: assets.scenario.clone(),
             },
             backdrop: None,
             backdrop_alpha: Tweener::new(0.0),

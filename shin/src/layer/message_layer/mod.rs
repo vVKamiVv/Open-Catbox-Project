@@ -600,6 +600,11 @@ impl MessageLayer {
         self.reset_message();
     }
 
+    /// Stops the line's voices (the screen is being replaced)
+    pub fn stop_voices(&mut self) {
+        self.voice_player.stop();
+    }
+
     /// Holds the line's voices where they are, or lets them go on (the system menu's pause)
     pub fn set_voices_paused(&mut self, paused: bool) {
         self.voice_player.set_paused(paused);

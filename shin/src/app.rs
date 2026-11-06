@@ -110,11 +110,12 @@ impl Action for AppAction {
 
 pub struct App {
     frame_id: FrameId,
-    #[expect(unused)] // for future stuff
     audio_manager: Arc<AudioManager>,
     asset_server: Arc<AssetServer>,
     effect_textures: Arc<EffectTextures>,
     adv: Adv,
+    /// What a new adventure screen is built from, when a bookmark is loaded
+    adv_assets: AdvAssets,
     capture_dir: PathBuf,
     /// A captured frame queued for readback; saved on the next update, after the GPU has run the copy
     pending_capture: Option<PendingCapture>,
@@ -183,7 +184,7 @@ impl ShinApp for App {
         let mut adv = Adv::new(
             audio_manager.clone(),
             asset_server.clone(),
-            adv_assets,
+            adv_assets.clone(),
             save,
             entry,
             cli.unsafe_entry_point.map(CodeAddress),
@@ -278,6 +279,7 @@ impl ShinApp for App {
             asset_server,
             effect_textures,
             adv,
+            adv_assets,
             capture_dir: cli.capture_dir,
             pending_capture: None,
             savedata_path,
@@ -352,6 +354,20 @@ impl ShinApp for App {
         }
         if self.adv.take_write_request() {
             self.write_save();
+        }
+        if let Some(entry) = self.adv.take_load_request() {
+            // `0x7100016410`: the scene becomes a new adventure screen that loads the bookmark
+            info!("Loading the bookmark at save point {}", entry.save_position);
+            self.adv.shutdown();
+            let global = self.adv.save_data().clone();
+            self.adv = Adv::new(
+                self.audio_manager.clone(),
+                self.asset_server.clone(),
+                self.adv_assets.clone(),
+                global,
+                entry,
+                None,
+            );
         }
         if self.adv.take_exit_to_title() {
             // shortcut: the port has no title screen yet, so returning to it closes the game
