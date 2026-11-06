@@ -254,6 +254,8 @@ pub struct MovieUniformParams {
     pub transform: Mat4,
     pub color_bias: Vec4,
     pub color_transform: [Vec4; 3],
+    /// The layer's color multiplier (its opacity in `w`)
+    pub color: Vec4,
 }
 
 impl UniformType for MovieUniformParams {
@@ -276,6 +278,11 @@ impl UniformType for MovieUniformParams {
                 name: "color_transform",
                 ty: &<[Vec4; 3] as UniformType>::SCHEMA,
                 offset: MovieUniformParams::METADATA.extra.offsets[2] as u32,
+            },
+            FieldSchema {
+                name: "color",
+                ty: &<Vec4 as UniformType>::SCHEMA,
+                offset: MovieUniformParams::METADATA.extra.offsets[3] as u32,
             },
         ],
     });

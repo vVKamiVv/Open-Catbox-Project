@@ -195,10 +195,22 @@ impl NewDrawableLayer for MovieLayerImpl {
         let transform =
             transform.compute_final_transform() * Mat4::from_translation(vec3(-960.0, -540.0, 0.0));
 
+        // drawn like any layer (the original uses the generic layer shader): with the layer's blend, its color
+        // and opacity, and the movie's own alpha when it carries one
+        let builder =
+            RenderRequestBuilder::new().depth_stencil_shorthand(stencil_ref, false, false);
+        let builder = match target_pass {
+            PassKind::Opaque => builder,
+            PassKind::Transparent => builder.layer_color_blend(drawable.blend_type),
+        };
         frame.render(
             pass,
-            RenderRequestBuilder::new().depth_stencil_shorthand(stencil_ref, false, false),
+            builder,
             transform,
+            {
+                let c = drawable.color_multiplier;
+                glam::vec4(c.r, c.g, c.b, c.a)
+            },
             self.transparency == MovieTransparencyMode::Transparent,
         );
     }
@@ -222,8 +234,11 @@ impl AdvUpdatable for MovieLayerImpl {
         }
         let mut shared = self.shared.lock();
         let Some(task) = &mut shared.restart else {
-            let (movie, device, audio_manager) =
-                (self.movie.clone(), ctx.device.clone(), self.audio_manager.clone());
+            let (movie, device, audio_manager) = (
+                self.movie.clone(),
+                ctx.device.clone(),
+                self.audio_manager.clone(),
+            );
             shared.restart = Some(shin_tasks::compute::spawn(move || {
                 movie.play(&device, &audio_manager)
             }));

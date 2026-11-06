@@ -216,6 +216,7 @@ impl VideoPlayerFrameHandle<'_> {
         pass: &mut RenderPass,
         builder: RenderRequestBuilder,
         transform: Mat4,
+        color: Vec4,
         alpha: bool,
     ) {
         let tex = &self.guard.video_texture;
@@ -243,6 +244,7 @@ impl VideoPlayerFrameHandle<'_> {
                 transform,
                 color_bias,
                 color_transform,
+                color,
             }
         } else {
             RenderProgramWithArguments::Movie {
@@ -252,6 +254,7 @@ impl VideoPlayerFrameHandle<'_> {
                 transform,
                 color_bias,
                 color_transform,
+                color,
             }
         };
         pass.run(builder.build(program, DrawPrimitive::TrianglesStrip))

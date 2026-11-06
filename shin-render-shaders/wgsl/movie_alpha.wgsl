@@ -51,5 +51,5 @@ fn fragment_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let color = yuv_to_rgb(picture);
     let alpha = clamp(yuv_to_rgb(mask).x, 0.0, 1.0);
 
-    return vec4<f32>(color, alpha);
+    return vec4<f32>(color, alpha) * params.color;
 }

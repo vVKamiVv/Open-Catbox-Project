@@ -4,20 +4,19 @@ use shin_render_shader_types::{
     buffer::VertexSource,
     texture::{DepthStencilTarget, TextureSamplerStore, TextureTarget, TextureTargetKind},
     uniforms::{
-        ClearUniformParams, FillUniformParams, FontBorderUniformParams, FontUniformParams,
-        LayerUniformParams, MaskUniformParams, MovieUniformParams, SpriteUniformParams,
-        BlurUniformParams, EffectUniformParams, WiperDefaultUniformParams, WiperMaskUniformParams,
+        BlurUniformParams, ClearUniformParams, EffectUniformParams, FillUniformParams,
+        FontBorderUniformParams, FontUniformParams, LayerUniformParams, MaskUniformParams,
+        MovieUniformParams, SpriteUniformParams, WiperDefaultUniformParams, WiperMaskUniformParams,
     },
     vertices::PosVertex,
 };
 use shin_render_shaders::{
-    Clear, ClearBindings, Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings,
-    Layer, LayerBindings, Mask, MaskBindings, Movie, MovieBindings, Shader, Sprite, SpriteBindings,
-    MovieAlpha, MovieAlphaBindings,
-    Blur, BlurBindings, Button, ButtonBindings, Dissolve, DissolveBindings, Mosaic, MosaicBindings, Raster, RasterBindings,
-    Ripple, RippleBindings, WiperDefault,
-    WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask, WiperMaskBindings, WiperWhirl,
-    WiperWhirlBindings,
+    Blur, BlurBindings, Button, ButtonBindings, Clear, ClearBindings, Dissolve, DissolveBindings,
+    Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings, Layer, LayerBindings,
+    Mask, MaskBindings, Mosaic, MosaicBindings, Movie, MovieAlpha, MovieAlphaBindings,
+    MovieBindings, Raster, RasterBindings, Ripple, RippleBindings, Shader, Sprite, SpriteBindings,
+    WiperDefault, WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask,
+    WiperMaskBindings, WiperWhirl, WiperWhirlBindings,
 };
 
 use crate::{
@@ -267,6 +266,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                 transform,
                 color_bias,
                 color_transform,
+                color,
             } => self.run_impl::<Movie>(
                 key,
                 MovieBindings {
@@ -274,6 +274,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                         transform,
                         color_bias,
                         color_transform,
+                        color,
                     },
                     luma: texture_luma,
                     chroma: texture_chroma,
@@ -288,6 +289,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                 transform,
                 color_bias,
                 color_transform,
+                color,
             } => self.run_impl::<MovieAlpha>(
                 key,
                 MovieAlphaBindings {
@@ -295,6 +297,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                         transform,
                         color_bias,
                         color_transform,
+                        color,
                     },
                     luma: texture_luma,
                     chroma: texture_chroma,
