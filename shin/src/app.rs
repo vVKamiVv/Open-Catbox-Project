@@ -247,7 +247,7 @@ impl ShinApp for App {
                 .with_context(|| format!("the save file has nothing in {slot:?}"))?,
             None => GameDataEntry {
                 // scenario 0: the first episode
-                scenario_id: 0,
+                scenario_id: cli.episode - 1,
                 random_seed: new_game_seed_for(&cli),
                 save_position: 0,
                 route_data: RouteData::default(),

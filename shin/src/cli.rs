@@ -44,6 +44,10 @@ pub struct Cli {
     /// Skip the title and start Episode 1 at once
     #[clap(long)]
     pub new_game: bool,
+    /// The episode (1-based) a story started without a save begins with, so `--capture-messages` and
+    /// `--fast-forward-to` reach later episodes through their own set-up
+    #[clap(long, default_value_t = 1, value_parser = clap::value_parser!(i32).range(1..))]
+    pub episode: i32,
     /// Skip the title and load a save: `auto` for the auto slot, or a slot number (1-100)
     #[clap(long, value_parser = parse_slot)]
     pub load: Option<LoadSlot>,
