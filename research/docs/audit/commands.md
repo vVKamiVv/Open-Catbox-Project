@@ -1,5 +1,12 @@
 # Audit: script commands, the VM and the adventure screen's command layer
 
+> **Snapshot.** This report describes shin as it stood at the November 2026 audit; its Status and shin columns
+> are kept as written so the evidence stays readable. Fixed since: read flags, MSGSET's event flags, MSGCLOSE, skip
+> and auto with the original's rules, rollback, the chapter jumps, event skip (by B and by a long press), the
+> scene-title and song-title banners, the notifications, CHARS, NOTIFYSET, TIPSGET, UNLOCK and EXIT's return to the
+> title. SHOWCHARS (1 use) is still a stub. Current status of every finding: [alignment-plan.md](../alignment-plan.md),
+> which also lists what was compared with the original and the port's measured accuracy.
+
 Area: every `shin::ADV::*` class (class-inventory "Script commands"), the VM run loop, and how `shin::ADV` drives
 commands, input, skip/auto and read flags. shin side: `shin/src/adv/{mod.rs,command/*.rs,vm_state/*.rs}`,
 `shin-core/src/vm`, `shin/src/app.rs`. Logs and decompiles: `$S\audit\commands\` (d1.c = all 59 listeners + slots

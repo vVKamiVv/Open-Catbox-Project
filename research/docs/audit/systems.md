@@ -1,5 +1,12 @@
 # Alignment audit: systems (menus, modes, audio/video, assets, main loop, input, settings)
 
+> **Snapshot.** This report describes shin as it stood at the November 2026 audit; its Status and shin columns
+> are kept as written so the evidence stays readable. Since then: the scene and task framework, every menu and mode (title, scenario select, save/load, config, backlog,
+> system menu, the galleries, Characters, Tips, the manual), voices, the settings, transparent and looping movies,
+> the touch gestures on every screen and the touch effect are in, and the menus were compared with the original. Current status of every finding:
+> [alignment-plan.md](../alignment-plan.md), which also lists what was compared with the original and the port's
+> measured accuracy.
+
 Scope: everything outside the adventure screen's commands, layers and text. Original = Switch v1.0.3 `main`
 (Ghidra base 0x7100000000). shin = `H:\Umineko PC Port\shin` as of this audit. Logs and decompiles:
 `$S\audit\systems\` (a1.c .. a8.c, d1.txt, lambdas.txt, py\xref.py and py\calls.py: ADRP+ADD and BL scanners over

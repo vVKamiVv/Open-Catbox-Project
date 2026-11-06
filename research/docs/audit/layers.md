@@ -1,5 +1,12 @@
 # Audit: layers, layer properties and effects, wipers, render programs
 
+> **Snapshot.** This report describes shin as it stood at the November 2026 audit; its Status and shin columns
+> are kept as written so the evidence stays readable. Since then: the bustups' lip-sync and blinking (D1), the transparent container clears, the double transform, the
+> layer sort and wobble slots 44-55 are fixed; the whirl and glass wipers, blur, ripple, mosaic, dissolve and raster
+> were compared with the original on screen and match. Current status of every finding:
+> [alignment-plan.md](../alignment-plan.md), which also lists what was compared with the original and the port's
+> measured accuracy.
+
 Logs, decompiles and extracted shaders: `$S\audit\layers\` (`d1.c`–`d9.c`, `sh\program_*_fs.glsl`, `prop_counts.txt`,
 `prop_values.txt`). All addresses are from the v1.0.3 `main` (Ghidra base `0x7100000000`).
 
@@ -56,7 +63,7 @@ Other counts: LAYERLOAD flags only 0, 2 (keep properties) and 3 (rain); LAYERUNL
 | `LayerGroup` indirect `vfunc_16` `0x710007e2c0`, fill colour `0x7100226c88` | `LayerGroupNewDrawableDelegate::render_drawable_indirect`, `render` opaque clear | **diverges** | original clears the effect texture and fills uncovered pixels with **(0,0,0,0)**; shin uses opaque black (`0xff000000`) | medium: while plane 1 dissolves (407 uses), areas it doesn't cover turn black instead of showing plane 0 | S |
 | `LayerGroup` delayed removal (`vfunc_3` `0x710007bc00`) | `remove_layer` | stub (`unimplemented!`) | | none (delay always 0) | M |
 | `LayerGroup::TransitionLayer`, LAYERLOAD auto-wipe (flag 4) | none | missing | | none (flag never used) | L |
-| LayerGroup mask (MASKLOAD) `0x710007df80`, `0x710007d8d0` | `prepare_mask_*`, `finish_render_with_mask` | matches (structure, flag bits) | flip 1/2, invert 4, scale **0x10** in both; mask programs `0x7100226da8` not compared | unknown (169 uses; not compared on screen) | – |
+| LayerGroup mask (MASKLOAD) `0x710007df80`, `0x710007d8d0` | `prepare_mask_*`, `finish_render_with_mask` | matches (structure, flag bits) | flip 1/2, invert 4, scale **0x10** in both; mask programs `0x7100226da8` not compared | unknown (169 uses; the mask wiper has since been seen to match Eden in the scenario select's curtain wipe) | – |
 | `PageLayer` `vfunc_8` `0x710009f360`, `vfunc_16` `0x710009fc50` | `page_layer.rs` | **diverges** | plane occlusion and stencil bump match; (a) shin passes the page's **own** transform into the effect chain, whose indirect render composes it again (original passes the parent); (b) clear colour (0,0,0,0) vs opaque black | low (page effects: 2 blur, 2 ghosting, 2 scale) | S |
 | `ScreenLayer` `vfunc_8` `0x71000e67f0`, `vfunc_16` `0x71000e6b70` | `screen_layer.rs` | **diverges** | (a) same double transform: while ghosting/ripple/blur/raster is on the screen layer, its wobble shake, scale and translation are applied **twice**; (b) indirect returns opaque (1), shin transparent; (c) background colour (0,0,0,0) vs black | **high**: screen shake (76 wobble uses on `-2`) combined with screen ghosting (268) or ripple (78) shakes/zooms twice as far | S |
 | `ScreenLayer::TransitionLayer` + PAGEBACK | `TransitionLayer`, `pageback` | matches; stub branch | `pageback(start_anew = true)` is `todo!()` (never called with true) | none | – |
@@ -69,7 +76,7 @@ Other counts: LAYERLOAD flags only 0, 2 (keep properties) and 3 (rain); LAYERUNL
 | `TimedWiper` update `0x710011baa0` | `wiper/timed.rs` | matches | elapsed += dt while animations run, clamped | none | – |
 | `DefaultWiper` `0x7100062660` / program `0x24` | `wiper/default.rs` | matches (doc §7) | | none | – |
 | `MaskWiper` render `0x71000a1700` / program `0x25` | `wiper/mask.rs`, `wiper_mask.wgsl` | matches; flag bit differs | thresholds incl. invert identical; shader `mix(new, old, clamp(min + mask.r·(max−min)))` as shin. Scale flag is **bit 3 (0x8)** for the wiper, shin uses 0x10 | none (mask wipes use flags 0/4) | S |
-| `WhirlWiper` (`0x28`), `GlassWiper` (`0x29`) | `whirl.rs`, `glass.rs` | matches (doc §7, glass not compared on screen) | | – | – |
+| `WhirlWiper` (`0x28`), `GlassWiper` (`0x29`) | `whirl.rs`, `glass.rs` | matches (doc §7; both since compared with the original on screen) | | – | – |
 | Scroll, Zoom, Turn, Wave, Scanline, Ripple wipers | `todo!()` in `AnyWiper::load` | missing | never used | none | L |
 
 ## 2. Top divergences (by what the player sees)

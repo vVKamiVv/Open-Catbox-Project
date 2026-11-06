@@ -22,12 +22,23 @@ Thank you, all of you.
 
 - TruEKami
 
-## The English translation
+## The English translations
 
-The port is made to play **[umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english)**, the English
-translation patch for *Umineko: The Symphony of Catbox and Dreams* by **andOlga** and its contributors, who are
-credited in the [patch's own README](https://github.com/andOlga/umineko-catbox-english#credits). The patch is not
-part of this repository; get it from its authors.
+The port is made to play either of two English translations of *Umineko: The Symphony of Catbox and Dreams*. Neither
+is part of this repository or of this project; they are downloaded from their authors when the game is set up.
+
+- **[umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english)** by **andOlga** and its
+  contributors, who are credited in the [patch's own README](https://github.com/andOlga/umineko-catbox-english#credits).
+  That README allows, and encourages, re-hosting or mirroring its downloads as long as they link back to the canonical
+  URL; wherever this project offers or mirrors the patch, it does so with that permission and always links back to
+  <https://github.com/andOlga/umineko-catbox-english>.
+- **[Catbox X](https://github.com/Foxdear/umineko-catbox-X-english)** by **Foxdear**, a revision of the above. It is
+  downloaded from its author's releases only and is not part of this project.
+
+## Tools
+
+- **[hactool](https://github.com/SciresM/hactool)** by **SciresM**, licensed under the ISC license: extracting the game
+  from the player's own dump.
 
 ## The game
 

@@ -1,9 +1,15 @@
 # Audit: text (message window, parser, layouter, fonts, TextObject)
 
+> **Snapshot.** This report describes shin as it stood at the November 2026 audit; its Status and shin columns
+> are kept as written so the evidence stays readable. Since then: voices play (with panning and lip-sync), the Check and choice texts use the original's font and match
+> Eden line for line, and the scene-title and song-title banners and the backlog are in. Current status of every finding:
+> [alignment-plan.md](../alignment-plan.md), which also lists what was compared with the original and the port's
+> measured accuracy.
+
 Logs and decompiles: `$S\audit\text\` (dec1–dec6.c, fontload.txt, setmsg_pre.txt, fntcmp.py, gotscan.py, fonts\*.fnt).
 All original addresses are from the v1.0.3 `main`.
 
-## 0. The open issue first: the Check text is 1–2 % wider than the original
+## 0. The open issue first: the Check text is 1–2 % wider than the original (fixed since: it now matches Eden)
 
 **Root cause: wrong font.** The engine loads three fonts at boot (`0x7100065ae8`..`0x7100065cb0`, the adrp/add
 pairs found by scanning the code):

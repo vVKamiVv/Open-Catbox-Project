@@ -20,22 +20,22 @@ both codebases.
 
 | # | Finding | Area | Size |
 |---|---|---|---|
-| 1 | **Done** (voices play; panning by speaker position not yet). **No voices**: `VoicePlayer::play` is an empty stub and VOICEPLAY only logs; 39,649 lines carry `@v`. Checked | systems, text | M-L |
-| 2 | **Done** except voice and movie volumes (still with voices and movies). **Settings are parsed but never applied**: text speed 80 instead of v9 (default 50; text types 2.5 x too fast; checked), auto delay 80 instead of v10, no volume setting (BGM/SE about 1.4 x, system sounds 1.8 x louder than the Switch default), window opacity, voice-on-advance | systems, text | S each |
+| 1 | **Done** (voices play, pan to their bustups with setting v5 and drive the lip-sync; engine-internals §16). **No voices**: `VoicePlayer::play` is an empty stub and VOICEPLAY only logs; 39,649 lines carry `@v`. Checked | systems, text | M-L |
+| 2 | **Done**, voice and movie volumes included. **Settings are parsed but never applied**: text speed 80 instead of v9 (default 50; text types 2.5 x too fast; checked), auto delay 80 instead of v10, no volume setting (BGM/SE about 1.4 x, system sounds 1.8 x louder than the Switch default), window opacity, voice-on-advance | systems, text | S each |
 | 3 | **Done** (blinking is ported but Umineko's bustups have no eye frames; the mouth level is the original's 50 ms table, and voices pan to their bustups with setting v5). **Bustups never blink or move their lips**: property 27 (set 154 times) is ignored; the original blinks every `(1 − r²)·240 + 80` ticks and moves the mouth with the voice level (`0x7100036a00`) | layers | M |
-| 4 | **Done** (rollback, the chapter jumps and event skip too; event skip not yet checked in play). **Skip has none of the original's rules**: a held Ctrl instead of the R/L toggles with sounds and icon; it ignores events, unread lines (v11) and the system flag; read lines are never recorded; instant commands can't see it (fades not zeroed, one-shot SEs still play). Checked (held Ctrl) | commands, systems | M |
+| 4 | **Done** (rollback, the chapter jumps and event skip too; event skip checked in play in an Episode 1 event, by B and by a long press). **Skip has none of the original's rules**: a held Ctrl instead of the R/L toggles with sounds and icon; it ignores events, unread lines (v11) and the system flag; read lines are never recorded; instant commands can't see it (fades not zeroed, one-shot SEs still play). Checked (held Ctrl) | commands, systems | M |
 | 5 | **Done.** **Event lines wait for a click**: MSGSET passes no flags (`read | event << 1`), so the 72 event lines don't play by themselves. Checked (flags empty) | commands | S |
 | 6 | **Done.** **MSGCLOSE closes the box mid-line** after an un-waited line (35 places, e.g. `0x31ce57`) | commands | S |
 | 7 | **Done** (the scene and song titles, skip/auto icons, notifications and the event-skip hint; the touch-screen buttons are not drawn). **Banners missing**: the scene title (AUTOSAVE, bottom left, size 48, 240 frames), the song title (BGMPLAY, top left with ♪), and 123 "characters/tips updated" notifications with their sounds | commands, text, systems | M |
-| 8 | **Done** except voice focus (needs voices). **Looping sound effects restart** when re-issued (about 750 places); the original keeps them and changes the volume. BGM crossfades and stops need at least 4 frames; voice focus (BGM and loops ducked to 0.5) is missing | systems | S |
+| 8 | **Done**, voice focus included (BGM and loops ducked while a voice plays, setting v4). **Looping sound effects restart** when re-issued (about 750 places); the original keeps them and changes the volume. BGM crossfades and stops need at least 4 frames; voice focus (BGM and loops ducked to 0.5) is missing | systems | S |
 | 9 | **Done.** **Layer containers clear to opaque black** instead of transparent, so plane 1's 407 dissolves show black where plane 0 should show. Checked (`layer_group.rs:417/424`, `page_layer.rs:109`) | layers | S |
 | 10 | **Done** (confirmed in code). **Screen shake and zoom applied twice** while a screen or page effect (ghosting, ripple, blur) runs: `screen_layer.rs`/`page_layer.rs` pass their own transform into the effect chain instead of the parent's (`0x71000e67f0`, `0x710009f360`). To verify on screen | layers | S |
 | 11 | **Done** (layer banks still break ties between layers without an id, such as the screen and the message window). **Layers with equal RenderPosition stack in reverse** (`0x7100081110`: lower layer id below) | layers | S |
 | 12 | **Done**: the Check screen matches Eden line for line. **Check and choice texts**: wrong font (system.fnt, not newrodin-medium; the 1.3 % width) and not justified | text | S |
 | 13 | **Done.** Read lines, CG/BGM/movie unlocks and UNLOCK are not recorded (needed by skip, galleries, the title) | systems, commands | S |
-| 14 | **Done** (transparent movies still unsupported). Movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
-| 15 | **Mostly done**: the opening movie, title, scenario select with its door bridge, system menu, config, save/load with thumbnails, hidden window, the shared dialog, the backlog and its chapter list, the Picture, Music and Movie Boxes, Characters, Tips and the manual, compared with Eden (pointer drags remain); the Character Box is in; the scenario select's curtain wipe, the bridge's glow, transparent movies and the shared BGM player are in. No menus or game flow: title, save/load, config, backlog, system menu, scenario select, galleries | systems | L |
-| 16 | **Mostly done** (wobble slots 44-55 and EXIT's teardown remain). Smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
+| 14 | **Done**, transparent movies included (compared: the Episode 8 fire, below). Movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
+| 15 | **Done**: the opening movie, title, scenario select with its door bridge and curtain wipe, system menu, config, save/load with thumbnails, hidden window, the shared dialog, the backlog and its chapter list, the Picture, Music, Movie and Character Boxes, Characters, Tips and the manual, all compared with Eden; the original's touch gestures (drags, flicks, taps, long presses) on every one of them with the mouse; the shared BGM player. No menus or game flow: title, save/load, config, backlog, system menu, scenario select, galleries | systems | L |
+| 16 | **Done** (one noted shortcut: EXIT does not clear the layer banks, so the title fades in over the last scene). Smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
 
 ## Structural changes (prevent whole classes of bugs)
 
@@ -91,5 +91,33 @@ set-up; `--unsafe-entry-point` skips the start-up block, so sprites and the text
 | Dissolve (properties 68/69, mode 1) on the plane | Tea party 1 after line 7409 | Match: the same left-to-right sweep into blown-away dots over white, at the same pace; the dots themselves differ (random in both) |
 | Raster (properties 76-78) with ghosting on the screen layer | Tsubasa story 1 after line 66579 | Match: the same fade to white and the same wavy edges building with the same curve (edge darkness 0 to 67 in both); matched frames within 3.6 |
 
-Still to compare (the cake and culprit games were played through in Eden but not captured):
-the cake and culprit game screens.
+Still to compare: the cake game, the culprit game's screens and the last choice. The cake and culprit games were
+played through in Eden but not captured; the last choice has not been looked at in Eden. The culprit game's
+testimony text was compared (it breaks lines mid-word in English as the original does, engine-internals §13).
+
+## Accuracy
+
+**97.8 %**: the mean, over every side-by-side comparison with a recorded per-pixel figure, of the share of pixels
+whose difference from the original is within 32 of 255:
+
+`accuracy = (1/N) × Σ share_i`, where `share_i` = pixels at most 32/255 away from the original's ÷ pixels compared,
+for comparison i, and N = 6.
+
+| Comparison | Within 32 |
+|---|---|
+| Blur (property 66), Ep2 line 7652, the upper half (the blurred background) | 99.9 % |
+| Whirl wipe, Ep2: line 11556 right after it | 99.6 % |
+| Ripple with ghosting on the screen layer, Ep8 line 61681 | 99.3 % |
+| Characters screen | 96.9 % (captures ranged 96.9-97.2 %; the lowest counts) |
+| Halloween party quiz, Ep8 question 2, against a small window grab of Eden | 95.7 % (lowered by the grab's resampling) |
+| Tips screen | 95.6 % |
+
+(99.9 + 99.6 + 99.3 + 96.9 + 95.7 + 95.6) / 6 = 97.83, shown as 97.8 %.
+
+Compared with the original and found to match, but left out of the number because no within-32 share was recorded
+for them (only a mean difference, a frame-by-frame look, or random patterns that differ in both by design): the
+glass wipe, the mosaic (finished pictures within 0.3), dissolve, raster (matched frames within 3.6), the butterfly
+summoning, the looping fire movie, the Character Box (mean difference under 2), the story choices, the Check text,
+the backlog (rows within 2 px), the title, scenario select, bridge, system menu, config, save/load, Picture, Music
+and Movie Boxes and the manual (see engine-internals §12 and §15). To add a comparison: capture both sides as
+described above, measure its within-32 share and add a row here.

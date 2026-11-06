@@ -11,13 +11,9 @@
 ---
 
 *Umineko no Naku Koro ni Saku ~Nekobako to Musou no Koukyoukyoku~* was only ever released on consoles. The Open
-Catbox Project is a PC engine for it: you bring your own Nintendo Switch copy of the game and the fan-made
-[English patch](https://github.com/andOlga/umineko-catbox-english), and the port plays them directly on your
-computer, with no emulator. Development and testing happen on Windows.
-
-> [!NOTE]
-> Work in progress: the story, its effects and the menus run, but not everything has been compared with the
-> original yet. See [The Golden Land so far](#-the-golden-land-so-far).
+Catbox Project is a PC engine for it: you bring your own Nintendo Switch copy of the game and a fan-made English
+translation, and the port plays them directly on your computer, with no emulator. Development and testing happen on
+Windows.
 
 ## 🟥 Spoken in red
 
@@ -39,27 +35,28 @@ These are not theories. They hold, without exception:
 
 ## 🦋 The Golden Land so far
 
-| Piece | State |
-|---|---|
-| Text, sprites, backgrounds, music, sound effects | Working |
-| Voices, with panning and lip-sync | Working |
-| English patch images | Working |
-| Movies, including transparent effect movies | Working (Windows decodes them itself; elsewhere through ffmpeg) |
-| Rain, snow, petals and golden snow | Working |
-| Screen transitions (crossfade, mask, whirl, glass shatter) | Working; whirl and glass not yet compared with the original |
-| Layer effects (dissolve, blur, ripple, mosaic, raster) | Working; not yet all compared with the original |
-| Every script command the game uses | Working |
-| Story choices, the quiz and the main8 minigames | Working (the culprit game's testimonies come from the translation's `exefs` patch: keep that folder next to the assets or pass `--exefs`) |
-| Title, scenario select, save/load, settings, backlog, system menu | Working, compared with the original |
-| Tips, Characters, manual, Picture/Music/Movie/Character Box | Working, compared with the original |
-| Mouse: clicking, dragging and flicking lists, as the touch screen does | Working on every menu |
-| Controllers | Working |
+<div align="center">
 
-The full inventory of what the game's script needs was made by statically analysing the whole script; it lives in
-[`research/docs/engine-internals.md`](research/docs/engine-internals.md) §10, and the plan for the rest in
-[`research/docs/alignment-plan.md`](research/docs/alignment-plan.md).
+### 97.8 % like the original
+
+</div>
+
+The mean, over the 6 side-by-side comparisons with the original (running on an emulator) that have a per-pixel
+figure, of the share of pixels within 32/255 of the original's: blur 99.9 %, whirl wipe 99.6 %, ripple 99.3 %,
+Characters 96.9 %, quiz 95.7 %, Tips 95.6 %. The formula, each comparison and the screens and effects compared without
+a per-pixel figure (glass, mosaic, dissolve, raster, transparent movies, every menu) are in the
+[accuracy notes](research/docs/alignment-plan.md#accuracy).
+
+Separately, **every command, layer type, transition and layer effect the game's script uses is implemented**,
+with one exception: SHOWCHARS, used once, which in the original opens the Characters screen and in the port just
+carries on. The inventory comes from statically analysing the whole script
+([`engine-internals.md`](research/docs/engine-internals.md) §2 and §10).
 
 ## 🍰 Preparing the tea party
+
+> [!NOTE]
+> A themed launcher is on its way: it will take care of the dump, the keys and the translation for you. Until it
+> lands, set things up by hand as below.
 
 You need:
 
@@ -70,9 +67,13 @@ You need:
    hactoolnet -t pfs0 "<your dump>.nsp" --romfs=assets
    ```
    `assets/data.rom` should have sha256 `6d90eb0bacacf769a7e4634407622b047acd711c47debb28136d7bab3fd0e591`.
-2. **The English patch**: copy the `patch.rom` from
-   [umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english) into the same `assets` folder. The
-   port layers it over `data.rom`, just like the console does.
+2. **An English translation**: copy the `patch.rom` of either into the same `assets` folder; the port layers it
+   over `data.rom`, just like the console does. If the translation comes with an `exefs` folder (an `.ips` patch),
+   keep it next to the assets too, or pass `--exefs`: the culprit game's testimonies are read from it.
+   - [umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english) by andOlga and contributors (its
+     authors allow mirroring its downloads with a link back to that page, its canonical home).
+   - [Catbox X](https://github.com/Foxdear/umineko-catbox-X-english), Foxdear's revision of it, from its author's
+     releases.
 3. On Linux and macOS, **ffmpeg** on your `PATH`, for the movies. Windows decodes them itself (Media Foundation)
    and only falls back to ffmpeg on editions without it (the "N" editions lacking the Media Feature Pack).
 
@@ -91,20 +92,23 @@ Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the 
 
 | Keyboard / mouse | Switch controller | Does |
 |---|---|---|
-| Click, Space, Enter | A | Advance, choose |
+| Left click (on release), Space, Enter | A | Advance, choose |
 | Backspace, Escape, right click | B | Back; hide the text box; skip an event |
+| Hold the left button still in an event | Hold a touch | Skip the event |
 | Y | Y | System menu |
 | X | X | Backlog |
 | `-` / `=` | − / + | Previous / next chapter |
 | A / S | L / R | Auto mode / skip mode |
 | Hold left Ctrl | | Fast-forward |
-| Up arrow, mouse wheel | Up | Roll back / scroll |
+| Up arrow | Up | Roll back one line; move in menus |
 | Drag and flick | Touch | Scroll lists, turn pages, pan pictures |
+| Page Up / Page Down | Right stick | Scroll long texts (Tips, Characters, the culprit game) |
 | F5 | | Save to the last used bookmark |
 | F11 | | Fullscreen |
 
-For working on the port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its animations) and
-time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 normal speed).
+A tap leaves a ripple and a drag a trail of stars, as on the Switch's touch screen (setting "visual touch
+feedback"). For working on the port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its
+animations) and time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 normal speed).
 
 ## 🗝️ Inside the mansion
 
@@ -121,12 +125,15 @@ time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 normal speed).
 This project stands on the work of others, all named in [CREDITS.md](CREDITS.md):
 
 - **[shin](https://github.com/DCNick3/shin)** by DCNick3 and its contributors: the engine this project grew from.
-- **[umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english)** by andOlga and contributors: the
-  English translation this port is made to play.
+- **[umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english)** by andOlga and contributors, and
+  **[Catbox X](https://github.com/Foxdear/umineko-catbox-X-english)**, Foxdear's revision of it: the English
+  translations this port is made to play. Neither is part of this project: andOlga's may be mirrored with a link
+  back to its canonical page, as its README allows; Catbox X comes from its author's releases.
+- **[hactool](https://github.com/SciresM/hactool)** by SciresM (ISC license): extracting the game from your dump.
 - **07th Expansion** and **Entergram**, for the game itself.
 
 ## ⚖️ License
 
 [Mozilla Public License 2.0](LICENSE), the same license as shin.
 
-Not affiliated with Entergram, 07th Expansion, the shin project or the translation team.
+Not affiliated with Entergram, 07th Expansion, the shin project or the translation teams.

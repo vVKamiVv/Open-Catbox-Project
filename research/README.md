@@ -7,10 +7,13 @@ from the original executable; these files record how, so anyone can check or ext
 | Path | What it is |
 |---|---|
 | `docs/engine-internals.md` | Findings: formats, layers, transitions, script commands, with original addresses |
+| `docs/alignment-plan.md` | The audit's findings and what was done about them, the effects compared with the original, and the port's measured accuracy |
+| `docs/audit/` | The November 2026 audit's four reports (commands, layers, text, systems), with addresses for every claim |
 | `docs/reverse-engineering-guide.md` | Setup (Ghidra + SwitchLoader, headless scripts, shader decompilation) and workflow |
 | `docs/class-inventory.md` | Every RTTI class of the executable (generated) |
 | `tools/ghidra_scripts/` | Headless Ghidra scripts (decompile, xrefs, data dumps, symbol import, shader extraction) |
 | `tools/re/` | Builds the symbol map and the class inventory |
+| `tools/compare/` | `eden_capture.py`: captures lines in the original running on Eden, for side-by-side comparisons with the port's `--capture-messages` |
 | `re/manual_symbols.csv` | **Hand-maintained** names for every identified function and constant |
 | `re/rtti_inventory.tsv` | RTTI dump that the symbol map is built from |
 

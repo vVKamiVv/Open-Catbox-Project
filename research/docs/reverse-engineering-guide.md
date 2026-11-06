@@ -145,3 +145,7 @@ them, `MSGSET { msg_id: 301, ... }`) and each saves a PNG per line once it has t
 
 The game passes the script's message id minus one internally (engine-internals §10); both tools take and print the
 script's ids. Expect differences from animation timing (blinks, the pulsing wait arrow) as well as real ones.
+
+For a later episode add `--episode N`, so the port reaches the line through that episode's own set-up. To score a
+pair for the port's accuracy figure, scale Eden's screenshot to 1920x1080 and take the share of pixels at most 32/255
+away from the port's; [alignment-plan.md](alignment-plan.md#accuracy) lists every scored comparison and the formula.

@@ -60,14 +60,15 @@ The executable contains 284 classes with RTTI, 282 of them in namespace `shin`:
 
 ### What the reimplementation still lacks (as of this writing)
 
-The full, prioritised list from the November 2026 audit is in [alignment-plan.md](alignment-plan.md).
+The November 2026 audit's prioritised list, with what has been done since, is in [alignment-plan.md](alignment-plan.md);
+its Accuracy section gives the port's measured likeness to the original.
 
 | Area | Original | shin | Missing or stubbed in shin |
 |---|---|---|---|
-| Script commands | 61 | 51 implemented | Missing: TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET, NOP (unused). Stubs: CHARS, NOTIFYSET, TIPSGET, TROPHY, UNLOCK; AUTOSAVE's scene-title banner; SYSCALL 0's fade; EXIT stops the script instead of returning to the menus |
-| Layer types | 10 | 7 | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's texts come from the player's executable (§3) |
-| Wipers | 11 | 5 (Whirl and Glass added) | Ripple, Scanline, Scroll, Turn, Wave, Zoom (none used by Umineko) |
-| Systems | all menus and modes | adventure screen, saving and loading (§14) | title, save/load menus (a save is made with F5 and loaded with `--load`), config, backlog, galleries, tips, characters, manual, scenario select, chapter titles |
+| Script commands | 61 | all 49 that Umineko uses | SHOWCHARS (1 use) is a stub: the original opens the Characters screen there, the port carries on. TROPHY does nothing, as on the Switch. The commands Umineko never uses (TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET) finish at once. SYSCALL 0 does not fade the touch screen's buttons, which the port does not draw |
+| Layer types | 10 | 7, all that Umineko loads | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's texts come from the player's executable (§3) |
+| Wipers | 11 | 5, all that Umineko uses (Whirl and Glass compared with the original, §7) | Ripple, Scanline, Scroll, Turn, Wave, Zoom (none used by Umineko) |
+| Systems | all menus and modes | all: adventure screen, saving and loading (§14), every scene and menu (§15), voices (§16), touch gestures and the touch effect (§17) | the touch screen's on-screen buttons |
 
 - The engine's own C++ namespace is **`shin`** (from RTTI), the same name the open-source reimplementation chose.
 - Game logic runs from a compiled bytecode scenario, `main.snr`. Layers (pictures, sprites, movies, effects) are created
@@ -294,6 +295,9 @@ Render: one full-screen quad, old screen in texture slot 0, new screen in slot 1
 4. Rotate `q` by `(s·d + ripple)` full turns, divide by `(1.0, scale)` and add 0.5 back.
 5. Output `mix(old, new, s)` sampled at that rotated UV.
 
+Implemented in shin as `shin/src/wiper/whirl.rs`; compared with the original on screen (Ep2, after line 11555, with
+ghosting 900): the same spiral and unwinding (alignment-plan).
+
 ### GlassWiper **confirmed** (constructor `0x710006b930`, update `0x710006c980`, render `0x710006cae0`, shader program `0x29`)
 
 Implemented in shin as `shin/src/wiper/glass.rs` + `wgsl/wiper_glass.wgsl`; compared with the original on screen
@@ -381,6 +385,9 @@ binaries.
 Movies are H.264 MP4 files (`movie/*.mp4`), opaque or with a transparency mode; 1920×1088 High profile with B-frames
 (the effect overlays `no80`–`no84` have 45–86 frames each, all of which decode fine).
 
+Transparent movies (51) carry their alpha below the picture (§15); the port plays them with it, and the looping fire
+(`no0011`, Ep8 line 64886) was compared with the original and matches (alignment-plan).
+
 Port note (**confirmed**, not an engine property): shin's ffmpeg-pipe decoder used to lose the end of the stream, and
 sometimes all of it, because on Windows `async-process` writes ffmpeg's stdin through a buffered background thread and
 the pipe was dropped without being flushed. Under load (several movies at once, as in the game) a clip then came out
@@ -397,10 +404,10 @@ four at once, and checks every run gets every frame.
 - `SYSCALL` (`shin::ADV::SYSCALL`, execute `0x7100007c10`): ids other than 0 do nothing; id 0 (`FUN_7100012550`) tweens
   an ADV context value at `+0x500` to 0 over the shared constant 0.1 if the flag at `+0x4f8` is set, then clears that
   flag and `+0x47c`. What those context fields are is **open**; the port currently finishes the command immediately.
-- How chapter titles (e.g. "Letter and Umbrella", bottom-left at the start of each chapter) are drawn; the
-  reimplementation doesn't show them yet.
-- The remaining layer types (`FocusLineLayer`, `AnimationLayer`, quiz layers) and the `EVBEGIN`/`EVEND`,
-  `NOTIFYSET`, `CHARS`, `TIPSGET` commands.
+- Answered: chapter titles (e.g. "Letter and Umbrella") are the AUTOSAVE scene-title banner
+  ([audit/commands.md](audit/commands.md), AUTOSAVE), drawn by the port. The quiz layers are in §13; `EVBEGIN`/`EVEND`,
+  `NOTIFYSET`, `CHARS` and `TIPSGET` are in the audit and the port. `FocusLineLayer` and `AnimationLayer` remain
+  unstudied, as Umineko never loads them.
 
 ---
 
@@ -470,8 +477,9 @@ voice status (`0x710011a980`) is 3 if any voice is in state 0, otherwise 2 if an
 - `EXIT` (`0x7100004b10`): first frame: the SYSCALL 0 fade, clear the layer banks, close the message box, stop the
   voice, fade and stop all sound effects, and start a 30-frame uninterruptible wait (`0x71000138d0`). Then, once the
   wait, the fade and the task pool are done, it leaves for the menus (`0x710000fab0`, `0x71000147e0`). The music is
-  not stopped. The port stops the sound effects and then the script, as it has no menus yet. (An earlier version of
-  these notes read the 30-frame wait as a music fade-out.)
+  not stopped. The port does the same and returns to the title, except that it does not clear the layer banks (the
+  title fades in over the last scene). (An earlier version of these notes read the 30-frame wait as a music
+  fade-out.)
 - The **ADV wait timer** (context `+0x490` interruptible flag, `+0x494` frames left as a float): `0x71000138d0`
   starts it with `(interruptible, frames)`, `0x71000138f0` cancels it (skip mode), `0x7100013900` reports it active
   while frames > 0. `WAIT` (`0x7100005090`) is just "start it, cancel it while skipping, done when inactive"; `EXIT`
@@ -492,6 +500,9 @@ and evidence texts (§13, read from the executable with the translation's IPS pa
 ---
 
 ## 11. Layer effects
+
+Every effect below was compared with the original in Eden (blur, ripple, mosaic, dissolve, raster; places and
+figures in [alignment-plan.md](alignment-plan.md#effects-compared-with-the-original)) and matches.
 
 ### The effect chain **confirmed** (`0x71000762e0`, shared by every drawable layer)
 
@@ -646,7 +657,7 @@ Layout parameters `(width, size, ?, outline mode)`: outline mode 1 draws a 3 px 
 the first line is not a speaker's name. In the port: `layer/text_block.rs` (`TextBlock`), `layer/select_layer.rs`,
 `adv/command/select.rs`.
 
-## 13. The quiz and the other minigames **confirmed** (behaviour from the code; not yet compared on screen)
+## 13. The quiz and the other minigames **confirmed** (behaviour from the code; the quiz compared with the original on screen)
 
 ### Layer type 9 is a family of minigames
 
@@ -708,7 +719,8 @@ Fragment: `mix(mix(texture.rgb, tint1.rgb, tint1.a), tint2.rgb, tint2.a) × vert
 `shin-render-shaders/wgsl/button.wgsl`.
 
 In the port: `layer/user/quiz_layer.rs`, `adv/command/quiz.rs`, with what the minigames share in
-`layer/user/minigame.rs`. Mouse input is not wired yet (as for the choices).
+`layer/user/minigame.rs`. Mouse input follows the original's touch listener (below, Mouse and touch). Compared with
+the original in Eden at Episode 8's question 2: same layout, no offset (alignment-plan).
 
 ### What the minigames share
 
@@ -719,7 +731,7 @@ In the port: `layer/user/quiz_layer.rs`, `adv/command/quiz.rs`, with what the mi
   so their overlapping sprites all draw (with the strict test only the first sprite of each spot survives).
 - The pick flash is shared: to 0.7 and back at 0.2 per frame, through program 5's tint.
 
-### The cake game (`shin::CakeLayer`, kind 1) **confirmed** (seen in the port, not yet compared with the original)
+### The cake game (`shin::CakeLayer`, kind 1) **confirmed** (seen in the port; played in Eden but not captured for a comparison)
 
 - **Textures:** `/cake.txa` (not replaced by the English patch, so its banner stays Japanese): `base` (the whole
   cake, drawn at (360, 0)–(1560, 1080)), slices `00`–`14`, `msg` (the "choose a cake" banner, (616, 920)–(1304, 1016))
@@ -737,7 +749,7 @@ In the port: `layer/user/quiz_layer.rs`, `adv/command/quiz.rs`, with what the mi
   Confirm on a slice plays `decide`, flashes it and fades the finger and banner at 0.1 per frame; confirm on nothing plays
   `error`. The answer is the slice's index (`0x7100045250`), once the flash is over.
 
-### The last choice (`shin::LastLayer`, kind 3) **confirmed** (seen in the port, not yet compared with the original)
+### The last choice (`shin::LastLayer`, kind 3) **confirmed** (seen in the port; not compared with the original)
 
 - **Textures:** `/last.txa` (English patch): `bg`, `front`, `select`, `back`, `shadow`, `plate`, `flash_door`, `obi`.
   Everything is drawn in centred coordinates, shifted horizontally by a pan tweener.
@@ -757,7 +769,7 @@ In the port: `layer/user/quiz_layer.rs`, `adv/command/quiz.rs`, with what the mi
 
 In the port: `layer/user/cake_layer.rs`, `layer/user/last_layer.rs`.
 
-### The culprit game (`shin::MurdererLayer`, kind 2) **confirmed** (seen in the port, not yet compared with the original)
+### The culprit game (`shin::MurdererLayer`, kind 2) **confirmed** (seen in the port; played in Eden, only the Check text compared)
 
 A small application of six screens (`shin::MurdererLayer::{TopMenu, ReplayMenu, Rule, HintMenu, Check, Select}`),
 all drawn from `/murderer.txa` in 1920 × 1080 top-left space. The load parameter (`$v36`) is the number of wrong
@@ -968,7 +980,7 @@ black doors on white (the light through the opening) at 1/4 to 1/32 size, blurre
 (51 of them) carry their alpha in the bottom half of each frame. **One BGM player serves every scene** (its update
 `0x7100033eb0` is in the main loop): music runs from the story into the title, which crossfades it.
 
-shortcuts: the galleries, Characters, Tips and the chapter list take no pointer drags or flicks; the dialog fades
+Every one of these screens takes the original's touch gestures with the mouse (§17.1). shortcuts: the dialog fades
 its pieces instead of a render texture; the glow's blur reads black past its shrunk picture's edges. Keyboard: Y and X keys for the Y and X buttons, = and -
 for + and -.
 
@@ -985,7 +997,7 @@ after 4 windows without a change), read at the playing position (`0x71000f54e0`)
 `level × count / 3`. In the port: `audio/voice_player.rs` (the table is made off the main thread when a voice
 starts), `layer/user/bustup_layer.rs`, `shin-audio/src/sound.rs`.
 
-## 17. Touch gestures and scrolling lists **confirmed** (code; the port's save list, backlog, chapter list and manual tested with the mouse)
+## 17. Touch gestures and scrolling lists **confirmed** (code; every screen of the port tested with the mouse)
 
 `shin::GestureRecognizer` (ctors `0x710006ae80`/`0x710006af20`, update `0x710006b070`, poll `0x710006b860`,
 cancel `0x710006b000`, long press on/off `0x710006aff0`) turns the touch panel into gestures for a screen's
