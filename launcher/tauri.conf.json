@@ -33,6 +33,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../target/release/shin.exe": "shin.exe"
+    },
     "copyright": "MPL-2.0",
     "shortDescription": "Launcher for the Open Catbox Project"
   }

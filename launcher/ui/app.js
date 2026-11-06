@@ -196,10 +196,6 @@ function renderSettings() {
   const dataDir = $("#data-dir");
   dataDir.textContent = state.data_dir;
   dataDir.classList.add("set");
-  const hactool = $("#hactool-path");
-  hactool.textContent = state.hactool ?? "Not found";
-  hactool.classList.toggle("set", !!state.hactool);
-  $("#reset-hactool").disabled = !state.settings.hactool_path;
   $("#fullscreen").checked = state.settings.fullscreen;
   $("#debug-logging").checked = state.settings.debug_logging;
 }
@@ -211,12 +207,6 @@ async function saveSettings() {
 
 $("#fullscreen").addEventListener("change", (e) => { state.settings.fullscreen = e.target.checked; saveSettings(); });
 $("#debug-logging").addEventListener("change", (e) => { state.settings.debug_logging = e.target.checked; saveSettings(); });
-
-$("#pick-hactool").addEventListener("click", async () => {
-  const path = await dialog.open({ filters: [{ name: "hactool", extensions: ["exe"] }] });
-  if (path) { state.settings.hactool_path = path; saveSettings(); }
-});
-$("#reset-hactool").addEventListener("click", () => { state.settings.hactool_path = null; saveSettings(); });
 
 $("#move-data").addEventListener("click", async () => {
   const target = await dialog.open({ directory: true, title: "Choose an empty folder for the game data" });

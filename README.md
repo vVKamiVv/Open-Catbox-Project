@@ -52,18 +52,33 @@ Separately, **every command, layer type, transition and layer effect the game's 
 
 ## 🍰 Preparing the tea party
 
-> [!NOTE]
-> A themed launcher is on its way: it will take care of the dump, the keys and the translation for you. Until it
-> lands, set things up by hand as below.
+### With the launcher
+
+The **Open Catbox launcher** (`launcher/`) does the whole setup for you:
+
+1. Point it at your own dump of the Switch release (the base NSP, title id `01006A300BA2C000`, and optionally the
+   1.0.3 update NSP for Japanese) and your console's `prod.keys`. It unpacks the game data on your computer and
+   checks it; nothing is uploaded anywhere.
+2. Pick a language: **English** (Catbox English by &Olga), **English, Catbox X** (Foxdear's revision, currently
+   up to Episode 7) or **Japanese**. The translations are downloaded from their authors when you choose them and
+   stay installed, so you can switch at any time.
+3. Press **Play**.
+
+How it works, step by step, is in [`research/docs/launcher.md`](research/docs/launcher.md).
+
+> [!IMPORTANT]
+> **Wanted: a designer.** The launcher's look (the night sea, the moon, the butterflies, the layout) was made
+> entirely with AI, as a working placeholder. If you can design something worthy of the golden land, please do:
+> all of it lives in `launcher/ui/` (HTML, one CSS file with the colours and fonts as variables at the top, and a
+> canvas script for the sky). It must stay our own art: no images or logos from the game or the translations.
+
+### By hand
 
 You need:
 
-1. **The game**: the romfs of your own dump of the Switch release (title id `01006A300BA2C000`), made for example with
-   [nxdumptool](https://github.com/DarkMatterCore/nxdumptool) and extracted with
-   [hactoolnet](https://github.com/Thealexbarney/LibHac):
-   ```bash
-   hactoolnet -t pfs0 "<your dump>.nsp" --romfs=assets
-   ```
+1. **The game**: the romfs file `data.rom` of your own dump of the Switch release (title id `01006A300BA2C000`), made
+   for example with [nxdumptool](https://github.com/DarkMatterCore/nxdumptool). Extract it from your base NSP into an
+   `assets` folder with a Switch extraction tool of your choice (the launcher does this natively, with no extra tools).
    `assets/data.rom` should have sha256 `6d90eb0bacacf769a7e4634407622b047acd711c47debb28136d7bab3fd0e591`.
 2. **An English translation**: copy the `patch.rom` of either into the same `assets` folder; the port layers it
    over `data.rom`, just like the console does. If the translation comes with an `exefs` folder (an `.ips` patch),
@@ -127,7 +142,6 @@ This project stands on the work of others, all named in [CREDITS.md](CREDITS.md)
   **[Catbox X](https://github.com/Foxdear/umineko-catbox-X-english)**, Foxdear's revision of it: the English
   translations this port is made to play. Neither is part of this project: andOlga's may be mirrored with a link
   back to its canonical page, as its README allows; Catbox X comes from its author's releases.
-- **[hactool](https://github.com/SciresM/hactool)** by SciresM (ISC license): extracting the game from your dump.
 - **07th Expansion** and **Entergram**, for the game itself.
 
 ## ⚖️ License

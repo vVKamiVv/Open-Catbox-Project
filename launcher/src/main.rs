@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod langs;
+mod nx;
 mod setup;
 
 use std::fs::{self, File};
@@ -13,7 +14,7 @@ use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-/// The workspace root, for finding tools when running from a source checkout.
+/// The workspace root, for finding shin.exe when running from a source checkout.
 fn repo_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
 }
@@ -26,7 +27,6 @@ struct Settings {
     fullscreen: bool,
     /// Game log at debug level for shin's own crates instead of warnings only.
     debug_logging: bool,
-    hactool_path: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -35,7 +35,6 @@ struct State {
     data_dir: PathBuf,
     data_ready: bool,
     languages: std::collections::HashMap<String, Option<String>>,
-    hactool: Option<PathBuf>,
     shin: Option<PathBuf>,
 }
 
@@ -84,20 +83,6 @@ fn exe_dir() -> PathBuf {
         .unwrap_or_default()
 }
 
-/// Settings override, then next to the launcher (release layout), then the source checkout.
-fn find_hactool(settings: &Settings) -> Option<PathBuf> {
-    [
-        settings.hactool_path.clone(),
-        Some(exe_dir().join("tools").join("hactool.exe")),
-        repo_root()
-            .parent()
-            .map(|p| p.join("tools").join("hactool").join("hactool.exe")),
-    ]
-    .into_iter()
-    .flatten()
-    .find(|p| p.is_file())
-}
-
 fn find_shin() -> Option<PathBuf> {
     // a debug launcher sits in target/debug next to a debug shin.exe, which overflows its stack at startup
     let beside = (!cfg!(debug_assertions)).then(|| exe_dir().join("shin.exe"));
@@ -128,7 +113,6 @@ fn get_state(app: AppHandle) -> State {
         .collect();
     State {
         data_ready: data.join("data.rom").is_file(),
-        hactool: find_hactool(&settings),
         shin: find_shin(),
         languages,
         data_dir: data,
@@ -149,9 +133,7 @@ async fn run_setup(
     prod_keys: PathBuf,
     title_keys: Option<PathBuf>,
 ) -> Result<Vec<String>, String> {
-    let settings = load_settings(&app);
-    let hactool = find_hactool(&settings).ok_or("hactool.exe was not found. Put it in the launcher's tools folder or choose it in Settings.")?;
-    let data = data_dir(&app, &settings);
+    let data = data_dir(&app, &load_settings(&app));
     fs::create_dir_all(&data)
         .map_err(|e| format!("Cannot create the data folder {}: {e}", data.display()))?;
     let input = setup::Input {
@@ -161,9 +143,7 @@ async fn run_setup(
         title_keys,
     };
     tauri::async_runtime::spawn_blocking(move || {
-        setup::run(&hactool, &data, &input, &|label, f| {
-            emit(&app, "setup", label, f)
-        })
+        setup::run(&data, &input, &|label, f| emit(&app, "setup", label, f))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -220,7 +200,9 @@ fn launch(app: AppHandle, lang: String) -> Result<u32, String> {
         .arg(&lang_dir)
         .arg("--exefs")
         .arg(lang_dir.join("exefs"));
-    // shortcut: fullscreen is only saved for now; the game toggles it with F11 until it has a flag for it
+    if settings.fullscreen {
+        cmd.arg("--fullscreen");
+    }
     cmd.current_dir(shin.parent().unwrap())
         .env("RUST_LOG", rust_log)
         .stdin(Stdio::null())

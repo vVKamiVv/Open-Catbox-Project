@@ -35,10 +35,11 @@ is part of this repository or of this project; they are downloaded from their au
 - **[Catbox X](https://github.com/Foxdear/umineko-catbox-X-english)** by **Foxdear**, a revision of the above. It is
   downloaded from its author's releases only and is not part of this project.
 
-## Tools
+## References
 
-- **[hactool](https://github.com/SciresM/hactool)** by **SciresM**, licensed under the ISC license: extracting the game
-  from the player's own dump.
+The launcher reads the Switch dump with its own code (`launcher/src/nx/`). The formats were worked out from
+[switchbrew](https://switchbrew.org/) and from [hactool](https://github.com/SciresM/hactool) by SciresM (ISC
+licence) and LibHac by Alex Barney, which document the NCA, PFS0, RomFS and BKTR (patch) structures.
 
 ## The game
 

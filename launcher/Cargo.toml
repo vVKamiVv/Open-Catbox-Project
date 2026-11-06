@@ -21,3 +21,6 @@ sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ureq = { version = "2", features = ["json"] }
 fs4 = "0.13"
+aes = "0.8"
+ctr = "0.9"
+xts-mode = "0.5"
