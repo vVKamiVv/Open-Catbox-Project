@@ -53,6 +53,8 @@ All scripts write their result to the file named by their last argument.
 |---|---|---|
 | `DumpXrefs.java` | `<keyword>... <out>` | Finds strings containing any keyword, lists where they're referenced, decompiles the referencing functions |
 | `DecompileAt.java` | `<out> <addr>...` | Decompiles the functions at the addresses, creating a function first if analysis left a bare label |
+| `CreateMissingFunctions.java` | (none) | Creates the functions auto-analysis missed: every pointer into code found in the data (vtables, callbacks), every call target and every gap in the code that disassembles (2,604 more, 6,380 in all) |
+| `DecompileAll.java` | `<out folder>` | Decompiles every function with the parallel decompiler into `<out>/index.tsv` and one `.c` per 0x10000-byte block: the whole engine, greppable (about 6.6 MB). Run it after `CreateMissingFunctions.java`, on a copy of the project so it does not lock the working one. Never commit its output |
 | `Disasm.java` | `<count> <addr>... <out>` | Raw disassembly; needed when the decompiler hides register-only helpers |
 | `Refs.java` | `<addr>... <out>` | References to an address plus the 8-byte pointers around it (for walking typeinfo and vtables) |
 | `FindPtr.java` | `<hex value>... <out>` | Every place memory stores a pointer value (e.g. all vtables pointing at a typeinfo) |
@@ -82,7 +84,8 @@ This is how the rain system was traced, and it generalises to any feature:
 2. **Go from class to methods.** In `class-inventory.md`, or with `Refs.java`/`FindPtr.java`: the typeinfo is
    referenced by the class's vtable(s); the vtable lists every virtual method. The constructor is the function
    that stores the vtable address (`Refs.java` on the vtable shows it).
-3. **Decompile the interesting methods** (`DecompileAt.java`), and dump the constants they load (`DumpData.java`).
+3. **Read the interesting methods**: grep the whole-program export (`DecompileAll.java`, see Scripts) or decompile
+   them one by one (`DecompileAt.java`), and dump the constants they load (`DumpData.java`).
    Typical layout: `update`, `render`, `step`/`spawn` helpers and a constructor whose parameters match the script
    command that creates the object.
 4. **Read around decompiler blind spots.** Small helpers that only use registers decompile to an empty body; read
