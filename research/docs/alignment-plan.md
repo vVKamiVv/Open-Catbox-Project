@@ -88,6 +88,8 @@ set-up; `--unsafe-entry-point` skips the start-up block, so sprites and the text
 | Ripple (property 82) with ghosting on the screen layer | Ep8 line 61681 | Match: mean difference 1.36, 99.3 % within 32 |
 | Looping transparent movie (no0011, the fire) | Ep8 line 64886 | Match: the same looping flames over the garden and the same shake (the capture tool's own screenshot came before Eden's first movie frame; live grabs show the fire) |
 | Halloween party quiz screen | Ep8, question 2 | Match: same layout, no offset; mean difference 6.4 against a small window grab of Eden (the rest is the grab's resampling) |
+| Dissolve (properties 68/69, mode 1) on the plane | Tea party 1 after line 7409 | Match: the same left-to-right sweep into blown-away dots over white, at the same pace; the dots themselves differ (random in both) |
+| Raster (properties 76-78) with ghosting on the screen layer | Tsubasa story 1 after line 66579 | Match: the same fade to white and the same wavy edges building with the same curve (edge darkness 0 to 67 in both); matched frames within 3.6 |
 
-Still to compare (the cake and culprit games were played through in Eden but not captured): dissolve (TP1 7409), raster (extra pieces),
-the quiz and the main8 minigames.
+Still to compare (the cake and culprit games were played through in Eden but not captured):
+the cake and culprit game screens.

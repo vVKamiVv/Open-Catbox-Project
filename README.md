@@ -49,7 +49,7 @@ These are not theories. They hold, without exception:
 | Screen transitions (crossfade, mask, whirl, glass shatter) | Working; whirl and glass not yet compared with the original |
 | Layer effects (dissolve, blur, ripple, mosaic, raster) | Working; not yet all compared with the original |
 | Every script command the game uses | Working |
-| Story choices, the quiz and the main8 minigames | Working; the culprit game's testimony texts are missing |
+| Story choices, the quiz and the main8 minigames | Working (the culprit game's testimonies come from the translation's `exefs` patch: keep that folder next to the assets or pass `--exefs`) |
 | Title, scenario select, save/load, settings, backlog, system menu | Working, compared with the original |
 | Tips, Characters, manual, Picture/Music/Movie/Character Box | Working, compared with the original |
 | Mouse: clicking, dragging and flicking lists, as the touch screen does | Working on every menu |

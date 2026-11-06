@@ -486,9 +486,8 @@ voice status (`0x710011a980`) is 3 if any voice is in state 0, otherwise 2 if an
 
 ### Still missing, in rough order of impact
 
-1. Voice playback (shin's voice player is a stub, so `VOICEWAIT` currently never waits).
-2. Menus, so that `EXIT` can return somewhere.
-3. The culprit game's testimony and evidence texts (§13), which are strings in the executable.
+All three items once listed here are done: voice playback (§16), the menus (§15), and the culprit game's testimony
+and evidence texts (§13, read from the executable with the translation's IPS patch applied).
 
 ---
 
