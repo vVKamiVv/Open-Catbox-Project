@@ -15,6 +15,7 @@ use shin_render_shaders::{
     Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings, Layer, LayerBindings,
     Mask, MaskBindings, Mosaic, MosaicBindings, Movie, MovieAlpha, MovieAlphaBindings,
     MovieBindings, Raster, RasterBindings, Ripple, RippleBindings, Shader, Sprite, SpriteBindings,
+    TapEffect, TapEffectBindings,
     WiperDefault, WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask,
     WiperMaskBindings, WiperWhirl, WiperWhirlBindings,
 };
@@ -431,6 +432,22 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                         alpha: params,
                     },
                     source: texture,
+                },
+                vertices,
+            ),
+            RenderProgramWithArguments::TapEffect {
+                vertices,
+                scene,
+                transform,
+                params,
+            } => self.run_impl::<TapEffect>(
+                key,
+                TapEffectBindings {
+                    params: &EffectUniformParams {
+                        transform,
+                        params: [params, glam::Vec4::ZERO],
+                    },
+                    scene,
                 },
                 vertices,
             ),

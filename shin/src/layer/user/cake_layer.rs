@@ -262,10 +262,6 @@ impl PointerTarget for CakeLayerImpl {
         true
     }
 
-    fn pointer_leave(&mut self) {
-        self.pointer_slice = None;
-    }
-
     fn pointer_press(&mut self) {
         self.pointer = self.pointer_at.clamp(POINTER_MIN, POINTER_MAX);
         self.hover(self.pointer_slice);

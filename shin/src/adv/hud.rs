@@ -193,6 +193,8 @@ pub struct AdvHud {
     notify_slide: Steps,
     notify_alpha: Steps,
     hint_alpha: Steps,
+    /// The hint strip's row: 0 for the buttons' text, 0.5 (row 2) for the touch screen's (`ADV+0x49c`)
+    hint_v: f32,
     /// Seconds since the screen started, for the icons' pulse (`ADV+0x498`)
     clock: f32,
     modes: HudModes,
@@ -212,6 +214,7 @@ impl AdvHud {
             notify_slide: Steps::default(),
             notify_alpha: Steps::default(),
             hint_alpha: Steps::default(),
+            hint_v: 0.0,
             clock: 0.0,
             modes: HudModes::default(),
             hidden: false,
@@ -274,11 +277,13 @@ impl AdvHud {
         }
     }
 
-    /// Confirm inside an event: "Press B to Skip." for 32 + 120 + 32 frames (`0x7100011f2c`); false when already shown
-    pub fn show_event_hint(&mut self) -> bool {
+    /// Confirm inside an event: "Press B to Skip." for 32 + 120 + 32 frames (`0x7100011f2c`), or with `touch` (a
+    /// tap, `0x71000157d0`) the touch screen's hint; false when already shown, which keeps its row
+    pub fn show_event_hint(&mut self, touch: bool) -> bool {
         if self.hint_alpha.running() {
             return false;
         }
+        self.hint_v = if touch { 0.5 } else { 0.0 };
         self.hint_alpha = Steps::new(0.0, vec![
             linear(1.0, 32.0),
             linear(1.0, 120.0),
@@ -419,9 +424,10 @@ impl AdvHud {
 
         let hint = self.hint_alpha.value();
         if self.hint_alpha.running() && hint > 0.0 {
-            // row 0: "Press B to Skip."
+            // row 0: "Press B to Skip.", row 2: the touch screen's
+            // shortcut: the original picks row 1 for the buttons' hint by a system flag (`0x71000fc1f0`); always row 0
             let sprite = Sprite::new(self.textures.get("skip"), [16.0, 1000.0, 656.0, 1064.0])
-                .uv([0.0, 0.0, 1.0, 0.25])
+                .uv([0.0, self.hint_v, 1.0, self.hint_v + 0.25])
                 .alpha(hint);
             sprite.draw(pass, builder, projection);
         }

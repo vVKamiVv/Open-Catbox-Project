@@ -137,9 +137,8 @@ pub struct SelectLayer {
     alpha: f32,
     state: State,
     cursor: Option<usize>,
-    /// The bar under the pointer (`+0x84`) and the one a press raised
+    /// The bar the touch went down on (`+0x84`)
     pointer_hover: Option<usize>,
-    pointer_pressed: Option<usize>,
     sounds: Vec<&'static str>,
 }
 
@@ -222,7 +221,6 @@ impl SelectLayer {
             // (Eden, played with a controller) no option is highlighted until the first Up or Down
             cursor: None,
             pointer_hover: None,
-            pointer_pressed: None,
             sounds: Vec::new(),
         }
     }
@@ -442,8 +440,9 @@ fn render_bar(
 /// Bars are hit between these x (`0x710015a668`, `0x710015a888`)
 const POINTER_X: (f32, f32) = (460.0, 1460.0);
 
-/// Pointer slots (`0x71000f1940` hit test, `0x71000f19e0` press, `0x71000f1aa0` release): a press moves the
-/// highlight there and raises its flash; releasing on it picks it
+/// Pointer slots (`0x71000f1940` hit test, `0x71000f19e0` press, `0x71000f1aa0` release; the ADV listener's press
+/// `0x7100015670` and long press `0x7100015c00`): a press moves the highlight there and raises its flash, a tap
+/// picks it, a long press, a drag or a cancel drops the flash and picks nothing
 impl PointerTarget for SelectLayer {
     fn pointer_hit(&mut self, position: Vec2) -> bool {
         self.pointer_hover = None;
@@ -456,30 +455,32 @@ impl PointerTarget for SelectLayer {
         self.pointer_hover.is_some()
     }
 
-    fn pointer_leave(&mut self) {
-        self.pointer_hover = None;
-    }
-
     fn pointer_press(&mut self) {
-        let Some(hovered) = self.pointer_hover else {
+        let Some(hovered) = self.pointer_hover.filter(|_| self.is_interactive()) else {
             return;
         };
         self.point_at(hovered);
         tween_now(&mut self.choices[hovered].flash, FLASH_PEAK, FLASH_RATE);
-        self.pointer_pressed = Some(hovered);
     }
 
     fn pointer_release(&mut self) {
-        self.pointer_pressed = None;
-        if let Some(hovered) = self.pointer_hover.take() {
+        if let Some(hovered) = self.pointer_hover.take().filter(|_| self.is_interactive()) {
             self.point_at(hovered);
             self.pick(hovered);
         }
     }
 
     fn pointer_cancel(&mut self) {
-        if let Some(pressed) = self.pointer_pressed.take() {
-            tween_now(&mut self.choices[pressed].flash, 0.0, FLASH_RATE);
+        if let Some(hovered) = self.pointer_hover.take().filter(|_| self.is_interactive()) {
+            tween_now(&mut self.choices[hovered].flash, 0.0, FLASH_RATE);
+        }
+    }
+
+    /// The press's highlight move, without the flash
+    fn pointer_hover(&mut self, position: Vec2) {
+        if self.pointer_hit(position) {
+            let hovered = self.pointer_hover.take().unwrap();
+            self.point_at(hovered);
         }
     }
 }

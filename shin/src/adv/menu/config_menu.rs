@@ -2,8 +2,8 @@
 //! settings screen, three tabs of sliders and On/Off buttons over `/config.txa`. Settings change live (every player
 //! reads them each frame); closing writes the save file when anything changed. The pointer works as the original's
 //! touch listener: tapping an option or a tab, grabbing a slider's knob, dragging and flicking the list.
-//!
-//! shortcut: the visual touch feedback setting has no effect, the port having no touch screen.
+//! The visual touch feedback setting (v17) turns the tap ripples and drag stars of [`crate::ui::touch_effect`] on
+//! and off.
 
 use std::sync::Arc;
 

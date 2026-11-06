@@ -1,6 +1,7 @@
 //! Drawing and timing helpers the menus share, in the original's 1920x1080 top-left space.
 
 pub mod gesture;
+pub mod touch_effect;
 
 use enum_map::EnumMap;
 use glam::{Mat4, vec3};

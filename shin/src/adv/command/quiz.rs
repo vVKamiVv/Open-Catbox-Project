@@ -114,7 +114,8 @@ impl UpdatableCommand for QUIZ {
             quiz.handle_input(&input);
         }
         if let Some(pointer) = self.pending_pointer.take() {
-            self.pointer.dispatch(pointer, quiz);
+            self.pointer
+                .dispatch(pointer, context.delta_ticks.as_f32(), quiz);
         }
         if auto_choose && quiz.is_interactive() {
             // debug fast-forwarding (sweeps, captures) cannot wait for a player

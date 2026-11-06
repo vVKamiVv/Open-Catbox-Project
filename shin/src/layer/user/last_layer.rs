@@ -195,10 +195,6 @@ impl PointerTarget for LastLayerImpl {
         self.pointer_target.is_some()
     }
 
-    fn pointer_leave(&mut self) {
-        self.pointer_target = None;
-    }
-
     fn pointer_press(&mut self) {
         if let Some(target) = self.pointer_target {
             minigame::raise(self.target_flash(target));

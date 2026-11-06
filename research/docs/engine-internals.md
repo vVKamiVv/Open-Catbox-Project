@@ -814,12 +814,12 @@ it pink; fixed in `shin-primitives` `UnormColor::from_decimal_rgb`. **confirmed*
 
 ### Mouse and touch
 
-The minigames and the choice menu take the touch screen through their overlay layers' handlers: slot 18 hit-tests a
-point (1920 x 1080, top left) and remembers what is under it, 19 is the pointer leaving, 20 a press on the hit, 21 the
-release over it (activate) and 22 a release elsewhere (undo the press). The dispatcher that calls them was not
-decompiled; the port calls them like a button (hit-tests while the button is up, a press holds its target until the
-release) **inferred**. In the port: `PointerTracker` in `layer/user/minigame.rs`; the window maps the mouse into the
-canvas (`shin-window`).
+The minigames and the choice menu take the touch screen through the ADV screen's gesture listener (section 17.2):
+on the down the listener hit-tests the choice menu, else the overlay layer's slot 18 (a point in 1920 x 1080, top
+left; the layer remembers what is under it). Only a touch the target accepted goes on to it: slot 20 the press
+(0.15 s still), 21 the tap (activate), 22 the long press, 23 a drag and 25 a cancel, the last three undoing the
+press. In the port: `PointerTracker` in `layer/user/minigame.rs`; the window maps the mouse into the canvas
+(`shin-window`).
 
 ---
 
@@ -1076,3 +1076,43 @@ selects nothing; list flicks store only `vy` and coast with the shared idiom.
   of leftward closes it with cancel (`0x710001eaa0`).
 - **Title submenu:** down hit `0x7100110a30`; press: highlight and cursor (`0x71001106d0`); tap on an item: cursor
   and decide; elsewhere: cancel and close (`0x71001103b0`).
+
+### 17.2 The touch effect and the story's listener
+
+**Touch effect** (`shin::TouchEffect`, one global instance `*0x710022b8c8`, ctor `0x7100115ae0`, update
+`0x7100115d70`, draw `0x7100116070`). Updated every frame after the scene's update (dt in 60 fps frames) and drawn
+over everything right after the scene, in every scene. It owns a `GestureRecognizer` without long presses on the
+same touches and never consumes them. Setting v17 (`v17_showtoucheffect`, "visual touch feedback") gates new
+effects; live ones finish.
+
+| Effect | Behaviour |
+|---|---|
+| Tap (`0x7100116490`) | A ripple at the down point; `t += dt / 30`, removed past 1. Drawn as a quad of half-size `80 (1 - (1 - t)^3)` px centred on the point, sampling the finished frame: with `d` the distance from the centre over the half-size and `s = sin(2 pi (d - t))`, the colour is the frame at `uv + s (0.004, 0.004 * 16/9)` plus `0.2 s`, times `(1 - min(d, 1)^2) (1 - t^2)`, blend 5 (premultiplied) |
+| Drag (`0x7100116600`) | On each drag event (previous to current point): when the segment is at least 10 px long or more than 9 frames passed since the last spawn, 4 stars at the previous point. Each: atlas quadrant 0..3, velocity uniform in +-16 px per frame on each axis, rotation uniform +-1 (times pi), spin uniform +-0.05 per frame, scale uniform 0.5..0.75 |
+| Star update | Each update (not scaled by dt): position += velocity, rotation += spin; velocity *= 0.8^dt; `t += dt / 60`, removed past 1 |
+| Star draw | `drag` in `/systex.txa`, a 2 x 2 atlas (quadrant `(i & 1, i >> 1) * 0.5`); an 80 x 80 quad (+-40 px) scaled by `scale (1 - t)^1.6`, rotated, white with alpha `(1 - t)^1.6`, additive (SrcAlpha, One) |
+
+A still hold emits nothing. The port draws the ripple with its own program (`tap_effect.wgsl`, the unused
+`TapEffect` slot of the program list) and, while a ripple plays, renders the finished frame once more into a
+texture for it to sample (`shin/src/ui/touch_effect.rs`).
+
+**The ADV listener** (`0x71000154f0`..`0x7100015dd0`, a recognizer with long presses):
+
+- **Down** (`0x71000154f0`): hit-tests the choice menu (`ADV+0x8f0`, the option index + 1, or -1); with no hit and
+  no menu, overlay, pause or hide in the way, forwards the point to the overlay layer's slot 18 and remembers
+  whether it accepted (`ADV+0x8f4`).
+- **Press** (`0x7100015670`): over an option, only while the menu is fully shown and the option selectable, raises
+  its flash to 0.7 at 0.2 per frame; else to the overlay's slot 20 if it accepted.
+- **Tap** (`0x71000157d0`): inside an event with the system enabled, shows the event-skip hint with row 2 of its
+  strip (`ADV+0x49c = 1`, v 0.5..0.75; the buttons' hint uses row 0, or row 1 by a system flag `0x71000fc1f0`), once
+  per showing; otherwise advances the text (or picks the option, or goes to the overlay's slot 21).
+- **Long press** (`0x7100015c00`, 1.15 s still): inside an event with the system enabled, the event skip of B
+  (`0x710000f600`), with `decide` when a target is found (silent otherwise); else the overlay's slot 22 if it
+  accepted. Over an option it drops the flash to 0 at 0.2 per frame; the option is not picked. No tap follows.
+- **Drag / cancel**: drop an option's flash the same way, or go to the overlay's slots 23 and 25.
+
+The choice menu's press moves the cursor without a sound (old bar's highlight to 0 at 0.1 per frame, new to 1 at
+0.25); its tap plays `seldecide` and picks with the flash 0.7 then 0. The quiz overlay's press raises the flash to
+0.7 at 0.2 per frame and moves the glow (old to 0 at 0.05, new to 1 at 0.25) without a sound; its tap plays
+`decide` and picks. The port adds a hover (the Switch has none): moving the mouse with no button held over another
+option moves the cursor as a press does, without the flash.

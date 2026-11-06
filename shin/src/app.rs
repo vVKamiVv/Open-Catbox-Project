@@ -57,7 +57,6 @@ use crate::{
 #[derive(Debug, Enum)]
 pub enum AppAction {
     ToggleFullscreen,
-    Act,
     /// A: confirm, advance
     Enter,
     /// B: cancel
@@ -99,7 +98,6 @@ impl Action for AppAction {
         let stick = |direction| raw_input_state.gamepads.is_vheld(direction);
         EnumMap::from_fn(|action| match action {
             AppAction::ToggleFullscreen => key(KeyCode::F11),
-            AppAction::Act => key(KeyCode::Space) || raw_input_state.mouse.buttons[MouseButton::Left],
             AppAction::Enter => {
                 key(KeyCode::Space) || key(KeyCode::Enter) || pad(GamepadButton::A)
             }
@@ -168,6 +166,8 @@ pub struct App {
     savedata_path: Option<PathBuf>,
     /// `--dev`
     dev: Option<DevTools>,
+    /// The tap ripples and drag stars over every scene (`*0x710022b8c8`)
+    touch_effect: ui::touch_effect::TouchEffect,
 }
 
 impl ShinApp for App {
@@ -261,6 +261,7 @@ impl ShinApp for App {
                 pending_capture: None,
                 savedata_path,
                 dev,
+                touch_effect: ui::touch_effect::TouchEffect::new(new_game_seed()),
             });
         }
 
@@ -384,6 +385,7 @@ impl ShinApp for App {
             pending_capture: None,
             savedata_path,
             dev,
+            touch_effect: ui::touch_effect::TouchEffect::new(new_game_seed()),
         })
     }
 
@@ -570,6 +572,7 @@ impl ShinApp for App {
         if write {
             self.write_save();
         }
+        let frames = update_context.delta_ticks.as_f32();
         if let Some(next) = next {
             self.switch_scene(&mut pre_render_context, next);
         }
@@ -584,6 +587,17 @@ impl ShinApp for App {
             );
             scene.render(&mut pass);
         }
+        // after the scene's update, in every scene; the ripples refract the finished frame, which they need as a
+        // picture of its own
+        let enabled = self.save_data().settings.v17_showtoucheffect;
+        let Self { fade, scene, touch_effect, .. } = self;
+        touch_effect.update(pointer, frames, enabled);
+        touch_effect.capture(&mut pre_render_context, |pass| {
+            scene.render(pass);
+            if let Some(fade) = fade {
+                fade.render(pass);
+            }
+        });
 
         if self.pending_capture.is_none() {
             if let Scene::Adv(adv) = &self.scene {
@@ -644,6 +658,10 @@ impl ShinApp for App {
         if let Some(fade) = &self.fade {
             fade.render(pass);
         }
+        // over everything, right after the scene (`0x7100116070`)
+        let drag = self.adv_assets.system_textures.contains("drag");
+        self.touch_effect
+            .render(pass, drag.then(|| self.adv_assets.system_textures.get("drag")));
 
         // render_layer(pass, &transform, &self.adv, FloatColor4::BLACK, 0);
     }

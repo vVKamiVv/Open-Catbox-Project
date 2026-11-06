@@ -138,9 +138,8 @@ pub struct QuizLayerImpl {
     /// Fraction of the blink period; the consult button shows its second frame in the upper half
     blink_phase: f32,
     sounds: Vec<&'static str>,
-    /// The button under the pointer (`+0x48`) and the one a press raised
+    /// The button the touch went down on (`+0x48`)
     hovered: Option<usize>,
-    pressed: Option<usize>,
 }
 
 impl QuizLayerImpl {
@@ -164,7 +163,6 @@ impl QuizLayerImpl {
             blink_phase: 0.0,
             sounds: Vec::new(),
             hovered: None,
-            pressed: None,
         }
     }
 
@@ -173,9 +171,16 @@ impl QuizLayerImpl {
             return;
         }
         self.sounds.push(SOUND_MOVE);
-        minigame::tween_now(&mut self.buttons[self.cursor].hover, 0.0, HOVER_OUT_RATE);
-        self.cursor = target;
-        minigame::tween_now(&mut self.buttons[target].hover, 1.0, HOVER_IN_RATE);
+        self.point_at(target);
+    }
+
+    /// Moves the glow without a sound (a press, or the mouse hovering)
+    fn point_at(&mut self, target: usize) {
+        if target != self.cursor {
+            minigame::tween_now(&mut self.buttons[self.cursor].hover, 0.0, HOVER_OUT_RATE);
+            self.cursor = target;
+            minigame::tween_now(&mut self.buttons[target].hover, 1.0, HOVER_IN_RATE);
+        }
     }
 
     fn pick(&mut self) {
@@ -199,33 +204,34 @@ impl PointerTarget for QuizLayerImpl {
         self.hovered.is_some()
     }
 
-    fn pointer_leave(&mut self) {
-        self.hovered = None;
-    }
-
     /// Raises the flash and moves the glow there, without a sound
     fn pointer_press(&mut self) {
-        let Some(hovered) = self.hovered else { return };
+        let Some(hovered) = self.hovered.filter(|_| self.state == State::Waiting) else {
+            return;
+        };
         minigame::raise(&mut self.buttons[hovered].flash);
-        if hovered != self.cursor {
-            minigame::tween_now(&mut self.buttons[self.cursor].hover, 0.0, HOVER_OUT_RATE);
-            self.cursor = hovered;
-            minigame::tween_now(&mut self.buttons[hovered].hover, 1.0, HOVER_IN_RATE);
-        }
-        self.pressed = Some(hovered);
+        self.point_at(hovered);
     }
 
     fn pointer_release(&mut self) {
-        self.pressed = None;
-        if let Some(hovered) = self.hovered.take() {
+        if let Some(hovered) = self.hovered.take().filter(|_| self.state == State::Waiting) {
             self.cursor = hovered;
             self.pick();
         }
     }
 
+    /// A long press, a drag or a cancel: the raised flash drops and nothing is picked
     fn pointer_cancel(&mut self) {
-        if let Some(pressed) = self.pressed.take() {
-            minigame::lower(&mut self.buttons[pressed].flash);
+        if let Some(hovered) = self.hovered.take().filter(|_| self.state == State::Waiting) {
+            minigame::lower(&mut self.buttons[hovered].flash);
+        }
+    }
+
+    /// The press's glow move, without the flash
+    fn pointer_hover(&mut self, position: Vec2) {
+        if self.pointer_hit(position) {
+            let hovered = self.hovered.take().unwrap();
+            self.point_at(hovered);
         }
     }
 }

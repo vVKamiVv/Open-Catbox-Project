@@ -204,7 +204,15 @@ pub enum RenderProgramWithArguments<'a> {
         mask: TextureSource<'a>,
         transform: Mat4,
     },
-    TapEffect {},
+    /// The touch effect's tap ripple: the finished frame refracted around a point
+    TapEffect {
+        vertices: VertexSource<'a, PosTexVertex>,
+        /// The frame the ripple refracts
+        scene: TextureSource<'a>,
+        transform: Mat4,
+        /// (centre x, centre y, radius in canvas pixels, progress)
+        params: Vec4,
+    },
     Movie {
         vertices: VertexSource<'a, PosTexVertex>,
         texture_luma: TextureSource<'a>,
@@ -325,6 +333,7 @@ impl RenderProgramWithArguments<'_> {
             RenderProgramWithArguments::Mosaic { .. } => ShaderName::Mosaic,
             RenderProgramWithArguments::Raster { .. } => ShaderName::Raster,
             RenderProgramWithArguments::Button { .. } => ShaderName::Button,
+            RenderProgramWithArguments::TapEffect { .. } => ShaderName::TapEffect,
 
             ref program => todo!("Implement shader for {:?}", program),
         }

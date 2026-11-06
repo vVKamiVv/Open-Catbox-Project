@@ -301,10 +301,6 @@ impl PointerTarget for MurdererLayerImpl {
         self.hovered.is_some()
     }
 
-    fn pointer_leave(&mut self) {
-        self.hovered = None;
-    }
-
     fn pointer_press(&mut self) {
         if let Some(target) = self.hovered {
             self.screen.pointer_press(target);

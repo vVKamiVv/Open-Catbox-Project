@@ -17,6 +17,8 @@ use shin_render::{
     shaders::types::{buffer::VertexSource, vertices::PosColTexVertex},
 };
 
+use crate::ui::gesture::{Gesture, GestureRecognizer};
+
 /// One frame of controller state, as the minigames' input handlers read it
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct MinigameInput {
@@ -40,58 +42,75 @@ pub struct Directions {
     pub right: bool,
 }
 
-/// The mouse/touch handlers of the original's overlay layers (slots 18-22): a hit test that remembers what is under
-/// the pointer, and press, release and cancel acting on it
+/// The touch handlers of the original's overlay layers (slots 18-25) and the choice menu, in gesture terms
 pub trait PointerTarget {
-    /// Slot 18: whether something is under `position` (1920x1080 top-left), remembered for the calls below
+    /// Slot 18, on the touch's down: whether something is under `position` (1920x1080 top-left), remembered for the
+    /// calls below
     fn pointer_hit(&mut self, _position: Vec2) -> bool {
         false
     }
-    /// Slot 19: the pointer left
-    fn pointer_leave(&mut self) {}
-    /// Slot 20: the button went down over what the hit test found
+    /// Slot 20: held still on it for 0.15 s
     fn pointer_press(&mut self) {}
-    /// Slot 21: the button was released over it: activate it
+    /// Slot 21: tapped: activate it
     fn pointer_release(&mut self) {}
-    /// Slot 22: the button was released elsewhere: undo the press
+    /// Slots 22 (long press), 23 (drag) and 25 (cancel): undo the press; nothing is activated
     fn pointer_cancel(&mut self) {}
+    /// Port-only (the Switch has no hover): the mouse moved to `position` with no button held
+    fn pointer_hover(&mut self, _position: Vec2) {}
 }
 
-/// Turns the mouse into the handler calls, like a button: hovering hit-tests, a press on a target raises it, and
-/// releasing over a target activates it while releasing elsewhere cancels.
-///
-/// The original's touch dispatcher was not decompiled; this ordering is inferred from what the handlers do.
-#[derive(Debug, Default, Clone, Copy)]
+/// Turns the pointer into the handler calls as the ADV's touch listener (`0x71000154f0`..`0x7100015dd0`, its
+/// recognizer with long presses) dispatches them: the down hit-tests, and only a touch that went down on a target
+/// sends it the press, the tap, or one cancel for a long press, a drag or an end without a tap
+#[derive(Debug, Clone)]
 pub struct PointerTracker {
-    held: bool,
-    hovering: bool,
-    pressed: bool,
+    gestures: GestureRecognizer,
+    /// The down hit a target (the listener's `+0x8f4`)
+    accepted: bool,
+    /// Where the pointer was last frame, to send hovers on a move only
+    last_position: Option<Vec2>,
+}
+
+impl Default for PointerTracker {
+    fn default() -> Self {
+        Self {
+            gestures: GestureRecognizer::new(true),
+            accepted: false,
+            last_position: None,
+        }
+    }
 }
 
 impl PointerTracker {
-    pub fn dispatch<T: PointerTarget + ?Sized>(&mut self, pointer: Pointer, target: &mut T) {
-        let went_down = pointer.held && !self.held;
-        let went_up = !pointer.held && self.held;
-        self.held = pointer.held;
-        if self.pressed && !went_up {
-            // the press holds on to its target until the button is released
-            return;
-        }
-        let hit = pointer.position.is_some_and(|position| target.pointer_hit(position));
-        if self.hovering && !hit {
-            target.pointer_leave();
-        }
-        self.hovering = hit;
-        if went_up && self.pressed {
-            self.pressed = false;
-            if hit {
-                target.pointer_release();
-            } else {
-                target.pointer_cancel();
+    /// One frame (`frames` long at 60 fps) of the pointer
+    pub fn dispatch<T: PointerTarget + ?Sized>(
+        &mut self,
+        pointer: Pointer,
+        frames: f32,
+        target: &mut T,
+    ) {
+        for gesture in self.gestures.update(pointer, frames) {
+            match gesture {
+                Gesture::Down(at) => self.accepted = target.pointer_hit(at),
+                Gesture::Press if self.accepted => target.pointer_press(),
+                Gesture::Tap(_) if self.accepted => {
+                    self.accepted = false;
+                    target.pointer_release();
+                }
+                Gesture::LongPress | Gesture::Drag(..) | Gesture::End if self.accepted => {
+                    self.accepted = false;
+                    target.pointer_cancel();
+                }
+                _ => {}
             }
-        } else if went_down && hit {
-            self.pressed = true;
-            target.pointer_press();
+        }
+        let moved =
+            pointer.position != std::mem::replace(&mut self.last_position, pointer.position);
+        if let Some(position) = pointer
+            .position
+            .filter(|_| moved && !pointer.held && !self.gestures.is_active())
+        {
+            target.pointer_hover(position);
         }
     }
 }
@@ -247,4 +266,102 @@ pub fn builder(stencil_ref: u8) -> RenderRequestBuilder {
 /// Converts a rect in 1920x1080 top-left space to the centred space the layers draw in
 pub fn from_top_left([x0, y0, x1, y1]: [f32; 4]) -> [f32; 4] {
     [x0 - 960.0, y0 - 540.0, x1 - 960.0, y1 - 540.0]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Records the calls; anything left of x = 100 is a target
+    #[derive(Default)]
+    struct Log(Vec<&'static str>);
+
+    impl PointerTarget for Log {
+        fn pointer_hit(&mut self, position: Vec2) -> bool {
+            self.0.push("hit");
+            position.x < 100.0
+        }
+        fn pointer_press(&mut self) {
+            self.0.push("press");
+        }
+        fn pointer_release(&mut self) {
+            self.0.push("tap");
+        }
+        fn pointer_cancel(&mut self) {
+            self.0.push("cancel");
+        }
+        fn pointer_hover(&mut self, _position: Vec2) {
+            self.0.push("hover");
+        }
+    }
+
+    fn at(x: f32, y: f32, held: bool) -> Pointer {
+        Pointer {
+            position: Some(vec2(x, y)),
+            held,
+        }
+    }
+
+    fn run(frames: &[(Pointer, f32)]) -> Vec<&'static str> {
+        let mut tracker = PointerTracker::default();
+        let mut log = Log::default();
+        for &(pointer, frames) in frames {
+            tracker.dispatch(pointer, frames, &mut log);
+        }
+        log.0
+    }
+
+    #[test]
+    fn a_quick_click_taps_and_a_held_one_presses_first() {
+        let quick = [
+            (at(50.0, 0.0, false), 1.0),
+            (at(50.0, 0.0, true), 1.0),
+            (at(50.0, 0.0, false), 1.0),
+        ];
+        assert_eq!(run(&quick), ["hover", "hit", "tap"]);
+        let held = [
+            (at(50.0, 0.0, true), 1.0),
+            (at(50.0, 0.0, true), 10.0),
+            (at(50.0, 0.0, false), 1.0),
+        ];
+        assert_eq!(run(&held), ["hit", "press", "tap"]);
+    }
+
+    #[test]
+    fn a_long_press_or_a_drag_cancels_and_never_picks() {
+        let long = [
+            (at(50.0, 0.0, true), 1.0),
+            (at(50.0, 0.0, true), 70.0),
+            (at(50.0, 0.0, false), 1.0),
+        ];
+        assert_eq!(run(&long), ["hit", "press", "cancel"]);
+        let drag = [
+            (at(50.0, 0.0, true), 1.0),
+            (at(50.0, 40.0, true), 1.0),
+            (at(50.0, 80.0, false), 1.0),
+        ];
+        // released somewhere else: the mouse is now over that place
+        assert_eq!(run(&drag), ["hit", "cancel", "hover"]);
+    }
+
+    #[test]
+    fn a_down_off_the_targets_sends_nothing_more() {
+        let miss = [
+            (at(150.0, 0.0, true), 1.0),
+            (at(150.0, 0.0, true), 10.0),
+            (at(150.0, 0.0, false), 1.0),
+        ];
+        assert_eq!(run(&miss), ["hit"]);
+    }
+
+    #[test]
+    fn hovers_come_on_moves_with_no_button_held() {
+        let moves = [
+            (at(10.0, 0.0, false), 1.0),
+            (at(10.0, 0.0, false), 1.0),
+            (at(20.0, 0.0, false), 1.0),
+            (at(30.0, 0.0, true), 1.0),
+        ];
+        assert_eq!(run(&moves), ["hover", "hover", "hit"]);
+    }
 }

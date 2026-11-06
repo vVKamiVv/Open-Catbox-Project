@@ -65,6 +65,7 @@ use crate::{
         user::minigame::{self, Directions, MinigameInput, PointerTracker},
         user::UserLayer,
     },
+    ui::gesture::{Gesture, GestureRecognizer},
     render::{
         PreRenderContext,
         overlay::{OverlayCollector, OverlayVisitable},
@@ -114,6 +115,8 @@ pub struct Adv {
     current_command: Option<ExecutingCommand>,
     /// The mouse over the choice menu
     select_pointer: PointerTracker,
+    /// The story's touch input, with long presses (the ADV listener `0x71000154f0`..`0x7100015dd0`)
+    gestures: GestureRecognizer,
     fast_forward_to_bp: Option<BreakpointObserver>,
     /// Set by `EXIT`; the script then stops running while the screen keeps updating
     script_exited: bool,
@@ -181,6 +184,7 @@ impl Adv {
             adv_state,
             current_command: None,
             select_pointer: PointerTracker::default(),
+            gestures: GestureRecognizer::new(true),
             fast_forward_to_bp: None,
             script_exited: false,
             capture: None,
@@ -631,6 +635,7 @@ impl Adv {
         context: &mut UpdateContext,
         state: EnumMap<AppAction, ActionState>,
         pointer: Pointer,
+        gestures: &[Gesture],
     ) {
         if let Some(select_layer) = &mut self.adv_state.select_layer {
             for (action, input) in [
@@ -643,7 +648,8 @@ impl Adv {
                 }
             }
             // a click goes through the pointer handlers
-            self.select_pointer.dispatch(pointer, select_layer);
+            self.select_pointer
+                .dispatch(pointer, context.delta_ticks.as_f32(), select_layer);
             return;
         }
         if let Some(ExecutingCommand::QUIZ(quiz)) = &mut self.current_command {
@@ -668,9 +674,20 @@ impl Adv {
             return;
         }
 
+        // a long press inside an event skips it, like B (`0x7100015c00`); a hold elsewhere does nothing
+        let save = &self.vm_state.save;
+        if gestures.contains(&Gesture::LongPress)
+            && save.system_enabled
+            && save.event.is_some()
+            && self.load_request.is_none()
+        {
+            self.skip_event(context);
+            return;
+        }
+        let tapped = gestures.iter().any(|g| matches!(g, Gesture::Tap(_)));
+
         // with the system enabled and auto and skip off (`0x7100011f08`): inside an event B skips it; outside, + and -
         // jump between chapters, Y opens the system menu and B hides the window
-        let save = &self.vm_state.save;
         if save.system_enabled && self.adv_state.skip_auto == 0 && self.load_request.is_none() {
             if save.event.is_some() {
                 if state[AppAction::Cancel].is_clicked {
@@ -705,15 +722,16 @@ impl Adv {
             return;
         }
 
-        // inside an event (system enabled), confirm shows "Press B to Skip." (`0x7100011f2c`)
+        // inside an event (system enabled), confirm shows "Press B to Skip." (`0x7100011f2c`), a tap the touch
+        // screen's hint (`0x71000157d0`)
         let save = &self.vm_state.save;
-        if save.event.is_some() && save.system_enabled && state[AppAction::Enter].is_clicked {
-            self.adv_state.hud.show_event_hint();
+        if save.event.is_some() && save.system_enabled && (state[AppAction::Enter].is_clicked || tapped) {
+            self.adv_state.hud.show_event_hint(!state[AppAction::Enter].is_clicked);
             return;
         }
 
-        // a click advances the text too, as a touch does in the original
-        if state[AppAction::Enter].is_clicked || state[AppAction::Act].is_clicked {
+        // a tap (a click released without a drag or a long press) advances the text, as in the original
+        if state[AppAction::Enter].is_clicked || tapped {
             self.adv_state.message_layer_mut().try_advance();
             if let Some(ExecutingCommand::WAIT(wait)) = &mut self.current_command {
                 wait.interrupt();
@@ -745,8 +763,12 @@ impl Adv {
 
         // a task in the pool takes the input; the ADV's buttons only work without one (`0x7100011ea0`)
         let task_has_input = self.update_tasks(context, &input_state, pointer);
-        if !task_has_input && !self.handle_mode_buttons(&input_state, context.asset_server) {
-            self.handle_input(context, input_state, pointer);
+        let gestures = self.gestures.update(pointer, context.delta_ticks.as_f32());
+        if task_has_input {
+            // a touch that began over a menu stays the menu's
+            self.gestures.cancel();
+        } else if !self.handle_mode_buttons(&input_state, context.asset_server) {
+            self.handle_input(context, input_state, pointer, &gestures);
         }
         self.adv_state.skipping = self.is_fast_forwarding(fast_forward_button_held);
         if self.is_auto() {
