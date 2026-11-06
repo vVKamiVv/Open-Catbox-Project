@@ -236,6 +236,10 @@ impl VideoPlayerFrameHandle<'_> {
             Vec4::new(1.1643835, -0.21322097, -0.5328817, 0.0),
             Vec4::new(1.1643835, 2.1124017, 0.0, 0.0),
         ];
+        // `0x71000bf040`: picture and alpha are (h - 7) / 2 rows each (integer division), 8 rows apart
+        let h = size.y;
+        let part = ((h as u32).saturating_sub(7) / 2) as f32;
+        let split = Vec4::new(part / h, (part + 8.0) / h, 0.0, 0.0);
         let program = if alpha {
             RenderProgramWithArguments::MovieAlpha {
                 vertices,
@@ -245,6 +249,7 @@ impl VideoPlayerFrameHandle<'_> {
                 color_bias,
                 color_transform,
                 color,
+                split,
             }
         } else {
             RenderProgramWithArguments::Movie {
@@ -255,6 +260,7 @@ impl VideoPlayerFrameHandle<'_> {
                 color_bias,
                 color_transform,
                 color,
+                split,
             }
         };
         pass.run(builder.build(program, DrawPrimitive::TrianglesStrip))

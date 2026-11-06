@@ -221,6 +221,7 @@ pub enum RenderProgramWithArguments<'a> {
         color_bias: Vec4,
         color_transform: [Vec4; 3],
         color: Vec4,
+        split: Vec4,
     },
     /// A movie whose frames carry their alpha in the bottom half (`MovieTransparencyMode::Transparent`)
     MovieAlpha {
@@ -231,6 +232,7 @@ pub enum RenderProgramWithArguments<'a> {
         color_bias: Vec4,
         color_transform: [Vec4; 3],
         color: Vec4,
+        split: Vec4,
     },
 
     WiperDefault {

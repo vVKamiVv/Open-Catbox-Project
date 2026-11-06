@@ -91,6 +91,7 @@ struct MovieUniformParams {
     color_bias: vec4<f32>,
     color_transform: array<vec4<f32>, 3>,
     color: vec4<f32>,
+    split: vec4<f32>,
 }
 
 struct WiperDefaultUniformParams {

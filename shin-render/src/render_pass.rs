@@ -268,6 +268,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                 color_bias,
                 color_transform,
                 color,
+                split,
             } => self.run_impl::<Movie>(
                 key,
                 MovieBindings {
@@ -276,6 +277,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                         color_bias,
                         color_transform,
                         color,
+                        split,
                     },
                     luma: texture_luma,
                     chroma: texture_chroma,
@@ -291,6 +293,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                 color_bias,
                 color_transform,
                 color,
+                split,
             } => self.run_impl::<MovieAlpha>(
                 key,
                 MovieAlphaBindings {
@@ -299,6 +302,7 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
                         color_bias,
                         color_transform,
                         color,
+                        split,
                     },
                     luma: texture_luma,
                     chroma: texture_chroma,

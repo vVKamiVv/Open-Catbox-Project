@@ -154,9 +154,10 @@ impl NewDrawableLayerNeedsSeparatePass for MovieLayerImpl {
             return false;
         }
 
+        // a finished movie without the loop bit gives way to its linked still picture (`0x71000c3400`,
+        // `0x71000c38c0`); the stills are the movies' own last frames (`no05` -> `no05_00039`), so keeping the
+        // last frame looks the same and needs no separate pass
         false
-        // TODO: add support for still pictures & indirect rendering needed for them (?)
-        // self.still_picture.is_some()
     }
 }
 

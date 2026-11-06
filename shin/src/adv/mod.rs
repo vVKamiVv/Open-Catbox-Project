@@ -260,6 +260,12 @@ impl Adv {
 
     /// B inside an event (`0x710000f600`): the look-ahead to the event's end, and the screen rebuilt there
     fn skip_event(&mut self, context: &mut UpdateContext) {
+        self.skip_event_with(context, true);
+    }
+
+    /// The event skip; `error_sound` plays `error` when there is no event end to skip to (B does, a long press is
+    /// silent: `0x7100015c00`)
+    fn skip_event_with(&mut self, context: &mut UpdateContext, error_sound: bool) {
         let target = look_ahead(
             &self.scenario,
             self.vm_state.global.clone(),
@@ -273,7 +279,8 @@ impl Adv {
                 play_sys_se(&audio, context.asset_server, "decide", Default::default());
                 self.load_request = Some((target, false));
             }
-            None => play_sys_se(&audio, context.asset_server, "error", Default::default()),
+            None if error_sound => play_sys_se(&audio, context.asset_server, "error", Default::default()),
+            None => {}
         }
     }
 
@@ -681,7 +688,7 @@ impl Adv {
             && save.event.is_some()
             && self.load_request.is_none()
         {
-            self.skip_event(context);
+            self.skip_event_with(context, false);
             return;
         }
         let tapped = gestures.iter().any(|g| matches!(g, Gesture::Tap(_)));
