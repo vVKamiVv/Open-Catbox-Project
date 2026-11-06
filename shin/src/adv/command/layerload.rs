@@ -17,6 +17,27 @@ pub struct LAYERLOAD {
     token: Option<command::token::LAYERLOAD>,
     state_info: LayerLoadStateInfo,
     load_task: AsyncTask<UserLayer>,
+    /// The one short wait for the load has been made
+    waited: bool,
+}
+
+/// `0x7100008d60`: right after starting the load, while less than 10 ms of the frame have gone, the game waits up
+/// to 5 ms for it (the loader's slot 6), so a quick load finishes in the same frame
+fn wait_briefly<T>(task: &mut AsyncTask<T>, frame_start: std::time::Instant) -> Option<T> {
+    use std::time::{Duration, Instant};
+    if frame_start.elapsed() >= Duration::from_millis(10) {
+        return None;
+    }
+    let deadline = Instant::now() + Duration::from_millis(5);
+    loop {
+        if let Some(result) = task.poll_naive() {
+            return Some(result);
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(Duration::from_micros(100));
+    }
 }
 
 struct LayerInfo {
@@ -174,13 +195,12 @@ impl StartableCommand for command::runtime::LAYERLOAD {
             adv_state.allow_running_animations = false;
         }
 
-        // TODO: optimistically block for 5ms as the game does
-
         Yield(
             LAYERLOAD {
                 token: Some(self.token),
                 state_info,
                 load_task,
+                waited: false,
             }
             .into(),
         )
@@ -196,7 +216,14 @@ impl UpdatableCommand for LAYERLOAD {
         adv_state: &mut AdvState,
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {
-        let layer = self.load_task.poll_naive()?;
+        let layer = match self.load_task.poll_naive() {
+            Some(layer) => layer,
+            None if !self.waited => {
+                self.waited = true;
+                wait_briefly(&mut self.load_task, adv_state.frame_start)?
+            }
+            None => return None,
+        };
 
         // NB: here the game also loads a wiper, but we don't support `LayerGroup`-level wiping
 

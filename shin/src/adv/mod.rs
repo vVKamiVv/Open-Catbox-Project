@@ -728,6 +728,7 @@ impl Adv {
         pointer: Pointer,
     ) {
         // self.action_state.update(context.raw_input_state);
+        self.adv_state.frame_start = std::time::Instant::now();
 
         let fast_forward_button_held = input_state[AppAction::HoldSkip].is_held;
         // self
@@ -1358,6 +1359,8 @@ pub struct AdvState {
     pub skip_auto: u8,
     /// Whether the script is being skipped this frame (`isSkipping` `0x7100012430`), for the commands as they start
     pub skipping: bool,
+    /// When this frame's update began (the frame clock `0x71000fc290`), for LAYERLOAD's short wait
+    pub frame_start: std::time::Instant,
     /// What the screen draws over its layers: banners, icons, notifications
     pub hud: hud::AdvHud,
     pub menu_assets: menu::MenuAssets,
@@ -1411,6 +1414,7 @@ impl AdvState {
             voice_duck: 1.0,
             skip_auto: 0,
             skipping: false,
+            frame_start: std::time::Instant::now(),
             hud: hud::AdvHud::new(assets.hud_textures.clone(), assets.fonts.system_font.clone()),
             menu_assets: menu::MenuAssets::new(&assets),
             backdrop: None,
