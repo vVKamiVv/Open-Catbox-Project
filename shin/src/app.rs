@@ -25,6 +25,7 @@ use shin_render::render_texture::RenderTexture;
 
 use crate::{
     adv::{Adv, assets::AdvAssets, menu::MenuAssets},
+    movie_box::MovieBox,
     music_box::MusicBox,
     scenario_select::{Bridge, ScenarioSelect, SelectExit},
     title::{Title, TitleExit},
@@ -448,7 +449,15 @@ impl ShinApp for App {
                     Some(TitleExit::Load(entry)) => next = Some(Next::Story(entry, true)),
                     Some(TitleExit::ScenarioSelect) => next = Some(Next::ScenarioSelect),
                     Some(TitleExit::MusicBox) => next = Some(Next::MusicBox),
+                    Some(TitleExit::MovieBox) => next = Some(Next::MovieBox),
                     None => {}
+                }
+            }
+            Scene::MovieBox(movies) => {
+                movies.update(&mut update_context, &input, pointer);
+                if movies.is_done() {
+                    // `CreateTitle(8)`: back with the cursor on the Movie Box
+                    next = Some(Next::TitleAt(8));
                 }
             }
             Scene::MusicBox(music) => {
@@ -576,6 +585,7 @@ impl App {
             Scene::Title(title) => &title.global,
             Scene::ScenarioSelect(select) => &select.global,
             Scene::MusicBox(music) => &music.global,
+            Scene::MovieBox(movies) => &movies.global,
             Scene::Adv(adv) => adv.save_data(),
             Scene::Bridge(_) => self.bridge_global.as_ref().expect("the bridge keeps the save data"),
         }
@@ -596,7 +606,7 @@ impl App {
             Scene::ScenarioSelect(select) => select.shutdown(music_fade),
             // `0x7100032fc0`: the music fades over 30 frames as the Music Box closes
             Scene::MusicBox(music) => music.shutdown(30.0),
-            Scene::Bridge(_) | Scene::TitleDemo(_) => {}
+            Scene::Bridge(_) | Scene::TitleDemo(_) | Scene::MovieBox(_) => {}
         }
         let mut snapshot = || {
             let mut old = ctx.new_render_texture("scene_fade".to_string());
@@ -607,6 +617,24 @@ impl App {
             old
         };
         match next {
+            Next::MovieBox => {
+                // `MovieMode::First`: a 60-frame crossfade while the title's music fades over 60 frames
+                let old = snapshot();
+                match MovieBox::new(
+                    &*ctx,
+                    &self.asset_server,
+                    self.audio_manager.clone(),
+                    MenuAssets::new(&self.adv_assets),
+                    global,
+                ) {
+                    Ok(movies) => {
+                        self.scene = Scene::MovieBox(movies);
+                        self.fade = Some(SceneFade::new(Some(old), 60.0));
+                    }
+                    Err(e) => error!("Could not open the Movie Box: {e:?}"),
+                }
+                return;
+            }
             Next::MusicBox => {
                 // `BGMMode::First`: a 60-frame crossfade while the title's music fades over 60 frames
                 let old = snapshot();
@@ -697,7 +725,8 @@ impl App {
                     Err(e) => error!("Could not open the title: {e:?}"),
                 }
             }
-            Next::ScenarioSelect | Next::Bridge(_) | Next::TitleAt(_) | Next::MusicBox => unreachable!(),
+            Next::ScenarioSelect | Next::Bridge(_) | Next::TitleAt(_) | Next::MusicBox
+            | Next::MovieBox => unreachable!(),
         }
     }
 }
@@ -709,6 +738,7 @@ enum Scene {
     Title(Title),
     ScenarioSelect(ScenarioSelect),
     MusicBox(MusicBox),
+    MovieBox(MovieBox),
     Bridge(Bridge),
     Adv(Adv),
 }
@@ -720,6 +750,7 @@ impl Scene {
             Scene::Title(title) => title.render(pass),
             Scene::ScenarioSelect(select) => select.render(pass),
             Scene::MusicBox(music) => music.render(pass),
+            Scene::MovieBox(movies) => movies.render(pass),
             Scene::Bridge(bridge) => bridge.render(pass),
             Scene::Adv(adv) => adv.render(pass),
         }
@@ -737,6 +768,7 @@ enum Next {
     ScenarioSelect,
     Bridge(u8),
     MusicBox,
+    MovieBox,
 }
 
 /// The old screen (or black) over the new one, fading out (the transition of `Title::First`, program 8)

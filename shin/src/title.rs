@@ -147,6 +147,8 @@ pub enum TitleExit {
     ScenarioSelect,
     /// `CreateBGMMode`
     MusicBox,
+    /// `CreateMovieMode`
+    MovieBox,
     /// Continue or a bookmark from Load
     Load(GameDataEntry),
 }
@@ -440,6 +442,10 @@ impl Title {
             }
             MUSIC_BOX => {
                 self.exit = Some(TitleExit::MusicBox);
+                self.state = State::Done;
+            }
+            MOVIE_BOX => {
+                self.exit = Some(TitleExit::MovieBox);
                 self.state = State::Done;
             }
             _ => warn!("Title item {ty} has no screen in the port yet"),
