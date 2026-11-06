@@ -43,7 +43,7 @@ pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
 
 use menu::{
-    AdvRequest, Task, TaskCx, dialog::Dialog, hidden_window::HiddenWindow, jump::JumpDialog,
+    AdvRequest, Task, TaskCx, backlog::Backlog, dialog::Dialog, hidden_window::HiddenWindow, jump::JumpDialog,
     system_menu::SystemMenu,
 };
 use shin_core::{primitives::color::FloatColor4, time::{Tween, Tweener}};
@@ -346,6 +346,44 @@ impl Adv {
         self.tasks.push(Box::new(menu));
     }
 
+    /// X (`ADV::ShowMessageBrowser` `0x7100013400`): the backlog of the current chapter, with "page", or "error"
+    /// when it has no line
+    fn open_backlog(&mut self, context: &mut UpdateContext) {
+        let log = build_log(&self.scenario, self.vm_state.global.clone(), self.current_entry());
+        let audio = self.adv_state.audio_manager.clone();
+        if log.entries.is_empty() {
+            play_sys_se(&audio, context.asset_server, "error", Default::default());
+            return;
+        }
+        let task = {
+            let mut requests = Vec::new();
+            let cx = TaskCx {
+                frames: 0.0,
+                focused: false,
+                input: MenuInput::released(Default::default()),
+                pre_render: &mut *context.pre_render,
+                asset_server: context.asset_server,
+                audio: &audio,
+                assets: context.asset_server,
+                global: &mut self.vm_state.global,
+                requests: &mut requests,
+            };
+            Backlog::new(&cx, &self.adv_state.menu_assets, log)
+        };
+        let Some(backlog) = task else {
+            play_sys_se(&audio, context.asset_server, "error", Default::default());
+            return;
+        };
+        play_sys_se(&audio, context.asset_server, "page", Default::default());
+        self.adv_state.skip_auto = 0;
+        // `0x7100013a70`, as for the system menu
+        self.adv_state.capture_backdrop(context.pre_render);
+        minigame::tween_now(&mut self.adv_state.backdrop_alpha, 1.0, 0.1);
+        self.hide_interface(true);
+        self.pause(true);
+        self.tasks.push(Box::new(backlog));
+    }
+
     /// B (`0x7100013720`): hides the message window and the banners until the next press
     fn open_hidden_window(&mut self) {
         self.adv_state.skip_auto = 0;
@@ -398,6 +436,10 @@ impl Adv {
                     minigame::tween_now(&mut self.adv_state.backdrop_alpha, 0.0, 0.1);
                 }
                 AdvRequest::WriteSave => self.write_requested = true,
+                AdvRequest::JumpTo(save_position) => {
+                    info!("Jumping from the backlog to save point {save_position}");
+                    self.rebuild_at(save_position);
+                }
                 AdvRequest::Jump => {
                     // `$_4` / `$_2`: only with the system still enabled
                     if self.vm_state.save.system_enabled {
@@ -628,6 +670,10 @@ impl Adv {
                 }
                 if state[AppAction::ButtonY].is_clicked {
                     self.open_system_menu(context);
+                    return;
+                }
+                if state[AppAction::ButtonX].is_clicked {
+                    self.open_backlog(context);
                     return;
                 }
                 if state[AppAction::Cancel].is_clicked {
@@ -878,6 +924,157 @@ pub(crate) fn replay_bookmark(scenario: &Scenario, global: SaveData, entry: Game
         info: [first, second],
         layers: vm_state.layers,
     }
+}
+
+/// What the backlog lists, in order (`MessageBrowser::LogBuilder`, ctor `0x71000a3280`)
+pub struct Log {
+    pub entries: Vec<LogEntry>,
+    /// The line on screen in the game (`+0xa4`)
+    pub current: usize,
+}
+
+pub struct LogEntry {
+    pub kind: LogKind,
+    /// The text, with its markup
+    pub text: String,
+    /// The save point a jump to this entry rebuilds at
+    pub save_position: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogKind {
+    Message { voiced: bool },
+    Choice,
+    Chapter,
+    Quiz,
+}
+
+impl LogKind {
+    /// A marker that L and R move between
+    pub fn is_marker(self) -> bool {
+        !matches!(self, LogKind::Message { .. })
+    }
+}
+
+/// The backlog of `entry`'s chapter (`0x71000a2780`): its script replayed from the start through the current line
+/// and on through text already read, stopping at the first unread line (with setting v11), a choice or minigame not
+/// played yet, or the end
+pub(crate) fn build_log(scenario: &Scenario, global: SaveData, entry: GameDataEntry) -> Log {
+    let target = entry.save_position;
+    let stop_unread = global.settings.v11_disallowskipunread;
+    let mut scripter = Scripter::new(scenario, entry.scenario_id, entry.random_seed);
+    let mut vm_state = VmState::new(global, entry);
+    // the stops are this builder's own; replay_command passes every save point
+    vm_state.save.target = u32::MAX;
+    let mut log = Log {
+        entries: Vec::new(),
+        current: 0,
+    };
+    let mut result = CommandResult::None;
+    loop {
+        let Ok(command) = scripter.run(result) else {
+            break;
+        };
+        let past = vm_state.save.counter >= target;
+        result = match command {
+            RuntimeCommand::EXIT(_) | RuntimeCommand::RESUME(_) => break,
+            RuntimeCommand::SGET(sget) => {
+                // the route before the save point, the persistent data after it (`0x71000ab130`)
+                let save = &mut vm_state.save;
+                let value = if past {
+                    save.sget(&vm_state.global.persist_data, sget.slot_number)
+                } else {
+                    save.replay_sget()
+                };
+                sget.token.finish(value)
+            }
+            RuntimeCommand::MSGSET(msgset) => {
+                let id = msgset.msg_id.0 as i64 - 1;
+                let read = id < 0
+                    || vm_state
+                        .global
+                        .save_vectors
+                        .seen_messages
+                        .contains(id as usize);
+                if past && stop_unread && !read {
+                    break;
+                }
+                let text = msgset.text.clone();
+                let voiced = shin_core::layout::MessageTextParser::new(&text)
+                    .any(|c| matches!(c, shin_core::layout::ParsedCommand::Voice(_)));
+                let step = command::replay_command(RuntimeCommand::MSGSET(msgset), &mut vm_state);
+                if !past {
+                    log.current = log.entries.len();
+                }
+                log.entries.push(LogEntry {
+                    kind: LogKind::Message { voiced },
+                    text,
+                    save_position: vm_state.save.counter,
+                });
+                match step {
+                    ReplayStep::Continue(r) => r,
+                    _ => break,
+                }
+            }
+            RuntimeCommand::SELECT(select) => {
+                // shortcut: past the save point the original previews the last choice made there; the port stops
+                if past {
+                    break;
+                }
+                let title = select.choice_title.clone();
+                let variants = select.variants.clone();
+                let step = command::replay_command(RuntimeCommand::SELECT(select), &mut vm_state);
+                let ReplayStep::Continue(r) = step else { break };
+                if let CommandResult::WriteMemory(_, pick) = r {
+                    // a leading "*...." in the option is stripped
+                    let option = variants.get(pick as usize).map_or("", |v| v.as_str());
+                    let option = option
+                        .strip_prefix('*')
+                        .and_then(|rest| rest.split_once('.').map(|(_, text)| text))
+                        .unwrap_or(option);
+                    log.entries.push(LogEntry {
+                        kind: LogKind::Choice,
+                        text: format!("@r《{title}》@r{option}"),
+                        save_position: vm_state.save.counter,
+                    });
+                }
+                r
+            }
+            RuntimeCommand::QUIZ(quiz) => {
+                if past {
+                    break;
+                }
+                let step = command::replay_command(RuntimeCommand::QUIZ(quiz), &mut vm_state);
+                let ReplayStep::Continue(r) = step else { break };
+                // shortcut: the original names the minigame and its result; the port labels every one a quiz
+                log.entries.push(LogEntry {
+                    kind: LogKind::Quiz,
+                    text: "@r《クイズ》".to_string(),
+                    save_position: vm_state.save.counter,
+                });
+                r
+            }
+            RuntimeCommand::AUTOSAVE(autosave) => {
+                let step = command::replay_command(RuntimeCommand::AUTOSAVE(autosave), &mut vm_state);
+                let [first, second, ..] = &vm_state.save_info.info;
+                log.entries.push(LogEntry {
+                    kind: LogKind::Chapter,
+                    text: format!("@r{first}@r{second}"),
+                    save_position: vm_state.save.counter,
+                });
+                match step {
+                    ReplayStep::Continue(r) => r,
+                    _ => break,
+                }
+            }
+            command => match command::replay_command(command, &mut vm_state) {
+                ReplayStep::Continue(r) => r,
+                _ => break,
+            },
+        };
+    }
+    log.current = log.current.min(log.entries.len().saturating_sub(1));
+    log
 }
 
 /// What a look-ahead advances to

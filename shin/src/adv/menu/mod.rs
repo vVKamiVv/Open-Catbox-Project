@@ -5,6 +5,7 @@
 //! A menu that opens another (the system menu's dialog, its config screen) owns it and runs it on top of itself, in
 //! place of the original's callbacks.
 
+pub mod backlog;
 pub mod config_menu;
 pub mod dialog;
 pub mod hidden_window;
@@ -37,6 +38,8 @@ pub struct MenuAssets {
     /// `/adv.txa`
     pub adv_textures: Arc<NamedTextures>,
     pub system_font: Arc<GpuFontLazy>,
+    /// newrodin-medium, the backlog's font
+    pub medium_font: Arc<GpuFontLazy>,
     /// For replaying bookmarks
     pub scenario: Arc<Scenario>,
 }
@@ -47,6 +50,7 @@ impl MenuAssets {
             system_textures: assets.system_textures.clone(),
             adv_textures: assets.hud_textures.clone(),
             system_font: assets.fonts.system_font.clone(),
+            medium_font: assets.fonts.medium_font.clone(),
             scenario: assets.scenario.clone(),
         }
     }
@@ -69,6 +73,8 @@ pub enum AdvRequest {
     LoadSlot(usize),
     /// The chapter jump the player confirmed: the adventure screen rebuilds at its target
     Jump,
+    /// The backlog's "Start reading from the selected line": the screen rebuilds at this save point
+    JumpTo(u32),
 }
 
 /// What a task gets each frame (the trailing lifetimes are the render context's)

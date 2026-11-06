@@ -142,6 +142,18 @@ impl TextBlock {
         }
     }
 
+    /// The size `text` would have, without making its glyphs (for long lists that build only what is visible)
+    pub fn measure(font: &Arc<GpuFontLazy>, text: &str, params: LayoutParams, outline: f32) -> Vec2 {
+        let defaults = MessageTextLayouterDefaults {
+            color: 999,
+            draw_speed: 100,
+            fade: 0,
+        };
+        let (_, _, size) =
+            MessageTextLayouter::new(font.as_ref(), font.as_ref(), params, defaults).parse(text);
+        Vec2::new(size.x, size.y) + 2.0 * outline
+    }
+
     /// Width and height of the laid-out text with its outline, drawn from (0, 0)
     pub fn size(&self) -> Vec2 {
         self.size
