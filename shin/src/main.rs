@@ -18,6 +18,7 @@ mod fps_counter;
 mod layer;
 mod random;
 mod movie_box;
+mod picture_box;
 mod music_box;
 mod render;
 mod scenario_select;

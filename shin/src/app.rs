@@ -26,6 +26,7 @@ use shin_render::render_texture::RenderTexture;
 use crate::{
     adv::{Adv, assets::AdvAssets, menu::MenuAssets},
     movie_box::MovieBox,
+    picture_box::PictureBox,
     music_box::MusicBox,
     scenario_select::{Bridge, ScenarioSelect, SelectExit},
     title::{Title, TitleExit},
@@ -450,7 +451,15 @@ impl ShinApp for App {
                     Some(TitleExit::ScenarioSelect) => next = Some(Next::ScenarioSelect),
                     Some(TitleExit::MusicBox) => next = Some(Next::MusicBox),
                     Some(TitleExit::MovieBox) => next = Some(Next::MovieBox),
+                    Some(TitleExit::PictureBox) => next = Some(Next::PictureBox),
                     None => {}
+                }
+            }
+            Scene::PictureBox(pictures) => {
+                pictures.update(&mut update_context, &input, pointer);
+                if pictures.is_done() {
+                    // `CreateTitle(6)`: back with the cursor on the Picture Box
+                    next = Some(Next::TitleAt(6));
                 }
             }
             Scene::MovieBox(movies) => {
@@ -586,6 +595,7 @@ impl App {
             Scene::ScenarioSelect(select) => &select.global,
             Scene::MusicBox(music) => &music.global,
             Scene::MovieBox(movies) => &movies.global,
+            Scene::PictureBox(pictures) => &pictures.global,
             Scene::Adv(adv) => adv.save_data(),
             Scene::Bridge(_) => self.bridge_global.as_ref().expect("the bridge keeps the save data"),
         }
@@ -606,6 +616,8 @@ impl App {
             Scene::ScenarioSelect(select) => select.shutdown(music_fade),
             // `0x7100032fc0`: the music fades over 30 frames as the Music Box closes
             Scene::MusicBox(music) => music.shutdown(30.0),
+            // `Close $_0` (`0x710004cf40`): the BGM fades over 30 frames
+            Scene::PictureBox(pictures) => pictures.shutdown(30.0),
             Scene::Bridge(_) | Scene::TitleDemo(_) | Scene::MovieBox(_) => {}
         }
         let mut snapshot = || {
@@ -617,6 +629,24 @@ impl App {
             old
         };
         match next {
+            Next::PictureBox => {
+                // `CGMode::First`: a 60-frame crossfade while the title's music fades over 60 frames
+                let old = snapshot();
+                match PictureBox::new(
+                    &*ctx,
+                    &self.asset_server,
+                    self.audio_manager.clone(),
+                    MenuAssets::new(&self.adv_assets),
+                    global,
+                ) {
+                    Ok(pictures) => {
+                        self.scene = Scene::PictureBox(pictures);
+                        self.fade = Some(SceneFade::new(Some(old), 60.0));
+                    }
+                    Err(e) => error!("Could not open the Picture Box: {e:?}"),
+                }
+                return;
+            }
             Next::MovieBox => {
                 // `MovieMode::First`: a 60-frame crossfade while the title's music fades over 60 frames
                 let old = snapshot();
@@ -726,7 +756,8 @@ impl App {
                 }
             }
             Next::ScenarioSelect | Next::Bridge(_) | Next::TitleAt(_) | Next::MusicBox
-            | Next::MovieBox => unreachable!(),
+            | Next::MovieBox
+            | Next::PictureBox => unreachable!(),
         }
     }
 }
@@ -739,6 +770,7 @@ enum Scene {
     ScenarioSelect(ScenarioSelect),
     MusicBox(MusicBox),
     MovieBox(MovieBox),
+    PictureBox(PictureBox),
     Bridge(Bridge),
     Adv(Adv),
 }
@@ -751,6 +783,7 @@ impl Scene {
             Scene::ScenarioSelect(select) => select.render(pass),
             Scene::MusicBox(music) => music.render(pass),
             Scene::MovieBox(movies) => movies.render(pass),
+            Scene::PictureBox(pictures) => pictures.render(pass),
             Scene::Bridge(bridge) => bridge.render(pass),
             Scene::Adv(adv) => adv.render(pass),
         }
@@ -769,6 +802,7 @@ enum Next {
     Bridge(u8),
     MusicBox,
     MovieBox,
+    PictureBox,
 }
 
 /// The old screen (or black) over the new one, fading out (the transition of `Title::First`, program 8)

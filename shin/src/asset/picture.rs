@@ -194,9 +194,7 @@ impl<'a> PictureBuilder for GpuPictureBuilder<'a> {
 pub struct Picture {
     #[expect(unused)] // labels are nice for debugging
     pub label: String,
-    #[expect(unused)] // for future stuff
     pub effective_width: u32,
-    #[expect(unused)] // for future stuff
     pub effective_height: u32,
     pub origin_x: i32,
     pub origin_y: i32,

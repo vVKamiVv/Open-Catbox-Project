@@ -145,6 +145,8 @@ enum State {
 pub enum TitleExit {
     /// Start: the scenario select
     ScenarioSelect,
+    /// `CreateCGMode`
+    PictureBox,
     /// `CreateBGMMode`
     MusicBox,
     /// `CreateMovieMode`
@@ -439,6 +441,10 @@ impl Title {
                     ConfigMenu::new(&cx, &assets).map(|m| Box::new(m) as Box<dyn Task>)
                 };
                 self.child = child;
+            }
+            PICTURE_BOX => {
+                self.exit = Some(TitleExit::PictureBox);
+                self.state = State::Done;
             }
             MUSIC_BOX => {
                 self.exit = Some(TitleExit::MusicBox);
