@@ -15,6 +15,7 @@ pub mod save_menu;
 pub mod save_notice;
 pub mod system_menu;
 pub mod thumbnail;
+pub mod tips;
 
 use std::sync::Arc;
 

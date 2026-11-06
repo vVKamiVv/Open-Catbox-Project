@@ -31,6 +31,7 @@ use crate::{
         config_menu::ConfigMenu,
         manual::Manual,
         save_menu::{Mode, SaveMenu},
+        tips::{Tips, TipsFilter},
     },
     app::AppAction,
     asset::{picture::Picture, system::AssetServer, texture_archive::NamedTextures},
@@ -137,6 +138,10 @@ enum State {
     Active,
     /// An item flashes before its action (`MenuItemOut`)
     Deciding(u8),
+    /// Characters or Tips: the other items leave and the chosen one rises to a header (`MenuItemOut $_2`)
+    Leaving(u8),
+    /// The episode list of Characters or Tips is open
+    SubMenu,
     /// Continue: everything dims and the music fades, then the auto slot starts
     Continuing,
     Done,
@@ -177,7 +182,12 @@ pub struct Title {
     /// Came back from another screen (`type >= 0`): everything shows at once
     returning: bool,
     state: State,
-    /// Load or Config over the title
+    /// The episodes with characters (bits 8-15 of the ctor's mask), which also have tips (bits 8-14)
+    episodes: u32,
+    /// The first row's y
+    top: f32,
+    sub_menu: Option<SubMenu>,
+    /// Load, Config, Manual, Tips or Characters over the title
     child: Option<Box<dyn Task>>,
     requests: Vec<AdvRequest>,
     exit: Option<TitleExit>,
@@ -323,6 +333,9 @@ impl Title {
             description_alpha: Tweener::new(0.0),
             returning,
             state: State::Intro,
+            episodes: mask >> 8,
+            top,
+            sub_menu: None,
             child: None,
             requests: Vec::new(),
             exit: None,
@@ -416,7 +429,75 @@ impl Title {
         if ty == START {
             ui::hold(flash, 30.0);
         }
+        if ty == CHARACTERS || ty == TIPS {
+            // the other items leave 4 frames apart; then the chosen one rises to y 228 as a header
+            let mut k = 0;
+            for (i, item) in self.items.iter_mut().enumerate() {
+                if i == self.cursor {
+                    continue;
+                }
+                let delay = 4.0 * k as f32;
+                ui::hold(&mut item.alpha, delay);
+                ui::tween(&mut item.alpha, 0.0, 10.0, Easing::Linear);
+                ui::hold(&mut item.x, delay);
+                ui::tween(&mut item.x, ITEM_X + 100.0, 10.0, Easing::SineIn);
+                k += 1;
+            }
+            let delay = 4.0 * (self.items.len() - 1) as f32 + 30.0;
+            let item = &mut self.items[self.cursor];
+            ui::hold(&mut item.y, delay);
+            ui::tween(&mut item.y, 228.0, 30.0, Easing::SineInOut);
+            ui::hold(&mut item.highlight, delay);
+            ui::tween(&mut item.highlight, 0.0, 30.0, Easing::SineOut);
+            self.state = State::Leaving(ty);
+            return;
+        }
         self.state = State::Deciding(ty);
+    }
+
+    /// `MenuItemIn(1)` (`0x710010d670`): back from the episode list, the header returns to its row and the others
+    /// slide in after it
+    fn items_back(&mut self) {
+        let top = self.top;
+        let cursor = self.cursor;
+        let mut k = 0;
+        for (i, item) in self.items.iter_mut().enumerate() {
+            if i == cursor {
+                ui::tween(
+                    &mut item.y,
+                    top + ITEM_H * i as f32,
+                    30.0,
+                    Easing::SineInOut,
+                );
+                ui::tween(&mut item.highlight, 1.0, 30.0, Easing::Linear);
+                continue;
+            }
+            let delay = 30.0 + 4.0 * k as f32;
+            item.alpha = Tweener::new(0.0);
+            ui::hold(&mut item.alpha, delay);
+            ui::tween(&mut item.alpha, 1.0, 10.0, Easing::Linear);
+            item.x = Tweener::new(ITEM_X + 100.0);
+            ui::hold(&mut item.x, delay);
+            ui::tween(&mut item.x, ITEM_X, 10.0, Easing::SineOut);
+            item.flash = Tweener::new(0.0);
+            k += 1;
+        }
+        self.description = Some(DESCRIPTIONS[self.items[cursor].ty as usize]);
+        self.state = State::ItemsIn;
+    }
+
+    /// The screen of an episode in the list: the tips of that episode, or its characters
+    fn open_episode(&mut self, context: &mut UpdateContext, characters: bool, episode: u8) {
+        if characters {
+            warn!("The characters screen does not exist in the port yet");
+            self.sound(context, "error");
+            return;
+        }
+        minigame::tween_now(&mut self.dim, 0.5, 0.1);
+        let assets = self.assets.clone();
+        let cx = self.task_cx(context, true, MenuInput::default());
+        self.child = Tips::new(&cx, &assets, TipsFilter::Episode(episode))
+            .map(|tips| Box::new(tips) as Box<dyn Task>);
     }
 
     /// `0x710010e310`
@@ -584,6 +665,42 @@ impl Title {
                         self.dispatch(context, ty);
                     }
                 }
+                State::Leaving(ty) => {
+                    if !self.items_moving() {
+                        // `Title::SubMenu` (`0x710010f0a0`)
+                        let count = if ty == CHARACTERS { 8 } else { 7 };
+                        let episodes = (0..count)
+                            .filter(|k| self.episodes & (1 << k) != 0)
+                            .collect();
+                        let sub_menu = SubMenu::new(ty == CHARACTERS, episodes);
+                        ui::hold(
+                            &mut self.description_alpha,
+                            4.0 * sub_menu.items.len() as f32,
+                        );
+                        ui::tween(&mut self.description_alpha, 1.0, 30.0, Easing::Linear);
+                        self.sub_menu = Some(sub_menu);
+                        self.state = State::SubMenu;
+                    }
+                }
+                State::SubMenu => {
+                    let Some(mut sub_menu) = self.sub_menu.take() else {
+                        self.state = State::Active;
+                        return;
+                    };
+                    match sub_menu.update(&input) {
+                        SubMenuEvent::None => {}
+                        SubMenuEvent::Sound(name) => self.sound(context, name),
+                        SubMenuEvent::Open(episode) => {
+                            self.open_episode(context, sub_menu.characters, episode)
+                        }
+                        SubMenuEvent::Closed => {
+                            self.items_back();
+                        }
+                    }
+                    if self.state == State::SubMenu {
+                        self.sub_menu = Some(sub_menu);
+                    }
+                }
                 State::Continuing => {
                     if self.dim.is_idle() {
                         if let Some(data) = &self.global.auto_save_slot {
@@ -605,7 +722,11 @@ impl Title {
         ] {
             ui::advance(tweener, frames);
         }
-        for item in &mut self.items {
+        let sub_items = self
+            .sub_menu
+            .iter_mut()
+            .flat_map(|sub| sub.items.iter_mut());
+        for item in self.items.iter_mut().chain(sub_items) {
             for tweener in [
                 &mut item.alpha,
                 &mut item.highlight,
@@ -718,9 +839,179 @@ impl Title {
         if dim > 0.0 {
             ui::fill(pass, projection, full, FloatColor4::BLACK.with_alpha(dim));
         }
+        // `0x710010ff80`: the episode list, flat-coloured rows faded by redrawing the background over them
+        for item in self.sub_menu.iter().flat_map(|sub| &sub.items) {
+            let (x, y, a) = (item.x.value(), item.y.value(), item.alpha.value());
+            if a.abs() < f32::EPSILON {
+                continue;
+            }
+            ui::fill(
+                pass,
+                projection,
+                [x, y + 1.0, x + 400.0, y + 71.0],
+                ui::lerp_color(BROWN, RED, item.highlight.value()).with_alpha(a),
+            );
+            let v = item.ty as f32 * 0.125;
+            Sprite::new(t("menu2"), [x + 80.0, y + 4.0, x + 400.0, y + 68.0])
+                .uv([0.0, v, 1.0, v + 0.125])
+                .draw(pass, builder, projection);
+            let flash = item.flash.value();
+            if flash > 0.0 {
+                ui::fill(
+                    pass,
+                    projection,
+                    [x, y, x + 400.0, y + 72.0],
+                    FloatColor4::WHITE.with_alpha(flash),
+                );
+            }
+            if a < 1.0 {
+                let (u, v) = (x / 1920.0, y / 1080.0);
+                ui::draw_texture(
+                    pass,
+                    background.as_texture_source(),
+                    projection,
+                    [x, y, x + 400.0, y + 72.0],
+                    [u, v, u + 0.208333, v + 0.066667],
+                    FloatColor4::WHITE.with_alpha(1.0 - a),
+                    builder,
+                );
+            }
+        }
         if let Some(child) = &self.child {
             child.render(pass);
         }
+    }
+}
+
+/// What the episode list asks of the title
+enum SubMenuEvent {
+    None,
+    Sound(&'static str),
+    /// Open this episode's screen
+    Open(u8),
+    /// The list has left: the title's items come back
+    Closed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SubState {
+    /// The rows slide in (`$_11` waits for them)
+    In,
+    Active,
+    /// A row flashes, then its screen opens (`$_12`)
+    Deciding,
+    /// The rows leave (`$_13` waits for them)
+    Out,
+}
+
+/// `Title::SubMenu` (ctor `0x710010f0a0`, keys `0x71001102a0`): the episodes of Characters or Tips, by row of `menu2`
+struct SubMenu {
+    characters: bool,
+    /// Rows with `ty` = the episode
+    items: Vec<Item>,
+    cursor: usize,
+    state: SubState,
+}
+
+impl SubMenu {
+    const X: f32 = 1488.0;
+
+    fn new(characters: bool, episodes: Vec<u8>) -> Self {
+        let items = episodes
+            .into_iter()
+            .enumerate()
+            .map(|(k, episode)| {
+                let delay = 4.0 * k as f32;
+                let mut alpha = Tweener::new(0.0);
+                ui::hold(&mut alpha, delay);
+                ui::tween(&mut alpha, 1.0, 10.0, Easing::Linear);
+                let mut x = Tweener::new(Self::X + 100.0);
+                ui::hold(&mut x, delay);
+                ui::tween(&mut x, Self::X, 10.0, Easing::SineOut);
+                Item {
+                    ty: episode,
+                    alpha,
+                    highlight: Tweener::new((k == 0) as i32 as f32),
+                    x,
+                    y: Tweener::new(320.0 + 72.0 * k as f32),
+                    flash: Tweener::new(0.0),
+                }
+            })
+            .collect();
+        Self {
+            characters,
+            items,
+            cursor: 0,
+            state: SubState::In,
+        }
+    }
+
+    fn moving(&self) -> bool {
+        self.items
+            .iter()
+            .any(|item| !item.alpha.is_idle() || !item.x.is_idle())
+    }
+
+    fn update(&mut self, input: &MenuInput) -> SubMenuEvent {
+        match self.state {
+            SubState::In => {
+                if !self.moving() {
+                    self.state = SubState::Active;
+                }
+                SubMenuEvent::None
+            }
+            SubState::Active => self.handle_input(input),
+            SubState::Deciding => {
+                if self.items[self.cursor].flash.is_idle() {
+                    self.state = SubState::Active;
+                    return SubMenuEvent::Open(self.items[self.cursor].ty);
+                }
+                SubMenuEvent::None
+            }
+            SubState::Out => {
+                if self.moving() {
+                    SubMenuEvent::None
+                } else {
+                    SubMenuEvent::Closed
+                }
+            }
+        }
+    }
+
+    fn handle_input(&mut self, input: &MenuInput) -> SubMenuEvent {
+        let n = self.items.len();
+        if input.confirm {
+            let flash = &mut self.items[self.cursor].flash;
+            *flash = Tweener::new(0.0);
+            minigame::flash(flash);
+            self.state = SubState::Deciding;
+            return SubMenuEvent::Sound("decide");
+        }
+        if input.cancel {
+            for (k, item) in self.items.iter_mut().enumerate() {
+                let delay = 4.0 * k as f32;
+                ui::hold(&mut item.alpha, delay);
+                ui::tween(&mut item.alpha, 0.0, 10.0, Easing::Linear);
+                ui::hold(&mut item.x, delay);
+                ui::tween(&mut item.x, Self::X + 100.0, 10.0, Easing::SineIn);
+            }
+            self.state = SubState::Out;
+            return SubMenuEvent::Sound("cancel");
+        }
+        let to = if input.down {
+            (self.cursor + 1) % n
+        } else if input.up {
+            (self.cursor + n - 1) % n
+        } else {
+            return SubMenuEvent::None;
+        };
+        if to == self.cursor {
+            return SubMenuEvent::None;
+        }
+        minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.05);
+        self.cursor = to;
+        minigame::tween_now(&mut self.items[to].highlight, 1.0, 0.1);
+        SubMenuEvent::Sound("move")
     }
 }
 

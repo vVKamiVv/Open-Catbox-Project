@@ -174,6 +174,7 @@ impl Task for Manual {
             keys: t("key"),
             label_height: 96.0,
             y: 1080.0 - 88.0 * a + 20.0,
+            glyph_offset: 2.0,
             gap: 16.0,
         };
         let x = help.draw(pass, 1872.0, &[4], 48.0, 72.0, FloatColor4::WHITE);
@@ -202,6 +203,8 @@ pub(super) struct KeyHelp<'a> {
     pub keys: &'a shin_render::gpu_texture::GpuTexture,
     pub label_height: f32,
     pub y: f32,
+    /// From the label's left edge to the first glyph's right edge
+    pub glyph_offset: f32,
     /// From the last glyph to the next entry's right edge
     pub gap: f32,
 }
@@ -228,7 +231,7 @@ impl KeyHelp<'_> {
         ]);
         label.color = color;
         label.draw(pass, ui::builder(), projection);
-        let mut x = right - width + 2.0;
+        let mut x = right - width + self.glyph_offset;
         for &key in glyphs {
             x -= 48.0;
             let (u, v) = ((key & 7) as f32 * 0.125, (key >> 3) as f32 * 0.5);

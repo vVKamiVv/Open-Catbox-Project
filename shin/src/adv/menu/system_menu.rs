@@ -17,9 +17,10 @@ use tracing::warn;
 use super::{
     AdvRequest, MenuAssets, Task, TaskCx,
     config_menu::ConfigMenu,
-    manual::Manual,
     dialog::Dialog,
+    manual::Manual,
     save_menu::{Mode, SaveMenu},
+    tips::{Tips, TipsFilter},
 };
 use crate::{
     adv::hud::{OUTLINE, draw_text, text_layout},
@@ -82,6 +83,8 @@ pub struct SystemMenu {
     scene_title: Option<TextBlock>,
     play_time: TextBlock,
     play_time_string: String,
+    /// The tips this playthrough has collected (`Context+0x9120`)
+    tips: Vec<i32>,
     /// The item whose flash is playing before it opens
     deciding: Option<u8>,
     child: Option<Child>,
@@ -114,20 +117,20 @@ fn play_time_string(play_seconds: u32) -> String {
 }
 
 impl SystemMenu {
-    /// `scene_title`: the committed level-1 SAVEINFO text; Characters shows when `chars >= 0`, Tips when there are
-    /// tips
+    /// `scene_title`: the committed level-1 SAVEINFO text; Characters shows when `chars >= 0`, Tips when `tips` (the
+    /// collected tips) has any
     pub fn new(
         ctx: &PreRenderContext,
         assets: &MenuAssets,
         scene_title: &str,
         chars: i32,
-        has_tips: bool,
+        tips: Vec<i32>,
         play_seconds: u32,
     ) -> Self {
         let ids = [SAVE, LOAD, CONFIG]
             .into_iter()
             .chain((chars >= 0).then_some(CHARACTERS))
-            .chain(has_tips.then_some(TIPS))
+            .chain((!tips.is_empty()).then_some(TIPS))
             .chain([MANUAL, TITLE]);
         let items = ids
             .map(|id| Item {
@@ -152,6 +155,7 @@ impl SystemMenu {
             scene_title,
             play_time,
             play_time_string,
+            tips,
             deciding: None,
             child: None,
             pointer_held: false,
@@ -233,7 +237,14 @@ impl SystemMenu {
                     return;
                 }
             },
-            CHARACTERS | TIPS => {
+            TIPS => match Tips::new(cx, &self.assets, TipsFilter::Collected(self.tips.clone())) {
+                Some(tips) => self.child = Some(Child::Screen(Box::new(tips))),
+                None => {
+                    cx.sound("error");
+                    return;
+                }
+            },
+            CHARACTERS => {
                 warn!("System menu item {id} has no screen in the port yet");
                 cx.sound("error");
                 return;

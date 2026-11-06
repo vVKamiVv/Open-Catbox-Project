@@ -345,7 +345,7 @@ impl Adv {
             &self.adv_state.menu_assets,
             &self.vm_state.save_info.info[1],
             self.vm_state.chars.0,
-            !self.vm_state.tips.is_empty(),
+            self.vm_state.tips.clone(),
             self.vm_state.global.play_seconds,
         );
         self.tasks.push(Box::new(menu));
