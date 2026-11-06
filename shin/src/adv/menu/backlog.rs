@@ -46,8 +46,9 @@ const CLIP: [f32; 4] = [136.0, 183.0, 1784.0, 918.0];
 /// The text's outline in pixels and its colour (47, 25, 20)
 const OUTLINE: f32 = 2.5;
 const BORDER: FloatColor4 = FloatColor4::from_rgba(0.18431, 0.09804, 0.07843, 1.0);
-/// Where a line's text starts in its row (measured against the Switch release in Eden)
+/// Where a line's text starts in its row (both measured against the Switch release in Eden)
 const TEXT_X: f32 = 130.0;
+const TEXT_Y: f32 = 5.0;
 
 const FOCUS: NineSlice = NineSlice {
     insets: [512.0, 512.0, 12.0, 12.0],
@@ -574,7 +575,7 @@ impl Task for Backlog {
                 ui::draw_text(
                     pass,
                     text,
-                    row * Mat4::from_translation(vec3(TEXT_X, 10.0, 0.0)),
+                    row * Mat4::from_translation(vec3(TEXT_X, TEXT_Y, 0.0)),
                     FloatColor4::WHITE,
                     BORDER,
                 );

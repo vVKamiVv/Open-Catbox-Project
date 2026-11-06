@@ -1018,14 +1018,17 @@ pub(crate) fn build_log(scenario: &Scenario, global: SaveData, entry: GameDataEn
                         .save_vectors
                         .seen_messages
                         .contains(id as usize);
-                if past && stop_unread && !read {
-                    break;
-                }
                 let text = msgset.text.clone();
                 let voiced = shin_core::layout::MessageTextParser::new(&text)
                     .any(|c| matches!(c, shin_core::layout::ParsedCommand::Voice(_)));
                 let step = command::replay_command(RuntimeCommand::MSGSET(msgset), &mut vm_state);
-                if !past {
+                // `0x71000ab210` compares the counter after this line's step: the line on screen is the target
+                // itself, so the backlog's current line is the one before it
+                let counter = vm_state.save.counter;
+                if counter >= target && stop_unread && !read {
+                    break;
+                }
+                if counter < target {
                     log.current = log.entries.len();
                 }
                 log.entries.push(LogEntry {

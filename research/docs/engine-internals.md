@@ -927,7 +927,10 @@ and its chapter list, characters, tips, manual) and `ui/` (drawing and input hel
 the current line and on through read text (stopping at an unread line with v11, a choice or minigame not played,
 or EXIT), collecting lines (colour 999), choices `@r《prompt》@r option` (977), chapter titles from SAVEINFO 0 and 1
 at each AUTOSAVE (799) and minigames (977). Lines are newrodin at size 40, 97 % width, 1480 wide, at least 76 tall
-when voiced, plus 20, 14 px apart, the current one at 0. A replays a voiced line, L/R move between markers, Y asks
+when voiced, plus 20, 14 px apart, the current one at 0. The current line is the one **before** the message on
+screen: the builder marks a line while the save counter after its MSGSET is still below the target, and the target
+is the counter of the message on screen (`0x71000ab210`); the backlog opens on it and scrolls so it ends at the
+bottom of the view, clamped to the chapter's top. Text sits at (130, 5) in its row (measured in Eden). A replays a voiced line, L/R move between markers, Y asks
 "Start reading from the selected line?" and rebuilds there. X opens the **chapter list**
 (`0x71000a83d0`): start, markers, the cursor and the game's line ("Current position" when they are one) and end,
 sorted by (line, kind), right-aligned system.fnt labels of size 48 at x 1800, 60 px apart; moving through it moves
@@ -953,9 +956,8 @@ collected ones (TIPSGET) from the system menu; title 48 and text 32 in system.fn
 1500 px apart, turned in 15 frames. The key-help rows differ per screen: Tips put the glyphs right at the label and
 10 px apart, the manual and Characters 2 px in and 16 apart.
 
-shortcuts: the galleries, Characters, Tips and the chapter list take no pointer drags or flicks; the backlog's
-opening scroll measures the whole current line, while the original measures the part shown so far (seen in Eden
-when the game waits inside a paragraph); the scenario select fades in instead of the curtain mask wipe;
+shortcuts: the galleries, Characters, Tips and the chapter list take no pointer drags or flicks; the scenario
+select fades in instead of the curtain mask wipe;
 the bridge has no bloom glow; the dialog fades its pieces instead of a render texture; the BGM player is per scene
 instead of shared, so music does not carry across scenes. Keyboard: Y and X keys for the Y and X buttons, = and -
 for + and -.
