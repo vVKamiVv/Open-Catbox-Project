@@ -10,6 +10,7 @@ pub mod dialog;
 pub mod hidden_window;
 pub mod save_menu;
 pub mod system_menu;
+pub mod thumbnail;
 
 use std::sync::Arc;
 
@@ -56,29 +57,32 @@ pub enum AdvRequest {
     LoadSlot(usize),
 }
 
-/// What a task gets each frame
-pub struct TaskCx<'a> {
+/// What a task gets each frame (the trailing lifetimes are the render context's)
+pub struct TaskCx<'a, 'i, 'p, 'd, 'e> {
     pub frames: f32,
     /// Whether the task is on top and takes the input
     pub focused: bool,
     /// The pad and the pointer; buttons are all released when the task is not focused
     pub input: MenuInput,
-    pub pre_render: &'a PreRenderContext<'a, 'a, 'a, 'a>,
-    pub audio: &'a AudioManager,
+    /// For laying out text and rendering thumbnails
+    pub pre_render: &'a mut PreRenderContext<'i, 'p, 'd, 'e>,
+    /// The asset server as the loaders take it
+    pub asset_server: &'a Arc<AssetServer>,
+    pub audio: &'a Arc<AudioManager>,
     pub assets: &'a AssetServer,
     /// The save data, with the settings the config screen edits
     pub global: &'a mut SaveData,
     pub requests: &'a mut Vec<AdvRequest>,
 }
 
-impl TaskCx<'_> {
+impl<'i, 'p, 'd, 'e> TaskCx<'_, 'i, 'p, 'd, 'e> {
     /// Plays a system sound (`SysSePlayer::play(1.0, name)`)
     pub fn sound(&self, name: &str) {
         play_sys_se(self.audio, self.assets, name, Volume::default());
     }
 
     /// The same frame for a task's child, which has the focus instead when it exists
-    pub fn reborrow(&mut self, focused: bool) -> TaskCx<'_> {
+    pub fn reborrow(&mut self, focused: bool) -> TaskCx<'_, 'i, 'p, 'd, 'e> {
         TaskCx {
             frames: self.frames,
             focused,
@@ -87,7 +91,8 @@ impl TaskCx<'_> {
             } else {
                 MenuInput::released(self.input.pointer)
             },
-            pre_render: self.pre_render,
+            pre_render: &mut *self.pre_render,
+            asset_server: self.asset_server,
             audio: self.audio,
             assets: self.assets,
             global: self.global,

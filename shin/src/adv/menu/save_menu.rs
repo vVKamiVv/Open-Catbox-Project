@@ -3,8 +3,7 @@
 //! number, date and the SAVEINFO texts of its scene, which the original gets by replaying the save in the background;
 //! saving, loading and removing ask first.
 //!
-//! shortcut: bookmarks show the "no data" picture instead of a thumbnail of their scene, the list cannot be dragged
-//! or flung with the pointer, and the "Writing save data" notice is not drawn.
+//! shortcut: the list cannot be dragged or flung with the pointer, and the "Writing save data" notice is not drawn.
 
 use std::sync::Arc;
 
@@ -15,14 +14,22 @@ use shin_core::{
     time::{Easing, Tweener},
 };
 use shin_render::{
-    ColorBlendType, RenderRequestBuilder, render_pass::RenderPass, resize::CanvasSize,
+    ColorBlendType, RenderRequestBuilder, render_pass::RenderPass, render_texture::RenderTexture,
+    resize::CanvasSize,
 };
 use shin_tasks::ComputeTask;
 use tracing::warn;
 
-use super::{AdvRequest, MenuAssets, Task, TaskCx, dialog::Dialog};
+use super::{
+    AdvRequest, MenuAssets, Task, TaskCx,
+    dialog::Dialog,
+    thumbnail::{THUMBNAIL_UV, ThumbnailBuild},
+};
 use crate::{
-    adv::hud::{OUTLINE, text_layout},
+    adv::{
+        Bookmark,
+        hud::{OUTLINE, text_layout},
+    },
     asset::texture_archive::NamedTextures,
     layer::{
         text_block::TextBlock,
@@ -125,10 +132,11 @@ enum SlotTexts {
 }
 
 struct Slot {
-    /// The replayed save's SAVEINFO levels 0 and 1, kept while the menu is open
-    info: Option<[String; 2]>,
+    /// The replayed save's SAVEINFO texts and scene, kept while the menu is open
+    bookmark: Option<Bookmark>,
     /// Built while on screen, dropped when it leaves
     texts: Option<SlotTexts>,
+    thumbnail: Option<RenderTexture>,
     flash: Tweener,
 }
 
@@ -165,7 +173,9 @@ pub struct SaveMenu {
     /// The bookmarks as of this frame, for drawing
     saves: Vec<Option<GameData>>,
     /// The replay running for a bookmark's texts (`ThumbMaker::StateBuilder`)
-    building: Option<(usize, ComputeTask<[String; 2]>)>,
+    building: Option<(usize, ComputeTask<Bookmark>)>,
+    /// The thumbnail being rendered (one at a time, as the original's renderer)
+    drawing: Option<(usize, ThumbnailBuild)>,
     asking: Option<Ask>,
     dialog: Option<(Ask, Dialog)>,
     load_requested: bool,
@@ -210,13 +220,15 @@ impl SaveMenu {
             close_flash: Tweener::new(0.0),
             slots: (0..SLOTS)
                 .map(|_| Slot {
-                    info: None,
+                    bookmark: None,
                     texts: None,
+                    thumbnail: None,
                     flash: Tweener::new(0.0),
                 })
                 .collect(),
             saves: cx.global.manual_save_slots.to_vec(),
             building: None,
+            drawing: None,
             asking: None,
             dialog: None,
             load_requested: false,
@@ -405,10 +417,15 @@ impl SaveMenu {
 
     /// Drops what the bookmark showed, so it is rebuilt from its new contents
     fn forget(&mut self, index: usize) {
-        self.slots[index].info = None;
-        self.slots[index].texts = None;
+        let slot = &mut self.slots[index];
+        slot.bookmark = None;
+        slot.texts = None;
+        slot.thumbnail = None;
         if matches!(self.building, Some((slot, _)) if slot == index) {
             self.building = None;
+        }
+        if matches!(self.drawing, Some((slot, _)) if slot == index) {
+            self.drawing = None;
         }
     }
 
@@ -445,23 +462,40 @@ impl SaveMenu {
         }
     }
 
-    /// The bookmarks' texts: built for the visible ones, dropped for the others; one replay at a time fetches the
-    /// SAVEINFO texts of the lowest visible bookmark that has none
-    fn update_slots(&mut self, cx: &TaskCx) {
+    /// The bookmarks' texts and thumbnails: built for the visible ones, dropped for the others. One replay at a time
+    /// fetches the SAVEINFO texts and scene of the lowest visible bookmark that has none, and one thumbnail at a time
+    /// is rendered from a replayed scene (`0x71000d6640`)
+    fn update_slots(&mut self, cx: &mut TaskCx) {
         if let Some((slot, task)) = &mut self.building {
-            if let Some(info) = task.poll_naive() {
+            if let Some(bookmark) = task.poll_naive() {
                 let slot = *slot;
-                self.slots[slot].info = Some(info);
+                self.slots[slot].bookmark = Some(bookmark);
                 self.slots[slot].texts = None;
                 self.building = None;
+            }
+        }
+        if let Some((slot, build)) = &mut self.drawing {
+            if let Some(texture) = build.poll(cx) {
+                let slot = *slot;
+                if self.visible(slot) {
+                    self.slots[slot].thumbnail = Some(texture);
+                }
+                self.drawing = None;
             }
         }
         for index in 0..SLOTS {
             if !self.visible(index) {
                 self.slots[index].texts = None;
+                self.slots[index].thumbnail = None;
                 continue;
             }
-            if self.building.is_none() && self.slots[index].info.is_none() {
+            if self.drawing.is_none() && self.slots[index].thumbnail.is_none() {
+                if let Some(bookmark) = &self.slots[index].bookmark {
+                    let build = ThumbnailBuild::start(cx, &self.assets.scenario, &bookmark.layers);
+                    self.drawing = Some((index, build));
+                }
+            }
+            if self.building.is_none() && self.slots[index].bookmark.is_none() {
                 if let Some(data) = &self.saves[index] {
                     let scenario = self.assets.scenario.clone();
                     let global: SaveData = cx.global.clone();
@@ -469,7 +503,7 @@ impl SaveMenu {
                     self.building = Some((
                         index,
                         shin_tasks::compute::spawn(move || {
-                            crate::adv::replay_save_info(&scenario, global, entry)
+                            crate::adv::replay_bookmark(&scenario, global, entry)
                         }),
                     ));
                 }
@@ -479,11 +513,15 @@ impl SaveMenu {
             }
             let font = &self.assets.system_font;
             let text = |s: &str| TextBlock::new(cx.pre_render, font, s, slot_layout(), OUTLINE);
-            self.slots[index].texts = Some(match (&self.saves[index], &self.slots[index].info) {
-                (None, _) => SlotTexts::One(text(UNUSED)),
-                (Some(_), None) => SlotTexts::One(text(LOADING)),
-                (Some(_), Some([first, second])) => SlotTexts::Two(text(first), text(second)),
-            });
+            self.slots[index].texts =
+                Some(match (&self.saves[index], &self.slots[index].bookmark) {
+                    (None, _) => SlotTexts::One(text(UNUSED)),
+                    (Some(_), None) => SlotTexts::One(text(LOADING)),
+                    (Some(_), Some(bookmark)) => {
+                        let [first, second] = &bookmark.info;
+                        SlotTexts::Two(text(first), text(second))
+                    }
+                });
         }
     }
 
@@ -559,7 +597,19 @@ impl SaveMenu {
             None => {}
         }
 
-        Sprite::new(t("nodata"), [6.0, 0.0, 294.0, 162.0]).draw(pass, opaque, transform);
+        match &self.slots[index].thumbnail {
+            Some(thumbnail) => ui::draw_texture(
+                pass,
+                thumbnail.as_texture_source(),
+                transform,
+                [6.0, 0.0, 294.0, 162.0],
+                THUMBNAIL_UV,
+                opaque,
+            ),
+            None => {
+                Sprite::new(t("nodata"), [6.0, 0.0, 294.0, 162.0]).draw(pass, opaque, transform)
+            }
+        }
 
         let flash = self.slots[index].flash.value();
         if flash > 0.0 {

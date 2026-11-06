@@ -298,3 +298,36 @@ pub fn clip(pass: &mut RenderPass, rect: Option<[f32; 4]>, target_size: (u32, u3
         target_size,
     );
 }
+
+/// A quad of `source` (a render texture) over `rect`, its `uv` part
+pub fn draw_texture(
+    pass: &mut RenderPass,
+    source: shin_render::shaders::types::texture::TextureSource,
+    transform: Mat4,
+    [x0, y0, x1, y1]: [f32; 4],
+    [u0, v0, u1, v1]: [f32; 4],
+    builder: RenderRequestBuilder,
+) {
+    let color = FloatColor4::WHITE.into_unorm();
+    let vertex = |x: f32, y: f32, u: f32, v: f32| PosColTexVertex {
+        position: vec3(x, y, 0.0),
+        color,
+        texture_position: glam::vec2(u, v),
+    };
+    let vertices = [
+        vertex(x0, y0, u0, v0),
+        vertex(x1, y0, u1, v0),
+        vertex(x0, y1, u0, v1),
+        vertex(x1, y1, u1, v1),
+    ];
+    pass.run(builder.build(
+        RenderProgramWithArguments::Sprite {
+            vertices: VertexSource::VertexData {
+                vertices: &vertices,
+            },
+            sprite: source,
+            transform,
+        },
+        DrawPrimitive::TrianglesStrip,
+    ));
+}

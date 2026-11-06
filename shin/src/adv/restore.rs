@@ -2,23 +2,26 @@
 //! state 1): the layers and plane masks (loaded in the background, like LAYERLOAD and MASKLOAD), the properties of
 //! every layer group, the BGM and the looping sound effects. Nothing animates in: the values are set at once.
 //!
+//! The layer part also builds the save screens' thumbnails (`ThumbMaker`), on a screen layer of their own.
+//!
 //! shortcut: the original also cross-fades from the previous screen (0.3 s), restores the message box style and a
-//! minigame's answer, and unlocks the restored pictures; the port starts on a black screen and skips the rest.
+//! minigame's answer; the port starts on a black screen and skips the rest.
 
 use std::sync::Arc;
 
+use shin_audio::AudioManager;
 use shin_core::{
     format::scenario::Scenario,
     time::{Ticks, Tween},
-    vm::command::types::{LayerId, LayerbankId, MaskFlags, PlaneId},
+    vm::command::types::{LayerId, LayerType, LayerbankId, MaskFlags, PlaneId},
 };
 use shin_tasks::AsyncTask;
 use tracing::{debug, info};
 
 use crate::{
-    adv::{AdvState, VmState},
-    asset::mask::MaskTexture,
-    layer::{DrawableLayer, LayerProperties, LayerPropertiesState, user::UserLayer},
+    adv::{AdvState, VmState, vm_state::layers::LayersState},
+    asset::{mask::MaskTexture, system::AssetServer},
+    layer::{DrawableLayer, LayerProperties, LayerPropertiesState, ScreenLayer, user::UserLayer},
     update::UpdateContext,
 };
 
@@ -36,38 +39,36 @@ struct PendingMask {
     task: AsyncTask<Arc<MaskTexture>>,
 }
 
-pub struct SceneRestore {
+/// The layers and masks of a scene model, loading into a screen layer
+pub struct LayerRestore {
     layers: Vec<PendingLayer>,
     masks: Vec<PendingMask>,
 }
 
-impl SceneRestore {
-    /// Sets what can be set at once and starts loading the layers and masks
+impl LayerRestore {
+    /// Sets the screen's, page's and planes' properties at once and starts loading the layers and masks; movies are
+    /// left out when `with_movies` is false (a thumbnail must not start their sound)
     pub fn start(
-        context: &mut UpdateContext,
+        device: &wgpu::Device,
+        asset_server: &Arc<AssetServer>,
+        audio_manager: &Arc<AudioManager>,
         scenario: &Arc<Scenario>,
-        vm_state: &VmState,
-        adv_state: &mut AdvState,
+        model: &LayersState,
+        screen: &mut ScreenLayer,
+        with_movies: bool,
     ) -> Self {
-        let model = &vm_state.layers;
-        model
-            .root_layer_group
-            .restore(adv_state.root_layer_group_mut().properties_mut());
-        model
-            .screen_layer
-            .restore(adv_state.screen_layer_mut().properties_mut());
-        model
-            .page_layer
-            .restore(adv_state.page_layer_mut().properties_mut());
+        model.screen_layer.restore(screen.properties_mut());
+        let page = screen.page_layer_mut();
+        model.page_layer.restore(page.properties_mut());
 
         let mut masks = Vec::new();
         for (plane, group) in &model.plane_layergroups {
             group
                 .properties
-                .restore(adv_state.plane_layer_group_mut(plane).properties_mut());
+                .restore(page.get_plane_mut(plane).properties_mut());
             if let Some(mask_id) = group.mask_id.repr() {
                 let path = scenario.info_tables().mask_info(mask_id).path();
-                let asset_server = context.asset_server.clone();
+                let asset_server = asset_server.clone();
                 masks.push(PendingMask {
                     plane,
                     flags: group.mask_flags,
@@ -86,9 +87,12 @@ impl SceneRestore {
             let Some(layer_type) = state.layer_type else {
                 continue;
             };
-            let device = context.pre_render.device.clone();
-            let asset_server = context.asset_server.clone();
-            let audio_manager = adv_state.audio_manager.clone();
+            if layer_type == LayerType::Movie && !with_movies {
+                continue;
+            }
+            let device = device.clone();
+            let asset_server = asset_server.clone();
+            let audio_manager = audio_manager.clone();
             let scenario = scenario.clone();
             let params = state.params;
             debug!(
@@ -113,18 +117,11 @@ impl SceneRestore {
                 }),
             });
         }
-
-        restore_audio(context, scenario, vm_state, adv_state);
-        info!(
-            "Restoring the scene: {} layers, {} masks",
-            layers.len(),
-            masks.len()
-        );
         Self { layers, masks }
     }
 
     /// Adds what has loaded; true once everything has
-    pub fn poll(&mut self, adv_state: &mut AdvState) -> bool {
+    pub fn poll(&mut self, screen: &mut ScreenLayer) -> bool {
         let mut i = 0;
         while i < self.layers.len() {
             let Some(mut layer) = self.layers[i].task.poll_naive() else {
@@ -136,8 +133,9 @@ impl SceneRestore {
             properties.set_layer_id(pending.layer_id);
             pending.properties.restore(&mut properties);
             *layer.properties_mut() = properties;
-            adv_state
-                .plane_layer_group_mut(pending.plane)
+            screen
+                .page_layer_mut()
+                .get_plane_mut(pending.plane)
                 .add_layer(pending.layerbank, layer);
         }
         let mut i = 0;
@@ -147,11 +145,57 @@ impl SceneRestore {
                 continue;
             };
             let pending = self.masks.swap_remove(i);
-            adv_state
-                .plane_layer_group_mut(pending.plane)
+            screen
+                .page_layer_mut()
+                .get_plane_mut(pending.plane)
                 .set_mask_texture(texture, pending.flags);
         }
         self.layers.is_empty() && self.masks.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.layers.len()
+    }
+}
+
+pub struct SceneRestore {
+    layers: LayerRestore,
+}
+
+impl SceneRestore {
+    /// Sets what can be set at once and starts loading the layers and masks
+    pub fn start(
+        context: &mut UpdateContext,
+        scenario: &Arc<Scenario>,
+        vm_state: &VmState,
+        adv_state: &mut AdvState,
+    ) -> Self {
+        let model = &vm_state.layers;
+        model
+            .root_layer_group
+            .restore(adv_state.root_layer_group_mut().properties_mut());
+        let audio_manager = adv_state.audio_manager.clone();
+        let layers = LayerRestore::start(
+            context.pre_render.device,
+            context.asset_server,
+            &audio_manager,
+            scenario,
+            model,
+            adv_state.screen_layer_mut(),
+            true,
+        );
+        restore_audio(context, scenario, vm_state, adv_state);
+        info!(
+            "Restoring the scene: {} layers, {} masks",
+            layers.len(),
+            layers.masks.len()
+        );
+        Self { layers }
+    }
+
+    /// Adds what has loaded; true once everything has
+    pub fn poll(&mut self, adv_state: &mut AdvState) -> bool {
+        self.layers.poll(adv_state.screen_layer_mut())
     }
 }
 

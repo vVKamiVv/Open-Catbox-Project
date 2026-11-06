@@ -273,7 +273,7 @@ impl Adv {
         let input = MenuInput::new(input_state, pointer);
         let audio = self.adv_state.audio_manager.clone();
         let frames = context.delta_ticks.as_f32();
-        let pre_render = &*context.pre_render;
+        let pre_render = &mut *context.pre_render;
         let asset_server = context.asset_server;
         let global = &mut self.vm_state.global;
         let mut index = 0;
@@ -284,7 +284,8 @@ impl Adv {
                 frames,
                 focused,
                 input: if focused { input } else { MenuInput::released(pointer) },
-                pre_render,
+                pre_render: &mut *pre_render,
+                asset_server,
                 audio: &audio,
                 assets: asset_server,
                 global,
@@ -740,12 +741,20 @@ impl Adv {
     }
 }
 
-/// The SAVEINFO texts (levels 0 and 1) at a bookmark's save point, for the save and load screens; replays it like a
-/// load does (`ThumbMaker::StateBuilder`)
-pub(crate) fn replay_save_info(scenario: &Scenario, global: SaveData, entry: GameDataEntry) -> [String; 2] {
+/// What the save and load screens show of a bookmark: its SAVEINFO texts (levels 0 and 1) and its scene
+pub struct Bookmark {
+    pub info: [String; 2],
+    pub layers: vm_state::layers::LayersState,
+}
+
+/// Replays a bookmark to its save point as a load does, for the save and load screens (`ThumbMaker::StateBuilder`)
+pub(crate) fn replay_bookmark(scenario: &Scenario, global: SaveData, entry: GameDataEntry) -> Bookmark {
     let (_, vm_state, _) = replay(scenario, global, entry, None);
     let [first, second, ..] = vm_state.save_info.info;
-    [first, second]
+    Bookmark {
+        info: [first, second],
+        layers: vm_state.layers,
+    }
 }
 
 /// Replays the script of `entry` to its save point (`0x710001b340`); for a new game just sets the VM up
