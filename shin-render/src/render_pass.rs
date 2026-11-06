@@ -13,6 +13,7 @@ use shin_render_shader_types::{
 use shin_render_shaders::{
     Clear, ClearBindings, Fill, FillBindings, Font, FontBindings, FontBorder, FontBorderBindings,
     Layer, LayerBindings, Mask, MaskBindings, Movie, MovieBindings, Shader, Sprite, SpriteBindings,
+    MovieAlpha, MovieAlphaBindings,
     Blur, BlurBindings, Button, ButtonBindings, Dissolve, DissolveBindings, Mosaic, MosaicBindings, Raster, RasterBindings,
     Ripple, RippleBindings, WiperDefault,
     WiperDefaultBindings, WiperGlass, WiperGlassBindings, WiperMask, WiperMaskBindings, WiperWhirl,
@@ -269,6 +270,27 @@ impl<'pipelines, 'dynbuffer, 'sampler, 'device, 'encoder>
             } => self.run_impl::<Movie>(
                 key,
                 MovieBindings {
+                    params: &MovieUniformParams {
+                        transform,
+                        color_bias,
+                        color_transform,
+                    },
+                    luma: texture_luma,
+                    chroma: texture_chroma,
+                },
+                vertices,
+            ),
+
+            RenderProgramWithArguments::MovieAlpha {
+                vertices,
+                texture_luma,
+                texture_chroma,
+                transform,
+                color_bias,
+                color_transform,
+            } => self.run_impl::<MovieAlpha>(
+                key,
+                MovieAlphaBindings {
                     params: &MovieUniformParams {
                         transform,
                         color_bias,

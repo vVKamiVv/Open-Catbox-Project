@@ -213,7 +213,15 @@ pub enum RenderProgramWithArguments<'a> {
         color_bias: Vec4,
         color_transform: [Vec4; 3],
     },
-    MovieAlpha {},
+    /// A movie whose frames carry their alpha in the bottom half (`MovieTransparencyMode::Transparent`)
+    MovieAlpha {
+        vertices: VertexSource<'a, PosTexVertex>,
+        texture_luma: TextureSource<'a>,
+        texture_chroma: TextureSource<'a>,
+        transform: Mat4,
+        color_bias: Vec4,
+        color_transform: [Vec4; 3],
+    },
 
     WiperDefault {
         vertices: VertexSource<'a, PosTexVertex>,
@@ -304,6 +312,7 @@ impl RenderProgramWithArguments<'_> {
             RenderProgramWithArguments::Layer { .. } => ShaderName::Layer,
             RenderProgramWithArguments::Mask { .. } => ShaderName::Mask,
             RenderProgramWithArguments::Movie { .. } => ShaderName::Movie,
+            RenderProgramWithArguments::MovieAlpha { .. } => ShaderName::MovieAlpha,
             RenderProgramWithArguments::WiperDefault { .. } => ShaderName::WiperDefault,
             RenderProgramWithArguments::WiperWhirl { .. } => ShaderName::WiperWhirl,
             RenderProgramWithArguments::WiperMask { .. } => ShaderName::WiperMask,

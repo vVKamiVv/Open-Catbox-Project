@@ -209,31 +209,51 @@ impl VideoPlayerFrameHandle<'_> {
         &self.guard.video_texture
     }
 
-    pub fn render(&self, pass: &mut RenderPass, builder: RenderRequestBuilder, transform: Mat4) {
+    /// The frame as a quad of its size; with `alpha` the frame's top half is the picture and its bottom half the
+    /// alpha mask, the picture stretched over the whole quad
+    pub fn render(
+        &self,
+        pass: &mut RenderPass,
+        builder: RenderRequestBuilder,
+        transform: Mat4,
+        alpha: bool,
+    ) {
         let tex = &self.guard.video_texture;
 
         let size = tex.get_size();
-
-        // TODO: handle movie with alpha
-        pass.run(builder.build(
-            RenderProgramWithArguments::Movie {
-                vertices: VertexSource::VertexData {
-                    vertices: &build_quad_vertices(|t| PosTexVertex {
-                        position: t * size,
-                        texture_position: t,
-                    }),
-                },
-                texture_luma: tex.get_y_source(),
-                texture_chroma: tex.get_uv_source(),
+        let vertices = build_quad_vertices(|t| PosTexVertex {
+            position: t * size,
+            texture_position: t,
+        });
+        let vertices = VertexSource::VertexData {
+            vertices: &vertices,
+        };
+        let (texture_luma, texture_chroma) = (tex.get_y_source(), tex.get_uv_source());
+        let color_bias = Vec4::new(0.0625, 0.5, 0.5, 1.1643835);
+        let color_transform = [
+            Vec4::new(1.1643835, 0.0, 1.7927411, 0.0),
+            Vec4::new(1.1643835, -0.21322097, -0.5328817, 0.0),
+            Vec4::new(1.1643835, 2.1124017, 0.0, 0.0),
+        ];
+        let program = if alpha {
+            RenderProgramWithArguments::MovieAlpha {
+                vertices,
+                texture_luma,
+                texture_chroma,
                 transform,
-                color_bias: Vec4::new(0.0625, 0.5, 0.5, 1.1643835),
-                color_transform: [
-                    Vec4::new(1.1643835, 0.0, 1.7927411, 0.0),
-                    Vec4::new(1.1643835, -0.21322097, -0.5328817, 0.0),
-                    Vec4::new(1.1643835, 2.1124017, 0.0, 0.0),
-                ],
-            },
-            DrawPrimitive::TrianglesStrip,
-        ))
+                color_bias,
+                color_transform,
+            }
+        } else {
+            RenderProgramWithArguments::Movie {
+                vertices,
+                texture_luma,
+                texture_chroma,
+                transform,
+                color_bias,
+                color_transform,
+            }
+        };
+        pass.run(builder.build(program, DrawPrimitive::TrianglesStrip))
     }
 }

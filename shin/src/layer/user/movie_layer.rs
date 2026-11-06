@@ -109,9 +109,6 @@ impl MovieLayer {
         // we have decoupled asset type from the layer type though
         still_picture: Option<Arc<Picture>>,
     ) -> Self {
-        if transparency != MovieTransparencyMode::Opaque {
-            warn!("Movie transparency mode {:?} not supported", transparency);
-        }
         NewDrawableLayerWrapper::from_inner(MovieLayerImpl {
             movie_label: movie.label().to_string(),
             video_player: Arc::new(
@@ -202,6 +199,7 @@ impl NewDrawableLayer for MovieLayerImpl {
             pass,
             RenderRequestBuilder::new().depth_stencil_shorthand(stencil_ref, false, false),
             transform,
+            self.transparency == MovieTransparencyMode::Transparent,
         );
     }
 }
