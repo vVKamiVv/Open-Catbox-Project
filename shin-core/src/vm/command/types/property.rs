@@ -61,20 +61,21 @@ pub enum LayerProperty {
     WobbleAlphaAmplitude = 42,
     WobbleAlphaBias = 43,
 
-    WobbleScaleXMode = 44,
-    WobbleScaleXPeriod = 45,
-    WobbleScaleXAmplitude = 46,
-    WobbleScaleXBias = 47,
+    // the original's transform (`0x7100074d80`) reads 44-47 as rotation, 48-51 as scale X and 52-55 as scale Y
+    WobbleRotationMode = 44,
+    WobbleRotationPeriod = 45,
+    WobbleRotationAmplitude = 46,
+    WobbleRotationBias = 47,
 
-    WobbleScaleYMode = 48,
-    WobbleScaleYPeriod = 49,
-    WobbleScaleYAmplitude = 50,
-    WobbleScaleYBias = 51,
+    WobbleScaleXMode = 48,
+    WobbleScaleXPeriod = 49,
+    WobbleScaleXAmplitude = 50,
+    WobbleScaleXBias = 51,
 
-    WobbleRotationMode = 52,
-    WobbleRotationPeriod = 53,
-    WobbleRotationAmplitude = 54,
-    WobbleRotationBias = 55,
+    WobbleScaleYMode = 52,
+    WobbleScaleYPeriod = 53,
+    WobbleScaleYAmplitude = 54,
+    WobbleScaleYBias = 55,
 
     // "Ghosting" effect
     GhostingAlpha = 56,
@@ -153,6 +154,7 @@ impl LayerProperty {
             ShaderParamZ => 1000,
             ShaderParamW => 1000,
             WobbleAlphaBias => 1000,
+            // shortcut: the original's defaults were not located; the scale biases default to 1 (x1000) by meaning
             WobbleScaleXBias => 1000,
             WobbleScaleYBias => 1000,
             GhostingZoom => 1000,
@@ -167,5 +169,17 @@ impl FromNumber for LayerProperty {
     fn from_number(number: i32) -> Self {
         FromPrimitive::from_i32(number)
             .unwrap_or_else(|| panic!("LayerProperty::from_vm_ctx: invalid layer type: {}", number))
+    }
+}
+
+#[cfg(test)]
+mod wobble_slot_tests {
+    use super::LayerProperty;
+
+    #[test]
+    fn wobble_slots_follow_the_original() {
+        assert_eq!(LayerProperty::WobbleRotationMode as i32, 44);
+        assert_eq!(LayerProperty::WobbleScaleXMode as i32, 48);
+        assert_eq!(LayerProperty::WobbleScaleYMode as i32, 52);
     }
 }
