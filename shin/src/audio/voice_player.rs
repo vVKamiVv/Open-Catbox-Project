@@ -6,13 +6,16 @@
 //! voice fades over 5 frames. With the muting flag, a file whose speakers (the scenario's voice mapping) are all
 //! switched off in setting v19 is skipped (`0x71000eadc0`).
 //!
-//! Lip-sync: a bustup whose character speaks in a playing voice opens its mouth by the voice's level 0-3
-//! (`ADV::vfunc_63` `0x7100014eb0`: the first playing voice whose speakers include the character).
+//! Lip-sync: a bustup whose character speaks in a playing voice opens its mouth by the voice's level 0-2
+//! (`ADV::vfunc_63` `0x7100014eb0`: the first playing voice whose speakers include the character). The level comes
+//! from a table of 50 ms windows made from the decoded samples (`0x71000f55d0`), read at the playing position
+//! (`StreamSound::lipLevel` `0x71000f54e0`).
 //!
-//! shortcut: files load synchronously, so "start together once all are loaded" is immediate; the speaker panning
-//! (setting v5) and the voice segments of `@x` (unused by Umineko) are not done. The original reads the level from a
-//! per-stream table filled while decoding (stream `+0x2e8`, not decoded yet); the port derives it from the voice's
-//! loudness instead.
+//! Panning: every frame each such bustup pans the voices its character speaks in to its place on screen when
+//! setting v5 is on, or to the centre when it is off (`0x7100119ef0`).
+//!
+//! shortcut: files load synchronously, so "start together once all are loaded" is immediate; the voice segments of
+//! `@x` (unused by Umineko) are not done; a voice fading out after a stop is no longer panned.
 
 use std::sync::{Arc, Mutex};
 
@@ -24,6 +27,7 @@ use shin_core::{
     time::{Ticks, Tween},
     vm::command::types::{AudioWaitStatus, Pan, Volume},
 };
+use shin_tasks::ComputeTask;
 use tracing::warn;
 
 use crate::asset::system::AssetServer;
@@ -41,12 +45,24 @@ struct Voice {
     volume: f32,
     /// The speakers whose bustups lip-sync to it (empty without the lip-sync flag)
     speakers: Vec<u8>,
+    /// The mouth level of each 50 ms window, empty until made
+    levels: Vec<u8>,
+    levels_task: Option<ComputeTask<Vec<u8>>>,
 }
 
 /// The lip-sync level of each speaking character, published by the voice player every frame
 static LIPSYNC: Mutex<Vec<(u8, i32)>> = Mutex::new(Vec::new());
 
-/// The mouth level (0-3) of `character_id` from the voices playing now, or -1 when the character is not speaking
+/// The pans asked by the bustups this frame: (character id, pan from -1 to 1)
+static PANS: Mutex<Vec<(u16, f32)>> = Mutex::new(Vec::new());
+
+/// A bustup of `character_id` at `pan` (its screen x over the half-width): the voice player pans that character's
+/// voices there (`0x7100119ef0`)
+pub fn request_voice_pan(character_id: u16, pan: f32) {
+    PANS.lock().unwrap().push((character_id, pan));
+}
+
+/// The mouth level (0-2) of `character_id` from the voices playing now, or -1 when the character is not speaking
 pub fn lipsync_level(character_id: u16) -> i32 {
     LIPSYNC
         .lock()
@@ -65,6 +81,8 @@ pub struct VoicePlayer {
     setting_volume: u8,
     /// The per-character voice switches (setting v19, a bit per character id)
     character_mask: u32,
+    /// Setting v5: voices follow their speaker's bustup across the screen
+    pan_enabled: bool,
 }
 
 impl VoicePlayer {
@@ -75,13 +93,15 @@ impl VoicePlayer {
             playing: Vec::new(),
             setting_volume: 90,
             character_mask: u32::MAX,
+            pan_enabled: true,
         }
     }
 
-    /// The voice settings: volume (v2) and the per-character switches (v19)
-    pub fn set_settings(&mut self, setting_volume: u8, character_mask: u32) {
+    /// The voice settings: volume (v2), the per-character switches (v19) and the speaker panning (v5)
+    pub fn set_settings(&mut self, setting_volume: u8, character_mask: u32, pan_enabled: bool) {
         self.setting_volume = setting_volume.min(100);
         self.character_mask = character_mask;
+        self.pan_enabled = pan_enabled;
     }
 
     /// Plays the voice spec `voicefiles_spec`; false when no file was started
@@ -123,6 +143,10 @@ impl VoicePlayer {
                 }
             };
             let gain = Volume(self.setting_volume as f32 / 100.0 * volume);
+            let levels_task = (!speakers.is_empty()).then(|| {
+                let file = file.clone();
+                shin_tasks::compute::spawn(move || lipsync_table(&file))
+            });
             let handle = self.audio_manager.play(AudioData::from_audio_file(file, AudioSettings {
                 track: TrackId::Main,
                 fade_in: Tween::linear(Ticks::ZERO),
@@ -134,6 +158,8 @@ impl VoicePlayer {
                 handle,
                 volume,
                 speakers,
+                levels: Vec::new(),
+                levels_task,
             });
             started += 1;
         }
@@ -171,11 +197,30 @@ impl VoicePlayer {
 }
 
 impl VoicePlayer {
-    /// Publishes the lip-sync levels of the voices playing now; call once per frame
-    pub fn publish_lipsync(&self) {
+    /// Applies the bustups' pans and publishes the lip-sync levels of the voices playing now; call once per frame
+    pub fn publish_lipsync(&mut self) {
+        for (character_id, pan) in PANS.lock().unwrap().drain(..) {
+            let pan = if self.pan_enabled { pan } else { 0.0 };
+            for voice in &mut self.playing {
+                if voice.speakers.iter().any(|&id| id as u16 == character_id) {
+                    let _ = voice
+                        .handle
+                        .set_panning(Pan(pan), Tween::linear(Ticks::ZERO));
+                }
+            }
+        }
+
         let mut levels = LIPSYNC.lock().unwrap();
         levels.clear();
-        for voice in &self.playing {
+        for voice in &mut self.playing {
+            if let Some(table) = voice
+                .levels_task
+                .as_mut()
+                .and_then(|task| task.poll_naive())
+            {
+                voice.levels = table;
+                voice.levels_task = None;
+            }
             if !voice
                 .handle
                 .get_wait_status()
@@ -183,8 +228,12 @@ impl VoicePlayer {
             {
                 continue;
             }
-            // shortcut: loudness steps instead of the original's per-stream level table
-            let level = (voice.handle.get_amplitude() / 0.1).min(3.0) as i32;
+            // the entry of the 50 ms window playing now, or the last one past the end
+            let window = (voice.handle.position().as_seconds() * 20.0) as usize;
+            let level = match voice.levels.len() {
+                0 => 0,
+                len => voice.levels[window.min(len - 1)] as i32,
+            };
             for &speaker in &voice.speakers {
                 if !levels.iter().any(|&(other, _)| other == speaker) {
                     levels.push((speaker, level));
@@ -192,6 +241,67 @@ impl VoicePlayer {
             }
         }
     }
+}
+
+/// The mouth level of each 50 ms window of a voice (`0x71000f55d0`): the peak of every sample of every channel, with
+/// hysteresis between closed (0), half open (1) and open (2). A last partial window gets no entry.
+fn lipsync_table(file: &Arc<AudioFile>) -> Vec<u8> {
+    use shin_core::format::audio::{AudioBuffer, AudioDecoder, AudioFrameSource};
+
+    let mut decoder = match AudioDecoder::new(file.clone()) {
+        Ok(decoder) => decoder,
+        Err(e) => {
+            warn!("Could not decode a voice for its lip-sync: {e:?}");
+            return Vec::new();
+        }
+    };
+    let mut buffer = AudioBuffer::with_capacity(decoder.max_frame_size());
+    let mut peaks = Vec::new();
+    let mut skip = decoder.pre_skip() as usize;
+    while decoder.read_frame(&mut buffer) {
+        let samples = buffer.samples();
+        let start = skip.min(samples.len());
+        skip -= start;
+        peaks.extend(samples[start..].iter().map(|&(l, r)| l.abs().max(r.abs())));
+        buffer.clear();
+    }
+    let window = (decoder.sample_rate() / 20).max(1) as usize;
+    lipsync_levels(
+        peaks
+            .chunks_exact(window)
+            .map(|w| w.iter().fold(0.0f32, |a, &b| a.max(b))),
+    )
+}
+
+/// The level state machine over the windows' peaks (thresholds `0x710015a44c`, `aac8`, `a550`, `a574`); half open
+/// closes after 4 windows without a change
+fn lipsync_levels(peaks: impl Iterator<Item = f32>) -> Vec<u8> {
+    let (mut state, mut hold) = (0u8, 0u32);
+    peaks
+        .map(|peak| {
+            let next = match state {
+                0 if peak > 0.12 => Some(1),
+                1 if peak > 0.55 => Some(2),
+                1 if peak < 0.10 => Some(0),
+                2 if peak < 0.45 => Some(1),
+                _ => None,
+            };
+            match next {
+                Some(next) => {
+                    state = next;
+                    hold = 0;
+                }
+                None => {
+                    hold += 1;
+                    if hold >= 4 && state == 1 {
+                        state = 0;
+                        hold = 0;
+                    }
+                }
+            }
+            state
+        })
+        .collect()
 }
 
 /// The scenario's voice mapping entry for a voice file
@@ -232,7 +342,16 @@ fn matches_pattern(pattern: &str, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::matches_pattern;
+    use super::{lipsync_levels, matches_pattern};
+
+    #[test]
+    fn lipsync_hysteresis() {
+        let levels = |peaks: &[f32]| lipsync_levels(peaks.iter().copied());
+        assert_eq!(levels(&[0.11, 0.13, 0.6, 0.5, 0.44, 0.11]), [0, 1, 2, 2, 1, 1]);
+        // half open closes after 4 windows without a change
+        assert_eq!(levels(&[0.2, 0.2, 0.2, 0.2, 0.2, 0.2]), [1, 1, 1, 1, 0, 1]);
+        assert_eq!(levels(&[0.2, 0.05]), [1, 0]);
+    }
 
     #[test]
     fn voice_mapping_patterns() {

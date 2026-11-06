@@ -172,7 +172,7 @@ impl MessageLayer {
     pub fn set_settings(&mut self, settings: Settings) {
         self.settings = settings;
         self.voice_player
-            .set_settings(settings.v2_voicevol, settings.v19);
+            .set_settings(settings.v2_voicevol, settings.v19, settings.v5_voicepanapot);
     }
 
     /// VOICEPLAY (`0x7100007420`): a voice outside a line, through the same player

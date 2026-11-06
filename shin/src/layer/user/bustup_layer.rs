@@ -166,6 +166,17 @@ impl NewDrawableLayerNeedsSeparatePass for BustupLayerImpl {}
 impl NewDrawableLayer for BustupLayerImpl {
     fn update_from_props(&mut self, props: &LayerProperties) {
         self.animate = props.get_value(LayerProperty::Prop27) as i32 != 0;
+        // `0x7100036900`: a speaking bustup pans its character's voices to the screen x of its own origin (not
+        // composed with the parents) over the half-width
+        if self.animate && !self.bustup.mouth_blocks.is_empty() {
+            let x = props
+                .get_transform_params()
+                .compute_final_transform()
+                .project_point3(Vec3::ZERO)
+                .x;
+            let pan = if x > -1.0 { x.min(1.0) } else { -1.0 };
+            crate::audio::request_voice_pan(self.lipsync_character_id, pan);
+        }
     }
 
     #[tracing::instrument(skip_all)]

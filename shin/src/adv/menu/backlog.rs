@@ -364,7 +364,8 @@ impl Task for Backlog {
         let size = cx.pre_render.resize_source.handle::<CanvasSize>().get();
         self.target_size = (size.width, size.height);
         let settings = cx.global.settings;
-        self.voice.set_settings(settings.v2_voicevol, settings.v19);
+        self.voice
+            .set_settings(settings.v2_voicevol, settings.v19, settings.v5_voicepanapot);
 
         match self.state {
             State::Opening => {

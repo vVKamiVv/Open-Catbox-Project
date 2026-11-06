@@ -27,6 +27,11 @@ impl AudioBuffer {
         self.data.is_empty()
     }
 
+    /// The frames as (left, right)
+    pub fn samples(&self) -> &[Sample] {
+        &self.data
+    }
+
     pub fn push(&mut self, frame: Sample) {
         self.data.push(frame);
     }
