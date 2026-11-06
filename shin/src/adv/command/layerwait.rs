@@ -76,35 +76,38 @@ impl UpdatableCommand for LAYERWAIT {
         _scenario: &Arc<Scenario>,
         vm_state: &mut VmState,
         adv_state: &mut AdvState,
-        #[expect(unused)] is_fast_forwarding: bool,
+        is_fast_forwarding: bool,
     ) -> Option<CommandResult> {
-        let does_need_wait = |props: &LayerProperties| {
-            // TODO: implement fast-forwarding of tweeners
-            self.properties
-                .iter()
-                .any(|&prop| !props.property_tweener(prop).is_idle())
+        // `0x710000af20`: every listed property is checked (and fast-forwarded while skipping), not just up to the
+        // first one still running
+        let does_need_wait = |props: &mut LayerProperties| {
+            self.properties.iter().fold(false, |wait, &prop| {
+                props.needs_wait(prop, is_fast_forwarding) | wait
+            })
         };
 
         let needs_wait = match self.layer_id.repr() {
             VLayerIdRepr::RootLayerGroup => {
-                does_need_wait(adv_state.root_layer_group().properties())
+                does_need_wait(adv_state.root_layer_group_mut().properties_mut())
             }
-            VLayerIdRepr::ScreenLayer => does_need_wait(adv_state.screen_layer().properties()),
-            VLayerIdRepr::PageLayer => does_need_wait(adv_state.page_layer().properties()),
+            VLayerIdRepr::ScreenLayer => {
+                does_need_wait(adv_state.screen_layer_mut().properties_mut())
+            }
+            VLayerIdRepr::PageLayer => does_need_wait(adv_state.page_layer_mut().properties_mut()),
             VLayerIdRepr::PlaneLayerGroup => does_need_wait(
                 adv_state
-                    .plane_layer_group(vm_state.layers.current_plane)
-                    .properties(),
+                    .plane_layer_group_mut(vm_state.layers.current_plane)
+                    .properties_mut(),
             ),
             VLayerIdRepr::Selected | VLayerIdRepr::Layer(_) => {
-                self.affected_layers.iter().any(|target| {
+                let group = adv_state.plane_layer_group_mut(self.plane);
+                self.affected_layers.iter().fold(false, |wait, target| {
                     does_need_wait(
-                        adv_state
-                            .plane_layer_group(self.plane)
-                            .get_layer(target.layerbank)
+                        group
+                            .get_layer_mut(target.layerbank)
                             .expect("BUG: layerbank not found")
-                            .properties(),
-                    )
+                            .properties_mut(),
+                    ) | wait
                 })
             }
         };

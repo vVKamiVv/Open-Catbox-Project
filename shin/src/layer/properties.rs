@@ -29,6 +29,8 @@ pub struct LayerProperties {
     layer_load_counter1: u32,
     layer_id: LayerId,
     properties: EnumMap<LayerProperty, Tweener>,
+    /// LAYERCTRL's flags for each property's tweener (`+0x1c`, `+0x20`)
+    wait_flags: EnumMap<LayerProperty, TweenWaitFlags>,
     wobbler_x: Wobbler,
     wobbler_y: Wobbler,
     wobbler_alpha: Wobbler,
@@ -43,6 +45,7 @@ impl LayerProperties {
             layer_load_counter1: 0,
             layer_id: LayerId::new(0),
             properties: initial_values().map(|_, v| Tweener::new(v as f32)),
+            wait_flags: EnumMap::default(),
             wobbler_x: Wobbler::new(),
             wobbler_y: Wobbler::new(),
             wobbler_alpha: Wobbler::new(),
@@ -62,6 +65,21 @@ impl LayerProperties {
 
     pub fn property_tweener_mut(&mut self, property: LayerProperty) -> &mut Tweener {
         &mut self.properties[property]
+    }
+
+    pub fn set_wait_flags(&mut self, property: LayerProperty, flags: TweenWaitFlags) {
+        self.wait_flags[property] = flags;
+    }
+
+    /// LAYERWAIT's check on one property (`0x710000b520`): while skipping the tween jumps to its end first, unless
+    /// LAYERCTRL prohibited fast-forwarding it; a tween marked `ignore_wait` is never waited for
+    pub fn needs_wait(&mut self, property: LayerProperty, skipping: bool) -> bool {
+        let flags = self.wait_flags[property];
+        let tweener = &mut self.properties[property];
+        if skipping && !(flags.prohibit_fast_forward && !tweener.is_idle()) {
+            tweener.fast_forward();
+        }
+        !flags.ignore_wait && !tweener.is_idle()
     }
 
     pub fn init(&mut self) {
@@ -458,6 +476,13 @@ impl AdvUpdatable for LayerProperties {
     }
 }
 
+/// The LAYERCTRL flags that change how LAYERWAIT treats a property's tween
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TweenWaitFlags {
+    pub prohibit_fast_forward: bool,
+    pub ignore_wait: bool,
+}
+
 /// Stores only target property values.
 /// Used to implement save/load (to quickly restore the state of the scene).
 #[derive(Debug, Clone)]
@@ -494,5 +519,49 @@ impl LayerPropertiesState {
                 .property_tweener_mut(property)
                 .fast_forward_to(value as f32);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use shin_core::time::{Easing, Ticks, Tween};
+
+    use super::*;
+
+    fn tweening(flags: TweenWaitFlags) -> LayerProperties {
+        let mut props = LayerProperties::new();
+        props.set_wait_flags(LayerProperty::TranslateX, flags);
+        props
+            .property_tweener_mut(LayerProperty::TranslateX)
+            .enqueue(
+                100.0,
+                Tween {
+                    duration: Ticks::from_f32(60.0),
+                    easing: Easing::Linear,
+                },
+            );
+        props
+    }
+
+    #[test]
+    fn layerwait_follows_the_tween_flags() {
+        let x = LayerProperty::TranslateX;
+        // a plain tween is waited for, and skipping finishes it at once
+        let mut plain = tweening(TweenWaitFlags::default());
+        assert!(plain.needs_wait(x, false));
+        assert!(!plain.needs_wait(x, true));
+        assert_eq!(plain.get_value(x), 100.0);
+        // prohibit_fast_forward keeps it running and waited for while skipping
+        let mut kept = tweening(TweenWaitFlags {
+            prohibit_fast_forward: true,
+            ignore_wait: false,
+        });
+        assert!(kept.needs_wait(x, true));
+        // ignore_wait is never waited for
+        let mut ignored = tweening(TweenWaitFlags {
+            prohibit_fast_forward: false,
+            ignore_wait: true,
+        });
+        assert!(!ignored.needs_wait(x, false));
     }
 }

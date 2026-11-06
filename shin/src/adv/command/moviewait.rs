@@ -62,39 +62,6 @@ impl StartableCommand for command::runtime::MOVIEWAIT {
             }
             .into(),
         )
-
-        // let affected_layers = state_info;
-        //
-        // for target in &affected_layers {
-        //     let UserLayer::Movie(movie_layer) = adv_state
-        //         .plane_layer_group(vm_state.layers.current_plane)
-        //         .get_layer(target.layerbank)
-        //         .expect("BUG: layerbank not found")
-        //     else {
-        //         todo!()
-        //     };
-        // }
-        //
-        // match adv_state
-        //     .plane_layer_group(vm_state.layers.current_plane)
-        //     .get_layer(
-        //         vm_state
-        //             .layers
-        //             .layerbank_allocator
-        //             .get_layerbank_id(vm_state.layers.current_plane),
-        //         self.layer_id,
-        //     ) {
-        //     Some(UserLayer::MovieLayer(_)) => {
-        //         assert_eq!(self.target_status, 2, "MOVIEWAIT: unknown target status");
-        //         Yield(
-        //
-        //         )
-        //     }
-        //     _ => {
-        //         warn!("MOVIEWAIT: layer is not a movie layer");
-        //         self.token.finish().into()
-        //     }
-        // }
     }
 }
 
@@ -118,10 +85,12 @@ impl UpdatableCommand for MOVIEWAIT {
                 continue;
             };
 
-            // I am _fairly_ sure these are the same flags as the audio waiting commands, but I haven't done enough RE to be 100% sure
-            assert_eq!(self.unwanted_statuses, AudioWaitStatus::PLAYING);
-
-            if !movie_layer.is_finished() {
+            // `0x710000bd60`: bit 1 waits while the movie plays. Neither skip mode nor input ends the wait; only event
+            // skip gets past it. shortcut: bit 0 (the movie not ready yet) is never used by the script, so it is not
+            // waited for; implement it if a script uses MOVIEWAIT with 1
+            if self.unwanted_statuses.contains(AudioWaitStatus::PLAYING)
+                && !movie_layer.is_finished()
+            {
                 should_wait = true;
                 break;
             }

@@ -16,7 +16,6 @@ impl StartableCommand for command::runtime::EVEND {
         _state_info: (),
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        warn!("TODO: EVEND: {:?}", self);
         self.token.finish().into()
     }
 }

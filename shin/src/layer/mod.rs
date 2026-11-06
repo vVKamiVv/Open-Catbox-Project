@@ -19,7 +19,7 @@ pub use layer_group::LayerGroup;
 pub use new_drawable_layer::{NewDrawableLayer, NewDrawableLayerWrapper};
 pub(crate) use new_drawable_layer::effect_passes::{apply_backdrop_blur, apply_region_blur};
 pub use page_layer::PageLayer;
-pub use properties::{LayerProperties, LayerPropertiesState};
+pub use properties::{LayerProperties, LayerPropertiesState, TweenWaitFlags};
 pub use root_layer_group::RootLayerGroup;
 pub use screen_layer::ScreenLayer;
 use shin_core::primitives::color::FloatColor4;

@@ -2,7 +2,10 @@ use shin_core::time::{Easing, Tween};
 use shin_render::shaders::types::RenderCloneCtx;
 
 use super::prelude::*;
-use crate::{adv::vm_state::layers::LayerOperationTargetList, layer::LayerProperties};
+use crate::{
+    adv::vm_state::layers::LayerOperationTargetList,
+    layer::{LayerProperties, TweenWaitFlags},
+};
 
 impl StartableCommand for command::runtime::LAYERCTRL {
     type StateInfo = LayerOperationTargetList;
@@ -78,12 +81,6 @@ impl StartableCommand for command::runtime::LAYERCTRL {
         if flags.ff_to_current() && flags.ff_to_target() {
             panic!("LAYERCTRL: both ff_to_current and ff_to_target flags are set");
         }
-        if flags.prohibit_fast_forward() {
-            warn!("LAYERCTRL: prohibit_fast_forward is set, but not supported");
-        }
-        if flags.ignore_wait() {
-            warn!("LAYERCTRL: ignore_wait is set, but not supported");
-        }
 
         let easing = match flags.easing() {
             0 => Easing::Linear,
@@ -96,7 +93,12 @@ impl StartableCommand for command::runtime::LAYERCTRL {
         };
 
         let mut changed = false;
+        let wait_flags = TweenWaitFlags {
+            prohibit_fast_forward: flags.prohibit_fast_forward(),
+            ignore_wait: flags.ignore_wait(),
+        };
         let mut apply_to_properties = |properties: &mut LayerProperties| {
+            properties.set_wait_flags(self.property_id, wait_flags);
             let tweener = properties.property_tweener_mut(self.property_id);
 
             let from_value = tweener.target_value();

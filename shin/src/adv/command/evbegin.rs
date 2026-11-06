@@ -16,7 +16,6 @@ impl StartableCommand for command::runtime::EVBEGIN {
         _state_info: (),
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        warn!("TODO: EVBEGIN: {:?}", self);
         self.token.finish().into()
     }
 }
