@@ -87,6 +87,7 @@ set-up; `--unsafe-entry-point` skips the start-up block, so sprites and the text
 | Mosaic (property 67, 255 to 0 over 60 frames) | Ep5 after line 34483 | Match: the same block sizes frame by frame over the same 10 frames, the grid anchored top left; the finished pictures within 0.3 |
 | Ripple (property 82) with ghosting on the screen layer | Ep8 line 61681 | Match: mean difference 1.36, 99.3 % within 32 |
 | Looping transparent movie (no0011, the fire) | Ep8 line 64886 | Match: the same looping flames over the garden and the same shake (the capture tool's own screenshot came before Eden's first movie frame; live grabs show the fire) |
+| Halloween party quiz screen | Ep8, question 2 | Match: same layout, no offset; mean difference 6.4 against a small window grab of Eden (the rest is the grab's resampling) |
 
-Still to compare (the quiz, the cake and culprit games were played through in Eden but not captured): dissolve (TP1 7409), raster (extra pieces),
+Still to compare (the cake and culprit games were played through in Eden but not captured): dissolve (TP1 7409), raster (extra pieces),
 the quiz and the main8 minigames.
