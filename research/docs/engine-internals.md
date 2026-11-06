@@ -985,3 +985,42 @@ open above 0.12, half open -> closed below 0.10, -> open above 0.55, open -> hal
 after 4 windows without a change), read at the playing position (`0x71000f54e0`). The mouth frame is
 `level × count / 3`. In the port: `audio/voice_player.rs` (the table is made off the main thread when a voice
 starts), `layer/user/bustup_layer.rs`, `shin-audio/src/sound.rs`.
+
+## 17. Touch gestures and scrolling lists **confirmed** (code; the port's save list, backlog, chapter list and manual tested with the mouse)
+
+`shin::GestureRecognizer` (ctors `0x710006ae80`/`0x710006af20`, update `0x710006b070`, poll `0x710006b860`,
+cancel `0x710006b000`, long press on/off `0x710006aff0`) turns the touch panel into gestures for a screen's
+`GestureRecognizer::Listener` (RTTI `0x71001d3e60`; slots `down`, `end`, `press`, `tap`, `longPress`, `drag`,
+`flick`, `cancel` at `+0x10`..`+0x48`). Touches come from `nn::hid::GetTouchScreenStates<10>` in 1280x720 panel
+pixels (`0x71000f97c0`) and reach listeners scaled by 1.5, so in 1920x1080 canvas pixels; several fingers are
+averaged into one point. The Switch build has no mouse.
+
+| Rule | Value |
+|---|---|
+| Press becomes a drag | moved more than 8/960 of 1280 = 16 canvas px from the down point; the first drag runs from the down point |
+| Further drags | any move over one panel pixel (1.5 canvas px) |
+| Tap | released without dragging or a long press; reported at the down point |
+| Press / long press | held still 0.15 s / 1.15 s (long press only where enabled: the ADV screen and the save list) |
+| Flick | released after a drag faster than 10/960 of 1280 = 20 canvas px per 1/59.94 s; the speed is the last frame's move |
+| While a touch is down | the poll returns true and screens skip their button input |
+
+Each screen scrolls by itself with the same idiom (save list `0x71000da150`/`0x71000d6640`, backlog `0x71000a7450`/
+`0x71000a3d40`, tips `0x7100108070`, chapter list, picture box `0x7100047ff0`, the other galleries and the config):
+a drag moves the offset 1:1 (`offset -= curY - prevY`) with a hard clamp at the ends, no rubber band; a flick stores
+its speed and each frame `offset -= v*dt` (clamped) then `v *= 0.95^dt`, stopping below 0.1 or when the clamp
+holds the offset; no snapping, the cursor only moves along to stay in the 730 px view; a touch while coasting stops
+it and does not tap. The dialog decays by 0.9 instead.
+
+- **Save list:** a down outside x 136..1784, y 188..918 is not tracked; a press brightens the bookmark; a tap
+  scrolls it into view (4 frames) and asks to save or load (`0x71000d97f0`); a long press in the save screen
+  removes the bookmark (`0x71000d8fe0`). Clamp [0, 17856].
+- **Backlog:** only drags 30..150 degrees from the horizontal scroll; a tap left of x 272 replays the line's voice,
+  elsewhere asks to jump; a flick of 20+ within 30 degrees of leftward opens the chapter list (`0x71000a7d30`). The
+  chapter list closes on one within 30 degrees of rightward, with the cancel sound.
+- **Manual:** a down at 162 <= y < 980 drags the pages horizontally, clamped; a flick over 20 within 30 degrees of
+  the horizontal turns to the next (leftward) or previous page from the page before the drag; a release without a
+  flick snaps to `round(offset / 1500)`; both slide at 100 px a frame (a speed tween, flag `0x40`), sine-out.
+- **Close button** on every screen: (1764..1848, 32..116), with the decide sound.
+
+The port (`shin/src/ui/gesture.rs`) takes the mouse's left button as one finger. A mouse does not report every
+frame, so its flick speed is the last frame the pointer moved, if under two frames before the release.
