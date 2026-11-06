@@ -85,6 +85,8 @@ set-up; `--unsafe-entry-point` skips the start-up block, so sprites and the text
 | Butterfly summoning (pictures 862, 854, 856 and the golden glow) | Ep2 lines 11555-11556 | Same stages and look frame by frame |
 | Glass wipe (WIPE 9) | Ep5 after line 32648 | Match: same flash, lighting (lit faces up, dark sides) and fade at the end; shard paths are random in both |
 | Mosaic (property 67, 255 to 0 over 60 frames) | Ep5 after line 34483 | Match: the same block sizes frame by frame over the same 10 frames, the grid anchored top left; the finished pictures within 0.3 |
+| Ripple (property 82) with ghosting on the screen layer | Ep8 line 61681 | Match: mean difference 1.36, 99.3 % within 32 |
+| Looping transparent movie (no0011, the fire) | Ep8 line 64886 | Match: the same looping flames over the garden and the same shake (the capture tool's own screenshot came before Eden's first movie frame; live grabs show the fire) |
 
-Still to compare: dissolve (TP1 7409), raster (extra pieces),
-ripple and transparent movies on screen (Ep8 61681, 64886), the quiz and the main8 minigames.
+Still to compare (the quiz, the cake and culprit games were played through in Eden but not captured): dissolve (TP1 7409), raster (extra pieces),
+the quiz and the main8 minigames.
