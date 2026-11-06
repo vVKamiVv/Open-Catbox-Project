@@ -118,3 +118,34 @@ impl Asset for NamedTextures {
         .await
     }
 }
+
+/// Every texture of an archive as an image in memory, for pictures the port composes itself (the character screen's
+/// portraits over their card)
+pub struct TextureImages {
+    pub by_name: std::collections::HashMap<String, image::RgbaImage>,
+}
+
+impl Asset for TextureImages {
+    type Args = ();
+
+    async fn load(
+        _context: &Arc<AssetLoadContext>,
+        _args: (),
+        _name: &str,
+        data: AssetDataAccessor,
+    ) -> Result<Self> {
+        let data = data.read_all().await;
+        shin_tasks::compute::spawn(move || {
+            let archive = shin_core::format::texture_archive::read_texture_archive(&data)?;
+            let mut textures = archive.textures.into_iter().map(Some).collect::<Vec<_>>();
+            Ok(Self {
+                by_name: archive
+                    .name_to_index
+                    .into_iter()
+                    .filter_map(|(name, index)| Some((name, textures[index].take()?)))
+                    .collect(),
+            })
+        })
+        .await
+    }
+}

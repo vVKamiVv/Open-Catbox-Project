@@ -344,7 +344,7 @@ impl Adv {
             context.pre_render,
             &self.adv_state.menu_assets,
             &self.vm_state.save_info.info[1],
-            self.vm_state.chars.0,
+            self.vm_state.chars,
             self.vm_state.tips.clone(),
             self.vm_state.global.play_seconds,
         );

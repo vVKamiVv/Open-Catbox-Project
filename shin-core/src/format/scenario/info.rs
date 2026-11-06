@@ -247,7 +247,7 @@ pub enum CharacterBoxSegment {
 pub type CharacterBoxInfo = Vec<CharacterBoxSegment>;
 
 /// Defines how a `chars` grid portrait is displayed.
-#[derive(Debug, BinRead, BinWrite)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, BinRead, BinWrite)]
 #[brw(repr = u8)]
 pub enum CharsPortraitDisplayMode {
     /// Portrait will be shown in full color.
@@ -314,7 +314,7 @@ pub struct CharsSpriteInfoItem {
 pub type CharsSpriteInfo = Vec<CharsSpriteInfoItem>;
 
 /// The shape of an individual connector between portraits in the `chars` grid.
-#[derive(Debug, BinRead, BinWrite)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, BinRead, BinWrite)]
 #[brw(repr = u8)]
 pub enum CharsGridConnectorShape {
     /// No connector is displayed.
@@ -370,7 +370,7 @@ pub enum CharsGridConnectorShape {
 }
 
 /// The color of an individual connector between portraits in the `chars` grid.
-#[derive(Debug, BinRead, BinWrite)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, BinRead, BinWrite)]
 #[brw(repr = u8)]
 pub enum CharsGridConnectorColor {
     Red = 1,

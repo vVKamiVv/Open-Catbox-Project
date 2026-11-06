@@ -28,6 +28,7 @@ use tracing::{info, warn};
 use crate::{
     adv::menu::{
         AdvRequest, MenuAssets, Task, TaskCx,
+        chars::Chars,
         config_menu::ConfigMenu,
         manual::Manual,
         save_menu::{Mode, SaveMenu},
@@ -488,16 +489,17 @@ impl Title {
 
     /// The screen of an episode in the list: the tips of that episode, or its characters
     fn open_episode(&mut self, context: &mut UpdateContext, characters: bool, episode: u8) {
-        if characters {
-            warn!("The characters screen does not exist in the port yet");
-            self.sound(context, "error");
-            return;
-        }
         minigame::tween_now(&mut self.dim, 0.5, 0.1);
         let assets = self.assets.clone();
         let cx = self.task_cx(context, true, MenuInput::default());
-        self.child = Tips::new(&cx, &assets, TipsFilter::Episode(episode))
-            .map(|tips| Box::new(tips) as Box<dyn Task>);
+        self.child = if characters {
+            // `0x71001108b8`: the episode's own grid, from its first page
+            Chars::new(&cx, &assets, episode as i32, 0)
+                .map(|chars| Box::new(chars) as Box<dyn Task>)
+        } else {
+            Tips::new(&cx, &assets, TipsFilter::Episode(episode))
+                .map(|tips| Box::new(tips) as Box<dyn Task>)
+        };
     }
 
     /// `0x710010e310`

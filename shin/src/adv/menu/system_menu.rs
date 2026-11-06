@@ -16,6 +16,7 @@ use tracing::warn;
 
 use super::{
     AdvRequest, MenuAssets, Task, TaskCx,
+    chars::Chars,
     config_menu::ConfigMenu,
     dialog::Dialog,
     manual::Manual,
@@ -85,6 +86,8 @@ pub struct SystemMenu {
     play_time_string: String,
     /// The tips this playthrough has collected (`Context+0x9120`)
     tips: Vec<i32>,
+    /// CHARS' grid and page (`Context+0x9118`)
+    chars: (i32, i32),
     /// The item whose flash is playing before it opens
     deciding: Option<u8>,
     child: Option<Child>,
@@ -117,19 +120,19 @@ fn play_time_string(play_seconds: u32) -> String {
 }
 
 impl SystemMenu {
-    /// `scene_title`: the committed level-1 SAVEINFO text; Characters shows when `chars >= 0`, Tips when `tips` (the
+    /// `scene_title`: the committed level-1 SAVEINFO text; Characters shows when CHARS has set a grid (`chars.0 >= 0`), Tips when `tips` (the
     /// collected tips) has any
     pub fn new(
         ctx: &PreRenderContext,
         assets: &MenuAssets,
         scene_title: &str,
-        chars: i32,
+        chars: (i32, i32),
         tips: Vec<i32>,
         play_seconds: u32,
     ) -> Self {
         let ids = [SAVE, LOAD, CONFIG]
             .into_iter()
-            .chain((chars >= 0).then_some(CHARACTERS))
+            .chain((chars.0 >= 0).then_some(CHARACTERS))
             .chain((!tips.is_empty()).then_some(TIPS))
             .chain([MANUAL, TITLE]);
         let items = ids
@@ -156,6 +159,7 @@ impl SystemMenu {
             play_time,
             play_time_string,
             tips,
+            chars,
             deciding: None,
             child: None,
             pointer_held: false,
@@ -244,11 +248,13 @@ impl SystemMenu {
                     return;
                 }
             },
-            CHARACTERS => {
-                warn!("System menu item {id} has no screen in the port yet");
-                cx.sound("error");
-                return;
-            }
+            CHARACTERS => match Chars::new(cx, &self.assets, self.chars.0, self.chars.1) {
+                Some(chars) => self.child = Some(Child::Screen(Box::new(chars))),
+                None => {
+                    cx.sound("error");
+                    return;
+                }
+            },
             _ => unreachable!(),
         }
         self.close();

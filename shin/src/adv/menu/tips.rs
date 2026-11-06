@@ -193,40 +193,6 @@ impl Tips {
             self.scroll = Tweener::new(scroll);
         }
     }
-
-    /// `0x7100108d70`: the window, from three columns and rows of its texture; the centre is opaque
-    fn draw_window(&self, pass: &mut RenderPass, transform: Mat4) {
-        let window = self.textures.get("window");
-        let xs = [0.0, 80.0, 1840.0, 1920.0];
-        let us = [0.0, 0.041667, 0.958333, 1.0];
-        let rows = [0.0, 80.0, 810.0, 898.0];
-        let opaque = RenderRequestBuilder::new().color_blend_type(ColorBlendType::Opaque);
-        for row in 0..3 {
-            for column in 0..3 {
-                let builder = if (row, column) == (1, 1) {
-                    opaque
-                } else {
-                    ui::builder()
-                };
-                Sprite::new(
-                    window,
-                    [
-                        xs[column],
-                        112.0 + rows[row],
-                        xs[column + 1],
-                        112.0 + rows[row + 1],
-                    ],
-                )
-                .uv([
-                    us[column],
-                    rows[row] / 898.0,
-                    us[column + 1],
-                    rows[row + 1] / 898.0,
-                ])
-                .draw(pass, builder, transform);
-            }
-        }
-    }
 }
 
 /// The tips' text layout: system.fnt, 1216 px between the outlines; the content breaks softly and keeps room for
@@ -236,6 +202,44 @@ fn layout(size: f32, content: bool) -> LayoutParams {
         always_leave_space_for_rubi: content,
         perform_soft_breaks: content,
         ..text_layout(1222.0, size)
+    }
+}
+
+/// The menus' window (`0x7100108d70`, `0x71000523b0`): three columns at `xs` with texture columns `us`, and three
+/// rows from y 112; the centre is opaque
+pub(super) fn draw_window(
+    pass: &mut RenderPass,
+    window: &shin_render::gpu_texture::GpuTexture,
+    transform: Mat4,
+    xs: [f32; 4],
+    us: [f32; 4],
+) {
+    let rows = [0.0, 80.0, 810.0, 898.0];
+    let opaque = RenderRequestBuilder::new().color_blend_type(ColorBlendType::Opaque);
+    for row in 0..3 {
+        for column in 0..3 {
+            let builder = if (row, column) == (1, 1) {
+                opaque
+            } else {
+                ui::builder()
+            };
+            Sprite::new(
+                window,
+                [
+                    xs[column],
+                    112.0 + rows[row],
+                    xs[column + 1],
+                    112.0 + rows[row + 1],
+                ],
+            )
+            .uv([
+                us[column],
+                rows[row] / 898.0,
+                us[column + 1],
+                rows[row + 1] / 898.0,
+            ])
+            .draw(pass, builder, transform);
+        }
     }
 }
 
@@ -289,7 +293,13 @@ impl Task for Tips {
         // the window slides in from the right
         let slide = 1920.0 - 1920.0 * a;
         let window = projection * Mat4::from_translation(vec3(slide, 0.0, 0.0));
-        self.draw_window(pass, window);
+        draw_window(
+            pass,
+            t("window"),
+            window,
+            [0.0, 80.0, 1840.0, 1920.0],
+            [0.0, 0.041667, 0.958333, 1.0],
+        );
         Sprite::new(t("separator"), [568.0, 203.0, 586.0, 903.0]).draw(pass, builder, window);
 
         let list = window * Mat4::from_translation(vec3(86.0, 188.0, 0.0));
