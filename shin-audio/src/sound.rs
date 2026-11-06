@@ -1,9 +1,6 @@
-use std::{
-    f32::consts::SQRT_2,
-    sync::{
-        atomic::{AtomicI32, AtomicU32},
-        Arc,
-    },
+use std::sync::{
+    atomic::{AtomicI32, AtomicU32},
+    Arc,
 };
 
 use kira::{
@@ -257,8 +254,11 @@ impl<S: AudioFrameSource + Send> Sound for AudioSound<S> {
         let volume = self.volume_fade.value() * self.volume.value();
 
         f *= volume;
-        if pan != 0.0 {
-            f = Frame::new(f.left * (1.0 - pan).sqrt(), f.right * pan.sqrt()) * SQRT_2
+        // the original's mixer (`0x710002bc40`): a linear balance over -1..1, full level on the near side
+        if pan < 0.0 {
+            f.right *= 1.0 + pan.max(-1.0);
+        } else if pan > 0.0 {
+            f.left *= 1.0 - pan.min(1.0);
         }
 
         f
