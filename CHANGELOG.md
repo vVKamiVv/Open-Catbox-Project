@@ -1,3 +1,6 @@
+This is the history of the upstream [shin](https://github.com/DCNick3/shin) engine up to 0.8.1, where this port
+forked from it. The port's own changes are in the git log.
+
 # Version 0.8.1
 
 This version only contains some improvements to savedata handling in sdu.

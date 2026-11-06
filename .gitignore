@@ -1,7 +1,6 @@
 /target
 .idea
 heaptrack.*.zst
-.flatpak-builder
 *.snr
 *.cap
 __pycache__/

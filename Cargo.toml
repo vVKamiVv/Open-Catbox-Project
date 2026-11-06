@@ -14,8 +14,6 @@ members = [
     "shin-primitives",
     "sdu",
     "shin",
-    "junk",
-    "junk/mesh-vis",
 ]
 resolver = "2"
 

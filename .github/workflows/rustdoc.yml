@@ -11,6 +11,11 @@ on:
     branches:
       - master
 
+# one deploy at a time: a second push while one deploys waits instead of failing
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
