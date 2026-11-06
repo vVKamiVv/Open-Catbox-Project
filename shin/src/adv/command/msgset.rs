@@ -19,6 +19,7 @@ impl StartableCommand for command::runtime::MSGSET {
         // `0x7100005140`: a line is a save point unless an event is playing
         if state.save.event.is_none() {
             state.save.save_point(&mut state.global.persist_data);
+            state.save.line();
         }
         state.save.message_current = true;
         state.save.message_pending = !self.auto_wait;

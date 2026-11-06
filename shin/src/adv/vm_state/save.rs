@@ -37,6 +37,15 @@ pub struct SaveState {
     pub system_enabled: bool,
     /// SSETs not written to the persistent data yet, applied at the next save point (`+0x9158`)
     pending_sset: Vec<(i32, i32)>,
+    /// The save points of the line before the current one and of the current one (`+0x2db4`, `+0x2db8`): rollback
+    /// goes back to the first
+    pub line_points: (u32, u32),
+    /// Lines played since the start; rollback needs two
+    pub lines: u32,
+    /// The save points of the last two AUTOSAVEs, the chapter starts (`+0x2dbc`, `+0x2dc0`), and the lines played
+    /// since each (`+0x2dcc`, `+0x2dd0`): "Return to the last chapter" picks one
+    pub chapter_points: [u32; 2],
+    pub chapter_lines: [u32; 2],
 }
 
 impl SaveState {
@@ -57,7 +66,32 @@ impl SaveState {
             // shortcut: the Context's initial value was not decoded; the game plays as with it set
             system_enabled: true,
             pending_sset: Vec::new(),
+            line_points: (0, 0),
+            lines: 0,
+            chapter_points: [0; 2],
+            chapter_lines: [0; 2],
         }
+    }
+
+    /// A line outside an event became a save point
+    pub fn line(&mut self) {
+        self.line_points = (self.line_points.1, self.counter);
+        self.lines += 1;
+        for lines in &mut self.chapter_lines {
+            *lines += 1;
+        }
+    }
+
+    /// An AUTOSAVE (a chapter start) became a save point
+    pub fn chapter(&mut self) {
+        self.chapter_points = [self.chapter_points[1], self.counter];
+        self.chapter_lines = [self.chapter_lines[1], 0];
+    }
+
+    /// Where "Return to the last chapter?" goes (`0x71000182c0`): the current chapter's start once more than one of
+    /// its lines has played, else the one before
+    pub fn previous_chapter(&self) -> u32 {
+        self.chapter_points[(self.chapter_lines[1] > 1) as usize]
     }
 
     /// The slot info of a new game of `scenario_id`

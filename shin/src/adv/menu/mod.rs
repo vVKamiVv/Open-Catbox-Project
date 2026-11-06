@@ -8,6 +8,7 @@
 pub mod config_menu;
 pub mod dialog;
 pub mod hidden_window;
+pub mod jump;
 pub mod save_menu;
 pub mod system_menu;
 pub mod thumbnail;
@@ -66,6 +67,8 @@ pub enum AdvRequest {
     SaveToSlot(usize),
     /// Leave for this bookmark: a new adventure screen loads it (`0x7100016410`)
     LoadSlot(usize),
+    /// The chapter jump the player confirmed: the adventure screen rebuilds at its target
+    Jump,
 }
 
 /// What a task gets each frame (the trailing lifetimes are the render context's)

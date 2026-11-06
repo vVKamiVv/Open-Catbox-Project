@@ -6,6 +6,7 @@ impl StartableCommand for command::runtime::AUTOSAVE {
     /// `0x71000026e0`: a save point
     fn apply_state(&self, state: &mut VmState) {
         state.save.save_point(&mut state.global.persist_data);
+        state.save.chapter();
     }
 
     fn start(

@@ -42,7 +42,10 @@ use vm_state::layers::ITER_VLAYER_SMALL_VECTOR_SIZE;
 pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
 
-use menu::{AdvRequest, Task, TaskCx, hidden_window::HiddenWindow, system_menu::SystemMenu};
+use menu::{
+    AdvRequest, Task, TaskCx, dialog::Dialog, hidden_window::HiddenWindow, jump::JumpDialog,
+    system_menu::SystemMenu,
+};
 use shin_core::{primitives::color::FloatColor4, time::{Tween, Tweener}};
 use shin_render::render_texture::RenderTexture;
 
@@ -133,6 +136,8 @@ pub struct Adv {
     exit_to_title: bool,
     /// A bookmark was chosen in the load screen; the app replaces this screen with one that loads it
     load_request: Option<GameDataEntry>,
+    /// Where the jump dialog on screen goes if confirmed
+    pending_jump: Option<GameDataEntry>,
 }
 
 /// Where a load's replay left the script
@@ -183,7 +188,97 @@ impl Adv {
             pause_count: 0,
             exit_to_title: false,
             load_request: None,
+            pending_jump: None,
         }
+    }
+
+    /// The current state as a slot entry whose save position is the current line (where a look-ahead starts)
+    fn current_entry(&self) -> GameDataEntry {
+        self.vm_state.save.entry.clone()
+    }
+
+    /// Rebuilds the screen at `save_position` of the current playthrough (`0x710000f220`)
+    fn rebuild_at(&mut self, save_position: u32) {
+        let mut entry = self.current_entry();
+        entry.save_position = save_position;
+        self.load_request = Some(entry);
+    }
+
+    /// + (`ADV::JumpNext` `0x7100012c80`): "Skip this chapter?" when the look-ahead finds a stop, else "error"
+    fn open_jump_next(&mut self, context: &mut UpdateContext) {
+        let stop_unread = self.vm_state.global.settings.v11_disallowskipunread;
+        let target = look_ahead(
+            &self.scenario,
+            self.vm_state.global.clone(),
+            self.current_entry(),
+            LookAhead::NextStop { stop_unread },
+        );
+        let Some(target) = target else {
+            play_sys_se(&self.adv_state.audio_manager, context.asset_server, "error", Default::default());
+            return;
+        };
+        // the English patch translates only the first text (`0x71001619f6`); with setting v11 on the original
+        // shows its Japanese one (`0x710015eedb`)
+        let text = if stop_unread {
+            "次のチャプター、未読メッセージ、選択肢まで@rスキップします。よろしいですか？"
+        } else {
+            "Skip this chapter?"
+        };
+        self.pending_jump = Some(target);
+        let dialog = JumpDialog::new(Dialog::yes_no(
+            context.pre_render,
+            &self.adv_state.menu_assets,
+            text,
+            1,
+        ));
+        self.tasks.push(Box::new(dialog));
+    }
+
+    /// - (`ADV::JumpPrev` `0x7100012f80`): "Return to the last chapter?"
+    fn open_jump_prev(&mut self, context: &mut UpdateContext) {
+        let mut target = self.current_entry();
+        target.save_position = self.vm_state.save.previous_chapter();
+        self.pending_jump = Some(target);
+        let dialog = JumpDialog::new(Dialog::yes_no(
+            context.pre_render,
+            &self.adv_state.menu_assets,
+            "Return to the last chapter?",
+            1,
+        ));
+        self.tasks.push(Box::new(dialog));
+    }
+
+    /// B inside an event (`0x710000f600`): the look-ahead to the event's end, and the screen rebuilt there
+    fn skip_event(&mut self, context: &mut UpdateContext) {
+        let target = look_ahead(
+            &self.scenario,
+            self.vm_state.global.clone(),
+            self.current_entry(),
+            LookAhead::EventEnd,
+        );
+        let audio = self.adv_state.audio_manager.clone();
+        match target {
+            Some(target) => {
+                info!("Skipping the event to save point {}", target.save_position);
+                play_sys_se(&audio, context.asset_server, "decide", Default::default());
+                self.load_request = Some(target);
+            }
+            None => play_sys_se(&audio, context.asset_server, "error", Default::default()),
+        }
+    }
+
+    /// Up (`0x71000137f0`): back to the previous line's save point, once two lines have played
+    fn roll_back(&mut self, context: &mut UpdateContext) {
+        let audio = self.adv_state.audio_manager.clone();
+        let save = &self.vm_state.save;
+        if save.lines < 2 {
+            play_sys_se(&audio, context.asset_server, "error", Default::default());
+            return;
+        }
+        let target = save.line_points.0;
+        play_sys_se(&audio, context.asset_server, "decide", Default::default());
+        info!("Rolling back to save point {target}");
+        self.rebuild_at(target);
     }
 
     /// The bookmark the player chose to load (once)
@@ -303,6 +398,15 @@ impl Adv {
                     minigame::tween_now(&mut self.adv_state.backdrop_alpha, 0.0, 0.1);
                 }
                 AdvRequest::WriteSave => self.write_requested = true,
+                AdvRequest::Jump => {
+                    // `$_4` / `$_2`: only with the system still enabled
+                    if self.vm_state.save.system_enabled {
+                        if let Some(target) = self.pending_jump.take() {
+                            info!("Jumping to save point {}", target.save_position);
+                            self.load_request = Some(target);
+                        }
+                    }
+                }
                 AdvRequest::SaveToSlot(slot) => {
                     self.save_to_slot(slot);
                     self.write_requested = true;
@@ -504,18 +608,37 @@ impl Adv {
             return;
         }
 
-        // with the system enabled, outside events and with auto and skip off: Y opens the system menu, B hides the
-        // window (`0x7100011f08`)
+        // with the system enabled and auto and skip off (`0x7100011f08`): inside an event B skips it; outside, + and -
+        // jump between chapters, Y opens the system menu and B hides the window
         let save = &self.vm_state.save;
-        if save.system_enabled && save.event.is_none() && self.adv_state.skip_auto == 0 {
-            if state[AppAction::ButtonY].is_clicked {
-                self.open_system_menu(context);
-                return;
+        if save.system_enabled && self.adv_state.skip_auto == 0 && self.load_request.is_none() {
+            if save.event.is_some() {
+                if state[AppAction::Cancel].is_clicked {
+                    self.skip_event(context);
+                    return;
+                }
+            } else {
+                if state[AppAction::Plus].is_clicked {
+                    self.open_jump_next(context);
+                    return;
+                }
+                if state[AppAction::Minus].is_clicked {
+                    self.open_jump_prev(context);
+                    return;
+                }
+                if state[AppAction::ButtonY].is_clicked {
+                    self.open_system_menu(context);
+                    return;
+                }
+                if state[AppAction::Cancel].is_clicked {
+                    self.open_hidden_window();
+                    return;
+                }
             }
-            if state[AppAction::Cancel].is_clicked {
-                self.open_hidden_window();
-                return;
-            }
+        }
+        if state[AppAction::AnyUp].is_clicked_or_repeated && self.load_request.is_none() {
+            self.roll_back(context);
+            return;
         }
 
         // inside an event (system enabled), confirm shows "Press B to Skip." (`0x7100011f2c`)
@@ -754,6 +877,78 @@ pub(crate) fn replay_bookmark(scenario: &Scenario, global: SaveData, entry: Game
     Bookmark {
         info: [first, second],
         layers: vm_state.layers,
+    }
+}
+
+/// What a look-ahead advances to
+enum LookAhead {
+    /// `0x710000f4f0`: the next chapter (AUTOSAVE), choice or minigame, or with `stop_unread` an unread line
+    NextStop { stop_unread: bool },
+    /// `0x710000f600`: the end of the current event
+    EventEnd,
+}
+
+/// Replays `entry` to its save point (the current line), then keeps going over the commands a jump passes (their
+/// slot 3, "skippable") to the first that stops it; the slot entry that rebuilds there, or `None` when the script
+/// ends first
+fn look_ahead(
+    scenario: &Scenario,
+    global: SaveData,
+    entry: GameDataEntry,
+    kind: LookAhead,
+) -> Option<GameDataEntry> {
+    let (mut scripter, mut vm_state, end) = replay(scenario, global, entry, None);
+    vm_state.save.target = u32::MAX;
+    let mut result = match end? {
+        LoadEnd::Resume(result) => result,
+        // the current line itself is passed
+        LoadEnd::Stopped(command) => match command::replay_command(command, &mut vm_state) {
+            ReplayStep::Continue(result) => result,
+            _ => return None,
+        },
+    };
+    loop {
+        let command = scripter.run(result).ok()?;
+        let save = &vm_state.save;
+        // the counter value a replay stops at for this command
+        let stop = match (&command, &kind) {
+            (RuntimeCommand::EXIT(_) | RuntimeCommand::RESUME(_), _) => return None,
+            (RuntimeCommand::EVEND(_), LookAhead::EventEnd) => Some(save.counter + 1),
+            (RuntimeCommand::SELECT(_) | RuntimeCommand::QUIZ(_), _) => {
+                // a choice under its question line rebuilds at that line
+                Some(save.counter + !save.message_current as u32)
+            }
+            (RuntimeCommand::AUTOSAVE(_), LookAhead::NextStop { .. }) => Some(save.counter + 1),
+            (RuntimeCommand::MSGSET(msgset), LookAhead::NextStop { stop_unread: true }) => {
+                let id = msgset.msg_id.0 as i64 - 1;
+                let read = id < 0
+                    || vm_state
+                        .global
+                        .save_vectors
+                        .seen_messages
+                        .contains(id as usize);
+                (save.event.is_none() && !read).then_some(save.counter + 1)
+            }
+            _ => None,
+        };
+        if let Some(target) = stop {
+            let mut entry = vm_state.save.entry.clone();
+            entry.save_position = target;
+            return Some(entry);
+        }
+        result = match command {
+            // played live, so the rebuild's replay reads the same values from the route
+            RuntimeCommand::SGET(sget) => {
+                let value = vm_state
+                    .save
+                    .sget(&vm_state.global.persist_data, sget.slot_number);
+                sget.token.finish(value)
+            }
+            command => match command::replay_command(command, &mut vm_state) {
+                ReplayStep::Continue(result) => result,
+                _ => return None,
+            },
+        };
     }
 }
 
