@@ -65,6 +65,15 @@ impl AudioTiedTimer {
     }
 }
 
+// the movie's sound outlives a dropped handle in shin-audio: a skipped or unloaded movie must silence it
+impl Drop for AudioTiedTimer {
+    fn drop(&mut self) {
+        if let Err(e) = self.audio_handle.stop(Tween::MS_15) {
+            warn!("Could not stop the movie's sound: {e:?}");
+        }
+    }
+}
+
 pub enum Timer {
     Independent(IndependentTimer),
     AudioTiedTimer(AudioTiedTimer),
