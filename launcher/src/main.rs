@@ -3,6 +3,7 @@
 // no console window in release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod history;
 mod langs;
 mod nx;
 mod setup;
@@ -172,6 +173,14 @@ async fn check_updates() -> Vec<Result<langs::Release, String>> {
     .unwrap_or_default()
 }
 
+/// This project's releases, from the embedded CHANGELOG.md and, if `online`, GitHub.
+#[tauri::command]
+async fn version_history(online: bool) -> history::History {
+    tauri::async_runtime::spawn_blocking(move || history::history(online))
+        .await
+        .unwrap_or_else(|_| history::history(false))
+}
+
 #[tauri::command]
 fn launch(app: AppHandle, lang: String) -> Result<u32, String> {
     let mut settings = load_settings(&app);
@@ -266,12 +275,15 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             get_state,
             save_settings,
             run_setup,
             install_language,
             check_updates,
+            version_history,
             launch,
             move_data_dir
         ])

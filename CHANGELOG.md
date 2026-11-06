@@ -1,7 +1,28 @@
-This is the history of the upstream [shin](https://github.com/DCNick3/shin) engine up to 0.8.1, where this port
-forked from it. The port's own changes are in the git log.
+# Changelog
 
-# Version 0.8.1
+What changed in each release of the Open Catbox Project. The launcher shows this list under **Version history**.
+
+## v0.1.0 — 2026-11-06
+
+- A native PC port of *Umineko no Naku Koro ni Saku*, played from your own Switch dump.
+- Every screen and menu: title, scenario select, saving and loading, settings, backlog, tips, characters and the
+  manual.
+- The galleries: Picture Box, Music Box, Movie Box and the Character Box.
+- Voices panned to the speaking character, music, sound effects, and movies, including the transparent ones.
+- The game's visual effects and screen transitions, each compared with the original.
+- Mouse and touch gestures, with the tap ripple, the star trail and hold-to-skip.
+- Controller support.
+- Movies decoded with Media Foundation on Windows.
+- The launcher: sets the game up from your dump by itself, installs Catbox English, Catbox X or the original
+  Japanese, and keeps itself up to date.
+- Developer tools behind `--dev`.
+
+## Before the fork (upstream shin 0.8.1 and earlier)
+
+The history of the upstream [shin](https://github.com/DCNick3/shin) engine up to 0.8.1, where this port forked
+from it.
+
+### Version 0.8.1
 
 This version only contains some improvements to savedata handling in sdu.
 
@@ -10,7 +31,7 @@ This version only contains some improvements to savedata handling in sdu.
 - Implement savefile encoding, accessible via `sdu save encode`. This allows one to edit the decoded savefile and to
   insert it back into the game.
 
-# Version 0.8.0
+### Version 0.8.0
 
 - Implement wipes. Now instead of flickering on, the scene changes are animated, like in the original implementation.
 - Implement novel mode messagebox.
@@ -26,7 +47,7 @@ This version only contains some improvements to savedata handling in sdu.
   that looks close to its in-game appearance without fiddling with files.
   This representation is, however, very inefficient in terms of storage space.
 
-# Version 0.7.0
+### Version 0.7.0
 
 This is a release that contains big rewrites upder the hood. They might not improve compatibility that much initially (I
 would expect the compat to be worse, actually), but will make implementing some engine features possible at all.
@@ -47,14 +68,14 @@ would expect the compat to be worse, actually), but will make implementing some 
   game does, by rendering in blocks. This indirectly fixes the ugly face seams we were getting due to some rounding
   bugs.
 
-# Version 0.6.1
+### Version 0.6.1
 
 This release adds support for getting raw opus audio from nxa files to `sdu`. This allows preserving audio data without
 additional re-encoding losses.
 
 It also updates various dependencies of the engine, but this shouldn't change the visible functionality.
 
-# Version 0.6.0
+### Version 0.6.0
 
 This is just an update of the changes accumulated over they year. This doesn't improve compat, mostly small internal
 changes
@@ -68,6 +89,6 @@ changes
 - Use typed `NumberSpec` values, which will get lowered to a more concrete type than `i32` when computed.
 - Various dependency updates.
 
-# Before that
+### Before that
 
 Before this, I did not keep any changelog, sorry. Looking at the commits is the best you will get

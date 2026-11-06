@@ -240,6 +240,30 @@ select {
 .prose p { margin: 0 0 14px; max-width: 70ch; }
 .prose h3 { margin-top: 22px; }
 
+/* Version history */
+.history { display: grid; gap: 14px; margin-top: 8px; }
+.release { padding: 14px 18px; border: 1px solid rgba(226, 182, 90, 0.2); border-radius: var(--radius); background: rgba(4, 6, 18, 0.45); }
+.release.current { border-color: var(--gold); background: rgba(74, 12, 22, 0.45); }
+.release h4 { margin: 0 0 6px; display: flex; align-items: baseline; gap: 12px; font: 600 20px/1.2 var(--font-display); letter-spacing: 0.04em; color: var(--gold-light); }
+.release h4 small { margin-left: auto; font-family: var(--font-body); letter-spacing: 0; }
+.release ul { margin: 0; padding-left: 1.2em; color: var(--ink-dim); user-select: text; }
+.release li { margin: 2px 0; }
+.tag {
+  font: 600 10px/1 var(--font-display); letter-spacing: 0.2em; text-transform: uppercase;
+  padding: 4px 8px; border: 1px solid var(--gold-dark); border-radius: var(--radius); color: var(--gold); align-self: center;
+}
+
+/* Launcher update banner */
+.update-banner {
+  position: fixed; right: var(--pad); bottom: var(--pad); z-index: 2; width: 380px; max-width: calc(100% - 2 * var(--pad));
+  padding: 18px 20px; border: 1px solid var(--gold); border-radius: var(--radius);
+  background: rgba(8, 10, 28, 0.92); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), var(--glow-gold);
+  animation: fade-in 0.5s var(--ease);
+}
+.update-banner h3 { margin: 6px 0 8px; font-size: 18px; color: var(--gold-light); text-transform: none; }
+.update-notes { margin: 0 0 10px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; color: var(--ink-dim); font-size: 0.9em; user-select: text; }
+.update-banner .actions { margin-top: 10px; }
+
 /* 7. Motion */
 .view:not([hidden]), .screen:not([hidden]) { animation: fade-in 0.5s var(--ease); }
 @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }

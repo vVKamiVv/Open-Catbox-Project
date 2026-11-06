@@ -55,6 +55,33 @@ Unit tests cover the formats with synthetic data. The `real_dump` test in `setup
 dump (never committed): set `NX_BASE`, `NX_UPDATE`, `NX_KEYS`, `NX_TITLEKEYS` and `NX_OUT`, then
 `cargo test --release -p open-catbox-launcher -- --ignored --nocapture`.
 
+## Releases and updates
+
+The launcher updates itself (`tauri-plugin-updater`): on start, and from **Settings → Check for launcher updates**,
+it reads `https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/latest.json`, and if that
+version is newer it offers to download the installer, check its signature against the public key in
+`tauri.conf.json`, install it (NSIS, passive) and restart. **Version history** shows `CHANGELOG.md` (embedded at
+build time) plus newer GitHub releases.
+
+To make a release `X.Y.Z`:
+
+1. Set the version in `Cargo.toml` and `tauri.conf.json`, and add a `## vX.Y.Z — <date>` section to the root
+   `CHANGELOG.md`.
+2. Build `shin.exe` (`cargo build --release -p shin`), then build the installer signed with the updater key, from
+   this folder:
+
+   ```powershell
+   $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw "$env:USERPROFILE\.open-catbox\updater.key"
+   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = Get-Content -Raw "$env:USERPROFILE\.open-catbox\updater.key.password"
+   cargo tauri build
+   ```
+
+3. `.\scripts\make-latest-json.ps1 -Version X.Y.Z -NotesFile ..\CHANGELOG.md -OutDir <folder>` copies the
+   installer and its `.sig` as `OpenCatbox_X.Y.Z_x64-setup.exe(.sig)` and writes `latest.json`.
+4. Create the GitHub release `vX.Y.Z` and upload those three files.
+
+The private key never goes into the repository; without it (and its password) no update can be published.
+
 ## Where things are
 
 | What | Where |
@@ -69,5 +96,4 @@ dump (never committed): set `NX_BASE`, `NX_UPDATE`, `NX_KEYS`, `NX_TITLEKEYS` an
 - Linux and macOS: the Rust side is portable, but the `shin.exe` path, the no-console flag and packaging are
   Windows-only so far.
 - Code signing of the launcher and installer.
-- Packaging `shin.exe` next to the launcher in the installer.
 - The fullscreen setting is saved but not passed to the game yet (it has no flag; F11 toggles in game).

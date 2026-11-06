@@ -64,6 +64,7 @@
         <button data-view="play" class="active">Play</button>
         <button data-view="languages">Languages</button>
         <button data-view="settings">Settings</button>
+        <button data-view="history">Version history</button>
         <button data-view="about">About</button>
       </nav>
     </header>
@@ -123,6 +124,15 @@
           </label>
         </section>
         <section class="group">
+          <h3>Launcher</h3>
+          <div class="field">
+            <span>Open Catbox <span class="app-version"></span></span>
+            <button class="btn ghost small" id="check-app-update">Check for launcher updates</button>
+          </div>
+          <div id="app-update-msg" class="message" role="status"></div>
+        </section>
+
+        <section class="group">
           <h3>Troubleshooting</h3>
           <label class="switch">
             <input type="checkbox" id="debug-logging">
@@ -131,6 +141,14 @@
           </label>
         </section>
         <div id="settings-msg" class="message" role="status"></div>
+      </div>
+    </div>
+
+    <div class="view" id="view-history" hidden>
+      <div class="panel scroll">
+        <h2 class="display">Version history</h2>
+        <div id="history-msg" class="message" role="status"></div>
+        <div id="history-list" class="history"></div>
       </div>
     </div>
 
@@ -156,6 +174,19 @@
       </div>
     </div>
   </section>
+
+  <!-- A newer launcher is available (checked on start and from Settings) -->
+  <aside id="update-banner" class="update-banner" role="status" hidden>
+    <p class="kicker">Update available</p>
+    <h3 id="update-title"></h3>
+    <p id="update-notes" class="update-notes"></p>
+    <div id="update-progress" class="bar" hidden><span></span></div>
+    <div id="update-msg" class="message" role="status"></div>
+    <div class="actions">
+      <button id="update-later" class="btn ghost small">Later</button>
+      <button id="update-now" class="btn primary small">Update now</button>
+    </div>
+  </aside>
 
   <script src="sky.js"></script>
   <script src="app.js"></script>

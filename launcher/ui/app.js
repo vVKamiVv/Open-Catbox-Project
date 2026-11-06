@@ -5,6 +5,8 @@ const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 const dialog = window.__TAURI__.dialog;
 const opener = window.__TAURI__.opener;
+const updater = window.__TAURI__.updater;
+const processApi = window.__TAURI__.process;
 
 const LANGS = [
   {
@@ -224,6 +226,105 @@ $("#move-data").addEventListener("click", async () => {
 
 $("#rerun-setup").addEventListener("click", () => { showSetup = true; render(); });
 
+// --- Launcher updates ---
+
+let pendingUpdate = null;
+
+// manual: say "up to date" or the error; on start a failure (offline, no release yet) stays silent
+async function checkAppUpdate(manual) {
+  const msg = $("#app-update-msg");
+  if (manual) say(msg, "Checking…");
+  try {
+    const update = await updater.check();
+    if (!update) {
+      if (manual) say(msg, "You have the latest version.", "ok");
+      return;
+    }
+    pendingUpdate = update;
+    $("#update-title").textContent = `Open Catbox ${update.version}`;
+    $("#update-notes").textContent = update.body ?? "";
+    $("#update-banner").hidden = false;
+    if (manual) say(msg, `Version ${update.version} is available.`, "ok");
+  } catch (e) {
+    if (manual) say(msg, `Could not check for updates (offline, or no release published yet).\n${e}`, "error");
+  }
+}
+
+$("#check-app-update").addEventListener("click", async (e) => {
+  e.target.disabled = true;
+  await checkAppUpdate(true);
+  e.target.disabled = false;
+});
+
+$("#update-later").addEventListener("click", () => { $("#update-banner").hidden = true; });
+
+$("#update-now").addEventListener("click", async () => {
+  const buttons = $$("#update-banner button");
+  buttons.forEach((b) => (b.disabled = true));
+  const bar = $("#update-progress");
+  const msg = $("#update-msg");
+  bar.hidden = false;
+  let total = 0, done = 0;
+  say(msg, "Downloading…");
+  try {
+    await pendingUpdate.downloadAndInstall((ev) => {
+      if (ev.event === "Started") total = ev.data.contentLength ?? 0;
+      if (ev.event === "Progress") {
+        done += ev.data.chunkLength;
+        if (total) $("span", bar).style.width = `${Math.min(100, (done / total) * 100)}%`;
+      }
+      if (ev.event === "Finished") say(msg, "Installing…");
+    });
+    // on Windows the installer closes the launcher and starts it again; elsewhere relaunch here
+    await processApi.relaunch();
+  } catch (e) {
+    say(msg, `The update failed: ${e}`, "error");
+    buttons.forEach((b) => (b.disabled = false));
+  }
+});
+
+// --- Version history ---
+
+function renderHistory(history) {
+  const list = $("#history-list");
+  list.replaceChildren();
+  for (const entry of history.entries) {
+    const item = document.createElement("article");
+    item.className = "release";
+    const head = document.createElement("h4");
+    head.textContent = `v${entry.version}`;
+    if (entry.version === history.installed) {
+      item.classList.add("current");
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = "Installed";
+      head.append(tag);
+    }
+    const date = document.createElement("small");
+    date.textContent = entry.date;
+    head.append(date);
+    const ul = document.createElement("ul");
+    for (const note of entry.notes) {
+      const li = document.createElement("li");
+      li.textContent = note.replace(/\*\*?|`/g, ""); // markdown emphasis and code marks, shown as plain text
+      ul.append(li);
+    }
+    item.append(head, ul);
+    list.append(item);
+  }
+}
+
+let historyLoaded = false;
+async function loadHistory() {
+  if (historyLoaded) return;
+  historyLoaded = true;
+  renderHistory(await invoke("version_history", { online: false }));
+  const history = await invoke("version_history", { online: true });
+  renderHistory(history);
+  // offline only hides releases newer than this launcher, so a quiet note is enough
+  if (history.online_error) say($("#history-msg"), "Newer releases could not be checked (offline?).", "warn");
+}
+
 // --- Setup screen ---
 
 const FILTERS = {
@@ -287,6 +388,7 @@ listen("progress", ({ payload }) => {
 $$(".nav button").forEach((btn) => btn.addEventListener("click", () => {
   $$(".nav button").forEach((b) => b.classList.toggle("active", b === btn));
   $$(".view").forEach((v) => (v.hidden = v.id !== `view-${btn.dataset.view}`));
+  if (btn.dataset.view === "history") loadHistory();
 }));
 
 // links open in the browser, never inside the launcher window
@@ -296,3 +398,5 @@ document.addEventListener("click", (e) => {
 });
 
 refresh();
+window.__TAURI__.app.getVersion().then((v) => $$(".app-version").forEach((n) => (n.textContent = `v${v}`)));
+checkAppUpdate(false);
