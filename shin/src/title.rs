@@ -145,6 +145,8 @@ enum State {
 pub enum TitleExit {
     /// Start: the scenario select
     ScenarioSelect,
+    /// `CreateBGMMode`
+    MusicBox,
     /// Continue or a bookmark from Load
     Load(GameDataEntry),
 }
@@ -435,6 +437,10 @@ impl Title {
                     ConfigMenu::new(&cx, &assets).map(|m| Box::new(m) as Box<dyn Task>)
                 };
                 self.child = child;
+            }
+            MUSIC_BOX => {
+                self.exit = Some(TitleExit::MusicBox);
+                self.state = State::Done;
             }
             _ => warn!("Title item {ty} has no screen in the port yet"),
         }

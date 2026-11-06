@@ -25,6 +25,7 @@ use shin_render::render_texture::RenderTexture;
 
 use crate::{
     adv::{Adv, assets::AdvAssets, menu::MenuAssets},
+    music_box::MusicBox,
     scenario_select::{Bridge, ScenarioSelect, SelectExit},
     title::{Title, TitleExit},
     title_demo::TitleDemo,
@@ -446,7 +447,15 @@ impl ShinApp for App {
                 match title.take_exit() {
                     Some(TitleExit::Load(entry)) => next = Some(Next::Story(entry, true)),
                     Some(TitleExit::ScenarioSelect) => next = Some(Next::ScenarioSelect),
+                    Some(TitleExit::MusicBox) => next = Some(Next::MusicBox),
                     None => {}
+                }
+            }
+            Scene::MusicBox(music) => {
+                music.update(&mut update_context, &input, pointer);
+                if music.is_done() {
+                    // `CreateTitle(7)`: back with the cursor on the Music Box
+                    next = Some(Next::TitleAt(7));
                 }
             }
             Scene::ScenarioSelect(select) => {
@@ -566,6 +575,7 @@ impl App {
             Scene::TitleDemo(demo) => &demo.global,
             Scene::Title(title) => &title.global,
             Scene::ScenarioSelect(select) => &select.global,
+            Scene::MusicBox(music) => &music.global,
             Scene::Adv(adv) => adv.save_data(),
             Scene::Bridge(_) => self.bridge_global.as_ref().expect("the bridge keeps the save data"),
         }
@@ -584,6 +594,8 @@ impl App {
             Scene::Adv(adv) => adv.shutdown(),
             Scene::Title(title) => title.shutdown(music_fade),
             Scene::ScenarioSelect(select) => select.shutdown(music_fade),
+            // `0x7100032fc0`: the music fades over 30 frames as the Music Box closes
+            Scene::MusicBox(music) => music.shutdown(30.0),
             Scene::Bridge(_) | Scene::TitleDemo(_) => {}
         }
         let mut snapshot = || {
@@ -595,6 +607,24 @@ impl App {
             old
         };
         match next {
+            Next::MusicBox => {
+                // `BGMMode::First`: a 60-frame crossfade while the title's music fades over 60 frames
+                let old = snapshot();
+                match MusicBox::new(
+                    &*ctx,
+                    &self.asset_server,
+                    self.audio_manager.clone(),
+                    MenuAssets::new(&self.adv_assets),
+                    global,
+                ) {
+                    Ok(music) => {
+                        self.scene = Scene::MusicBox(music);
+                        self.fade = Some(SceneFade::new(Some(old), 60.0));
+                    }
+                    Err(e) => error!("Could not open the Music Box: {e:?}"),
+                }
+                return;
+            }
             Next::ScenarioSelect => {
                 let old = snapshot();
                 match ScenarioSelect::new(
@@ -667,7 +697,7 @@ impl App {
                     Err(e) => error!("Could not open the title: {e:?}"),
                 }
             }
-            Next::ScenarioSelect | Next::Bridge(_) | Next::TitleAt(_) => unreachable!(),
+            Next::ScenarioSelect | Next::Bridge(_) | Next::TitleAt(_) | Next::MusicBox => unreachable!(),
         }
     }
 }
@@ -678,6 +708,7 @@ enum Scene {
     TitleDemo(TitleDemo),
     Title(Title),
     ScenarioSelect(ScenarioSelect),
+    MusicBox(MusicBox),
     Bridge(Bridge),
     Adv(Adv),
 }
@@ -688,6 +719,7 @@ impl Scene {
             Scene::TitleDemo(demo) => demo.render(pass),
             Scene::Title(title) => title.render(pass),
             Scene::ScenarioSelect(select) => select.render(pass),
+            Scene::MusicBox(music) => music.render(pass),
             Scene::Bridge(bridge) => bridge.render(pass),
             Scene::Adv(adv) => adv.render(pass),
         }
@@ -704,6 +736,7 @@ enum Next {
     TitleAt(i32),
     ScenarioSelect,
     Bridge(u8),
+    MusicBox,
 }
 
 /// The old screen (or black) over the new one, fading out (the transition of `Title::First`, program 8)

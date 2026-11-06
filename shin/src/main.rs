@@ -17,6 +17,7 @@ mod cli;
 mod fps_counter;
 mod layer;
 mod random;
+mod music_box;
 mod render;
 mod scenario_select;
 mod savedata;
