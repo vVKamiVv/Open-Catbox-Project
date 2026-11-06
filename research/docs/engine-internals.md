@@ -956,10 +956,14 @@ collected ones (TIPSGET) from the system menu; title 48 and text 32 in system.fn
 1500 px apart, turned in 15 frames. The key-help rows differ per screen: Tips put the glyphs right at the label and
 10 px apart, the manual and Characters 2 px in and 16 apart.
 
-shortcuts: the galleries, Characters, Tips and the chapter list take no pointer drags or flicks; the scenario
-select fades in instead of the curtain mask wipe;
-the bridge has no bloom glow; the dialog fades its pieces instead of a render texture; the BGM player is per scene
-instead of shared, so music does not carry across scenes. Keyboard: Y and X keys for the Y and X buttons, = and -
+The scenario select opens with a soft wipe through `/curtain.msk` (softness 0.5, 60 frames). The bridge's glow is
+black doors on white (the light through the opening) at 1/4 to 1/32 size, blurred and added in greys 1/15, 2/15,
+4/15 and 8/15; its last quad is (timer, timer, timer, white), so the white-out ends in black. Transparent movies
+(51 of them) carry their alpha in the bottom half of each frame. **One BGM player serves every scene** (its update
+`0x7100033eb0` is in the main loop): music runs from the story into the title, which crossfades it.
+
+shortcuts: the galleries, Characters, Tips and the chapter list take no pointer drags or flicks; the dialog fades
+its pieces instead of a render texture; the glow's blur reads black past its shrunk picture's edges. Keyboard: Y and X keys for the Y and X buttons, = and -
 for + and -.
 
 ## 16. Voices: panning and lip-sync **confirmed** (code; the pans and level tables checked in the port's log, not by ear)
