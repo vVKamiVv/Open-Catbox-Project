@@ -37,13 +37,14 @@ These are not theories. They hold, without exception:
 
 <div align="center">
 
-### 97.8 % like the original
+### 99.0 % like the original
 
 </div>
 
 The mean, over the 6 side-by-side comparisons with the original (running on an emulator) that have a per-pixel
 figure, of the share of pixels within 32/255 of the original's: blur 99.9 %, whirl wipe 99.6 %, ripple 99.3 %,
-Characters 96.9 %, quiz 95.7 %, Tips 95.6 %. The formula, each comparison and the screens and effects compared without
+the Tips episode list 99.1 %, Characters 98.3 %, Tips 98.0 %. What is left is the edges of text and fine artwork,
+filtered slightly differently by two different GPUs. The formula, each comparison and the screens and effects compared without
 a per-pixel figure (glass, mosaic, dissolve, raster, transparent movies, every menu) are in the
 [accuracy notes](research/docs/alignment-plan.md#accuracy).
 

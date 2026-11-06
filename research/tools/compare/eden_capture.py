@@ -247,7 +247,20 @@ def main():
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=6543)
     parser.add_argument("--probe", action="store_true", help="print the next 5 message ids, then resume")
+    parser.add_argument(
+        "--shot",
+        metavar="PNG",
+        help="save one full-resolution Eden screenshot of what is on screen now (menus need no debugger) and exit",
+    )
     args = parser.parse_args()
+
+    if args.shot:
+        hwnd = find_eden_window()
+        focus(hwnd)
+        screenshot = take_screenshot(hwnd, args.screenshots)
+        shutil.copyfile(screenshot, args.shot)
+        print(f"saved {args.shot}")
+        return
 
     gdb = Gdb(args.host, args.port)
     print("stop reason:", gdb.ask("?"))

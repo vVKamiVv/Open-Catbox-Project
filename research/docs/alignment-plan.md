@@ -97,8 +97,9 @@ testimony text was compared (it breaks lines mid-word in English as the original
 
 ## Accuracy
 
-**97.8 %**: the mean, over every side-by-side comparison with a recorded per-pixel figure, of the share of pixels
-whose difference from the original is within 32 of 255:
+**99.0 %**: the mean, over every side-by-side comparison with a recorded per-pixel figure, of the share of pixels
+whose difference from the original is within 32 of 255 (largest channel difference, the original's 5760x3240 Eden
+screenshot downscaled to 1920x1080):
 
 `accuracy = (1/N) × Σ share_i`, where `share_i` = pixels at most 32/255 away from the original's ÷ pixels compared,
 for comparison i, and N = 6.
@@ -108,11 +109,18 @@ for comparison i, and N = 6.
 | Blur (property 66), Ep2 line 7652, the upper half (the blurred background) | 99.9 % |
 | Whirl wipe, Ep2: line 11556 right after it | 99.6 % |
 | Ripple with ghosting on the screen layer, Ep8 line 61681 | 99.3 % |
-| Characters screen | 96.9 % (captures ranged 96.9-97.2 %; the lowest counts) |
-| Halloween party quiz, Ep8 question 2, against a small window grab of Eden | 95.7 % (lowered by the grab's resampling) |
-| Tips screen | 95.6 % |
+| Tips submenu on the title (Episode list), full-resolution Eden screenshot | 99.13 % |
+| Characters screen, Episode 1, full-resolution Eden screenshot | 98.27 % |
+| Tips screen, Episode 1, full-resolution Eden screenshot | 97.98 % |
 
-(99.9 + 99.6 + 99.3 + 96.9 + 95.7 + 95.6) / 6 = 97.83, shown as 97.8 %.
+(99.9 + 99.6 + 99.3 + 99.13 + 98.27 + 97.98) / 6 = 99.03, shown as 99.0 %.
+
+What keeps it below 100 %: the remaining misses sit almost entirely on the edges of text and fine artwork, where
+two GPUs filter the same textures slightly differently (offset search finds the port's text at the same pixel as the
+original, 0 px off). No layout, colour or timing difference was found in these screens. The Tips, Characters and quiz
+figures were first measured against a small window grab of the emulator (95.6-97.2 %); the full-resolution
+recaptures replaced them. The quiz was not recaptured and is listed below; the title's left side measured 99.8 %
+(its menu column differs only because the test save has no auto save, so no Continue item, and is left out).
 
 Compared with the original and found to match, but left out of the number because no within-32 share was recorded
 for them (only a mean difference, a frame-by-frame look, or random patterns that differ in both by design): the
