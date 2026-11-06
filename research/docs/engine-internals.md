@@ -862,8 +862,9 @@ In the port: `adv/vm_state/save.rs` (counter, route, pending SSETs, snapshot), `
 (`replay_command`), `Adv::new` (the replay and its fallback), `adv/restore.rs` (the scene rebuild: layers, masks,
 group properties, BGM, looping sounds) and `savedata.rs` (the file, by default `%APPDATA%\shin\SAVEDATA`).
 The save and load screens (section 15) save and load; F5 still saves to the slot the menu would open at, and
-`--load auto` or `--load <1-100>` loads at start. shortcuts: the rebuild starts on a black screen instead of the 0.3 s
-cross-fade, and does not restore a minigame's answer or the message box style. The user's Switch save (22 h, Tsubasa Story03, save points 316 and 182) replays in 40–80 ms and resumes
+`--load auto` or `--load <1-100>` loads at start. The new screen crossfades from the old one over 30 frames (mode 0;
+rollback cuts). shortcuts: the crossfade starts at once instead of once the scene has loaded, and the rebuild does
+not restore a minigame's answer or the message box style. The user's Switch save (22 h, Tsubasa Story03, save points 316 and 182) replays in 40–80 ms and resumes
 on a line; that it is the same line as on the Switch is still to be checked.
 
 ## 15. Scenes, menus and the story's controls **confirmed** (compared with the original on screen)
