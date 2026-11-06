@@ -135,7 +135,8 @@ pub struct Adv {
     /// "Return to title" was chosen and the save is written; the app takes it from here
     exit_to_title: bool,
     /// A bookmark was chosen in the load screen; the app replaces this screen with one that loads it
-    load_request: Option<GameDataEntry>,
+    /// with whether the new screen crossfades from this one (load mode 0) or cuts (mode 1, rollback)
+    load_request: Option<(GameDataEntry, bool)>,
     /// Where the jump dialog on screen goes if confirmed
     pending_jump: Option<GameDataEntry>,
     /// Frames until EXIT leaves for the title
@@ -200,11 +201,11 @@ impl Adv {
         self.vm_state.save.entry.clone()
     }
 
-    /// Rebuilds the screen at `save_position` of the current playthrough (`0x710000f220`)
-    fn rebuild_at(&mut self, save_position: u32) {
+    /// Rebuilds the screen at `save_position` of the current playthrough (`0x710000f220`), crossfading or not
+    fn rebuild_at(&mut self, save_position: u32, crossfade: bool) {
         let mut entry = self.current_entry();
         entry.save_position = save_position;
-        self.load_request = Some(entry);
+        self.load_request = Some((entry, crossfade));
     }
 
     /// + (`ADV::JumpNext` `0x7100012c80`): "Skip this chapter?" when the look-ahead finds a stop, else "error"
@@ -264,7 +265,7 @@ impl Adv {
             Some(target) => {
                 info!("Skipping the event to save point {}", target.save_position);
                 play_sys_se(&audio, context.asset_server, "decide", Default::default());
-                self.load_request = Some(target);
+                self.load_request = Some((target, false));
             }
             None => play_sys_se(&audio, context.asset_server, "error", Default::default()),
         }
@@ -281,11 +282,12 @@ impl Adv {
         let target = save.line_points.0;
         play_sys_se(&audio, context.asset_server, "decide", Default::default());
         info!("Rolling back to save point {target}");
-        self.rebuild_at(target);
+        // `0x71000137f0` loads with mode 1: no crossfade
+        self.rebuild_at(target, false);
     }
 
     /// The bookmark the player chose to load (once)
-    pub fn take_load_request(&mut self) -> Option<GameDataEntry> {
+    pub fn take_load_request(&mut self) -> Option<(GameDataEntry, bool)> {
         self.load_request.take()
     }
 
@@ -441,14 +443,14 @@ impl Adv {
                 AdvRequest::WriteSave => self.write_requested = true,
                 AdvRequest::JumpTo(save_position) => {
                     info!("Jumping from the backlog to save point {save_position}");
-                    self.rebuild_at(save_position);
+                    self.rebuild_at(save_position, true);
                 }
                 AdvRequest::Jump => {
                     // `$_4` / `$_2`: only with the system still enabled
                     if self.vm_state.save.system_enabled {
                         if let Some(target) = self.pending_jump.take() {
                             info!("Jumping to save point {}", target.save_position);
-                            self.load_request = Some(target);
+                            self.load_request = Some((target, true));
                         }
                     }
                 }
@@ -461,7 +463,7 @@ impl Adv {
                     if let Some(data) = &global.manual_save_slots[slot] {
                         // the position is remembered in memory only (`0x71000db120`)
                         global.save_menu_position = slot as u8;
-                        self.load_request = Some(data.entry.clone());
+                        self.load_request = Some((data.entry.clone(), true));
                     }
                 }
                 AdvRequest::ExitToTitle => {

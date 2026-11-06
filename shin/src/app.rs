@@ -431,10 +431,10 @@ impl ShinApp for App {
                     write = true;
                 }
                 write |= adv.take_write_request();
-                if let Some(entry) = adv.take_load_request() {
+                if let Some((entry, crossfade)) = adv.take_load_request() {
                     // `0x7100016410`: the scene becomes a new adventure screen that loads the bookmark
                     info!("Loading the bookmark at save point {}", entry.save_position);
-                    next = Some(Next::Story(entry));
+                    next = Some(Next::Story(entry, crossfade));
                 } else if adv.take_exit_to_title() {
                     // `ADV::ExitGame`: `CreateTitle(-1)`
                     next = Some(Next::Title);
@@ -444,7 +444,7 @@ impl ShinApp for App {
                 title.update(&mut update_context, &input, pointer);
                 write |= title.take_write_request();
                 match title.take_exit() {
-                    Some(TitleExit::Load(entry)) => next = Some(Next::Story(entry)),
+                    Some(TitleExit::Load(entry)) => next = Some(Next::Story(entry, true)),
                     Some(TitleExit::ScenarioSelect) => next = Some(Next::ScenarioSelect),
                     None => {}
                 }
@@ -466,12 +466,15 @@ impl ShinApp for App {
             Scene::Bridge(bridge) => {
                 if let Some(scenario) = bridge.update(update_context.delta_ticks.as_f32()) {
                     // `0x71000e4630`: the new game's first entry
-                    next = Some(Next::Story(GameDataEntry {
+                    next = Some(Next::Story(
+                        GameDataEntry {
                         scenario_id: scenario as i32,
                         random_seed: new_game_seed(),
                         save_position: 0,
                         route_data: RouteData::default(),
-                    }));
+                    },
+                        true,
+                    ));
                 }
             }
         }
@@ -636,8 +639,9 @@ impl App {
             _ => {}
         }
         match next {
-            Next::Story(entry) => {
-                self.fade = None;
+            Next::Story(entry, crossfade) => {
+                // the scene loader's mode 0 crossfades from the old screen over 30 frames (`0x7100062d50`, 0x1e)
+                self.fade = crossfade.then(|| SceneFade::new(Some(snapshot()), 30.0));
                 self.scene = Scene::Adv(Adv::new(
                     self.audio_manager.clone(),
                     self.asset_server.clone(),
@@ -692,7 +696,8 @@ impl Scene {
 
 /// Where a scene asked to go
 enum Next {
-    Story(GameDataEntry),
+    /// A new adventure screen; crossfading from the old screen or not
+    Story(GameDataEntry, bool),
     /// `CreateTitle(-1)`: as after the boot
     Title,
     /// `CreateTitle(cursor)`: back to the title with the cursor on that item
