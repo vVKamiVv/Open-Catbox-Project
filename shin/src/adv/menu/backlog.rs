@@ -2,8 +2,7 @@
 //! `0x71000a6930`): the current chapter's lines, choices and chapter titles from its replay, in newrodin at size 40
 //! over `/logview.txa`. A voiced line plays its voice again on A; Y asks to start reading from the selected line.
 //!
-//! shortcut: the chapter list (X) is not there, a line's text starts at a guessed x of 136 (the original's offset
-//! was not resolved), and the list cannot be dragged or flung with the pointer.
+//! shortcut: the chapter list (X) is not there, and the list cannot be dragged or flung with the pointer.
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -43,14 +42,26 @@ const CLIP: [f32; 4] = [136.0, 183.0, 1784.0, 918.0];
 /// The text's outline in pixels and its colour (47, 25, 20)
 const OUTLINE: f32 = 2.5;
 const BORDER: FloatColor4 = FloatColor4::from_rgba(0.18431, 0.09804, 0.07843, 1.0);
-/// Where a line's text starts in its row (not resolved in the original)
-const TEXT_X: f32 = 136.0;
+/// Where a line's text starts in its row (measured against the Switch release in Eden)
+const TEXT_X: f32 = 130.0;
 
 const FOCUS: NineSlice = NineSlice {
     insets: [512.0, 512.0, 12.0, 12.0],
     us: [0.0, 0.4, 0.6, 1.0],
     vs: [0.0, 0.375, 0.625, 1.0],
 };
+
+/// The backlog's layouter (`MessageBrowser::Layouter` `vfunc_4`, `vfunc_5`): the text up to the first
+/// line break is the speaker's name, written as 【name】 on its own line, or left out when empty (narration, choices,
+/// chapter titles)
+fn name_line(text: &str) -> String {
+    match text.split_once("@r") {
+        Some(("", rest)) => rest.to_string(),
+        Some((name, rest)) => format!("【{name}】@r{rest}"),
+        // no line break: the bracket opens and is never closed
+        None => format!("【{text}"),
+    }
+}
 
 /// `0x71000a3510`: newrodin, width 1480, size 40 at 97 % width, 6 px above and 4 below, no rubi room
 fn layout() -> LayoutParams {
@@ -148,8 +159,9 @@ impl Backlog {
                     LogKind::Choice | LogKind::Quiz => 977,
                     LogKind::Chapter => 799,
                 };
-                let text = format!("@c{color}.{}", entry.text);
-                let mut height = TextBlock::measure(font, &text, layout(), OUTLINE).y;
+                let text = format!("@c{color}.{}", name_line(&entry.text));
+                // the layout's own height, without the outline's padding (`0x71000a2780`)
+                let mut height = TextBlock::measure(font, &text, layout(), 0.0).y;
                 if matches!(entry.kind, LogKind::Message { voiced: true }) {
                     height = height.max(76.0);
                 }
@@ -563,5 +575,17 @@ impl Task for Backlog {
         if let Some(dialog) = &self.dialog {
             dialog.render(pass);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::name_line;
+
+    #[test]
+    fn the_name_line_is_bracketed_or_dropped() {
+        assert_eq!(name_line("Nanjo@r\"Hi.\""), "【Nanjo】@r\"Hi.\"");
+        assert_eq!(name_line("@rThe old physician."), "The old physician.");
+        assert_eq!(name_line("@rTitle@rChapter"), "Title@rChapter");
     }
 }
