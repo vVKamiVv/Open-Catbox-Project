@@ -3,7 +3,7 @@
 //! number, date and the SAVEINFO texts of its scene, which the original gets by replaying the save in the background;
 //! saving, loading and removing ask first.
 //!
-//! shortcut: the list cannot be dragged or flung with the pointer, and the "Writing save data" notice is not drawn.
+//! shortcut: the list cannot be dragged or flung with the pointer.
 
 use std::sync::Arc;
 

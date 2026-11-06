@@ -2,8 +2,7 @@
 //! settings screen, three tabs of sliders and On/Off buttons over `/config.txa`. Settings change live (every player
 //! reads them each frame); closing writes the save file when anything changed.
 //!
-//! shortcut: the "Writing save data" notice the original shows while it writes is not drawn, and the visual touch
-//! feedback setting has no effect, the port having no touch screen.
+//! shortcut: the visual touch feedback setting has no effect, the port having no touch screen.
 
 use std::sync::Arc;
 
