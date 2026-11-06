@@ -604,6 +604,7 @@ impl SaveMenu {
                 transform,
                 [6.0, 0.0, 294.0, 162.0],
                 THUMBNAIL_UV,
+                FloatColor4::WHITE,
                 opaque,
             ),
             None => {

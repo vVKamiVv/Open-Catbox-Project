@@ -306,9 +306,10 @@ pub fn draw_texture(
     transform: Mat4,
     [x0, y0, x1, y1]: [f32; 4],
     [u0, v0, u1, v1]: [f32; 4],
+    color: FloatColor4,
     builder: RenderRequestBuilder,
 ) {
-    let color = FloatColor4::WHITE.into_unorm();
+    let color = color.into_unorm();
     let vertex = |x: f32, y: f32, u: f32, v: f32| PosColTexVertex {
         position: vec3(x, y, 0.0),
         color,

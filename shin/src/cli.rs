@@ -41,7 +41,10 @@ pub struct Cli {
     /// (`%APPDATA%\\shin` on Windows)
     #[clap(long)]
     pub savedata: Option<PathBuf>,
-    /// Load a save instead of starting a new game: `auto` for the auto slot, or a slot number (1-100)
+    /// Skip the title and start Episode 1 at once
+    #[clap(long)]
+    pub new_game: bool,
+    /// Skip the title and load a save: `auto` for the auto slot, or a slot number (1-100)
     #[clap(long, value_parser = parse_slot)]
     pub load: Option<LoadSlot>,
     /// Seconds to wait after a captured line has typed out, so animations settle

@@ -20,8 +20,13 @@ use shin_window::{AppContext, RenderContext, ShinApp};
 use tracing::{debug, error, info, warn};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
+use shin_core::primitives::color::FloatColor4;
+use shin_render::render_texture::RenderTexture;
+
 use crate::{
-    adv::{Adv, assets::AdvAssets},
+    adv::{Adv, assets::AdvAssets, menu::MenuAssets},
+    title::{Title, TitleExit},
+    ui,
     asset::system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
     capture::{self, CaptureTargets, PendingCapture},
     cli::Cli,
@@ -113,8 +118,10 @@ pub struct App {
     audio_manager: Arc<AudioManager>,
     asset_server: Arc<AssetServer>,
     effect_textures: Arc<EffectTextures>,
-    adv: Adv,
-    /// What a new adventure screen is built from, when a bookmark is loaded
+    scene: Scene,
+    /// The previous screen fading out over the new one, when the scene changed
+    fade: Option<SceneFade>,
+    /// What a new adventure screen is built from
     adv_assets: AdvAssets,
     capture_dir: PathBuf,
     /// A captured frame queued for readback; saved on the next update, after the GPU has run the copy
@@ -167,6 +174,36 @@ impl ShinApp for App {
             }
             None => SaveData::new(),
         };
+        let effect_textures = adv_assets.effect_textures.clone();
+        // the game boots to the title; debugging options and --new-game/--load go straight to the story
+        let straight_to_story = cli.new_game
+            || cli.load.is_some()
+            || cli.fast_forward_to.is_some()
+            || cli.unsafe_entry_point.is_some()
+            || !cli.capture_messages.is_empty();
+        if !straight_to_story {
+            let title = Title::new(
+                &asset_server,
+                audio_manager.clone(),
+                MenuAssets::new(&adv_assets),
+                save,
+                -1,
+            )?;
+            return Ok(Self {
+                frame_id: FrameId::default(),
+                audio_manager,
+                asset_server,
+                effect_textures,
+                scene: Scene::Title(title),
+                // the title fades in from the black of the boot over 90 frames (`Title::First`)
+                fade: Some(SceneFade::new(None, 90.0)),
+                adv_assets,
+                capture_dir: cli.capture_dir,
+                pending_capture: None,
+                savedata_path,
+            });
+        }
+
         let entry = match cli.load {
             Some(slot) => slot
                 .entry(&save)
@@ -174,13 +211,12 @@ impl ShinApp for App {
             None => GameDataEntry {
                 // scenario 0: the first episode
                 scenario_id: 0,
-                random_seed: new_game_seed(&cli),
+                random_seed: new_game_seed_for(&cli),
                 save_position: 0,
                 route_data: RouteData::default(),
             },
         };
 
-        let effect_textures = adv_assets.effect_textures.clone();
         let mut adv = Adv::new(
             audio_manager.clone(),
             asset_server.clone(),
@@ -278,7 +314,8 @@ impl ShinApp for App {
             audio_manager,
             asset_server,
             effect_textures,
-            adv,
+            scene: Scene::Adv(adv),
+            fade: None,
             adv_assets,
             capture_dir: cli.capture_dir,
             pending_capture: None,
@@ -307,7 +344,11 @@ impl ShinApp for App {
                 Ok(path) => info!("Captured {}", path.display()),
                 Err(e) => error!("Saving a capture failed: {e:?}"),
             }
-            if !self.adv.capture_saved() {
+            let more = match &mut self.scene {
+                Scene::Adv(adv) => adv.capture_saved(),
+                Scene::Title(_) => false,
+            };
+            if !more {
                 info!("All requested lines are captured");
                 context.event_loop.exit();
             }
@@ -325,13 +366,16 @@ impl ShinApp for App {
         //     screen_layer.apply_transition(Some(DefaultWiper::new(Ticks::from_seconds(1.0)).into()));
         // }
 
+        // a clone, so the scene can be switched while the context lives
+        let effect_textures = self.effect_textures.clone();
+        let asset_server = self.asset_server.clone();
         let mut pre_render_context = PreRenderContext {
             device: &context.wgpu.device,
             queue: &context.wgpu.queue,
             resize_source: &context.winit.resize_source,
             sampler_store: &context.render.sampler_store,
             depth_stencil: context.render.canvas_depth_stencil_buffer.get_target_view(),
-            effect_textures: &self.effect_textures,
+            effect_textures: &effect_textures,
 
             pipeline_storage: &mut context.render.pipelines,
             dynamic_buffer: &mut context.render.dynamic_buffer,
@@ -341,47 +385,62 @@ impl ShinApp for App {
         let mut update_context = UpdateContext {
             frame_id: self.frame_id,
             delta_ticks: Ticks::from_duration(elapsed_time),
-            asset_server: &self.asset_server,
+            asset_server: &asset_server,
             pre_render: &mut pre_render_context,
         };
 
-        self.adv.update(&mut update_context, input, pointer);
+        if let Some(fade) = &mut self.fade {
+            fade.elapsed += update_context.delta_ticks.as_f32();
+            if fade.elapsed >= fade.duration {
+                self.fade = None;
+            }
+        }
 
-        if input[AppAction::Save].is_clicked {
-            let slot = self.adv.save_data().save_menu_position as usize;
-            self.adv.save_to_slot(slot.min(99));
+        let mut write = false;
+        let mut next = None;
+        match &mut self.scene {
+            Scene::Adv(adv) => {
+                adv.update(&mut update_context, input, pointer);
+                if input[AppAction::Save].is_clicked {
+                    let slot = adv.save_data().save_menu_position as usize;
+                    adv.save_to_slot(slot.min(99));
+                    write = true;
+                }
+                write |= adv.take_write_request();
+                if let Some(entry) = adv.take_load_request() {
+                    // `0x7100016410`: the scene becomes a new adventure screen that loads the bookmark
+                    info!("Loading the bookmark at save point {}", entry.save_position);
+                    next = Some(Next::Story(entry));
+                } else if adv.take_exit_to_title() {
+                    // `ADV::ExitGame`: `CreateTitle(-1)`
+                    next = Some(Next::Title);
+                }
+            }
+            Scene::Title(title) => {
+                title.update(&mut update_context, &input, pointer);
+                write |= title.take_write_request();
+                match title.take_exit() {
+                    Some(TitleExit::NewGame(entry) | TitleExit::Load(entry)) => next = Some(Next::Story(entry)),
+                    None => {}
+                }
+            }
+        }
+        if write {
             self.write_save();
         }
-        if self.adv.take_write_request() {
-            self.write_save();
-        }
-        if let Some(entry) = self.adv.take_load_request() {
-            // `0x7100016410`: the scene becomes a new adventure screen that loads the bookmark
-            info!("Loading the bookmark at save point {}", entry.save_position);
-            self.adv.shutdown();
-            let global = self.adv.save_data().clone();
-            self.adv = Adv::new(
-                self.audio_manager.clone(),
-                self.asset_server.clone(),
-                self.adv_assets.clone(),
-                global,
-                entry,
-                None,
-            );
-        }
-        if self.adv.take_exit_to_title() {
-            // shortcut: the port has no title screen yet, so returning to it closes the game
-            info!("No title screen yet; closing");
-            context.event_loop.exit();
+        if let Some(next) = next {
+            self.switch_scene(&mut pre_render_context, next);
         }
 
         if self.pending_capture.is_none() {
-            if let Some(message_id) = self.adv.capture_due() {
-                self.pending_capture = Some(capture::render(
-                    &mut pre_render_context,
-                    &self.adv,
-                    message_id,
-                ));
+            if let Scene::Adv(adv) = &self.scene {
+                if let Some(message_id) = adv.capture_due() {
+                    self.pending_capture = Some(capture::render(
+                        &mut pre_render_context,
+                        adv,
+                        message_id,
+                    ));
+                }
             }
         }
 
@@ -428,7 +487,10 @@ impl ShinApp for App {
 
     #[tracing::instrument(skip_all)]
     fn render(&mut self, _context: RenderContext, pass: &mut RenderPass) {
-        self.adv.render(pass);
+        self.scene.render(pass);
+        if let Some(fade) = &self.fade {
+            fade.render(pass);
+        }
 
         // render_layer(pass, &transform, &self.adv, FloatColor4::BLACK, 0);
     }
@@ -440,18 +502,128 @@ impl App {
             warn!("No location for the save file; not saving");
             return;
         };
-        if let Err(e) = savedata::write(path, self.adv.save_data()) {
+        if let Err(e) = savedata::write(path, self.scene.save_data()) {
             error!("Saving failed: {e:?}");
+        }
+    }
+
+    /// Replaces the scene; the title fades in over the old screen (`Title::First`: 90 frames, as after the boot)
+    fn switch_scene(&mut self, ctx: &mut PreRenderContext, next: Next) {
+        let global = self.scene.save_data().clone();
+        match &mut self.scene {
+            Scene::Adv(adv) => adv.shutdown(),
+            Scene::Title(title) => title.shutdown(),
+        }
+        match next {
+            Next::Story(entry) => {
+                self.fade = None;
+                self.scene = Scene::Adv(Adv::new(
+                    self.audio_manager.clone(),
+                    self.asset_server.clone(),
+                    self.adv_assets.clone(),
+                    global,
+                    entry,
+                    None,
+                ));
+            }
+            Next::Title => {
+                let mut old = ctx.new_render_texture("scene_fade".to_string());
+                {
+                    let depth_stencil = ctx.depth_stencil;
+                    let mut pass = ctx.begin_pass(old.as_texture_target(), Some(depth_stencil), "scene_fade");
+                    self.scene.render(&mut pass);
+                }
+                match Title::new(
+                    &self.asset_server,
+                    self.audio_manager.clone(),
+                    MenuAssets::new(&self.adv_assets),
+                    global,
+                    -1,
+                ) {
+                    Ok(title) => {
+                        self.scene = Scene::Title(title);
+                        self.fade = Some(SceneFade::new(Some(old), 90.0));
+                    }
+                    Err(e) => error!("Could not open the title: {e:?}"),
+                }
+            }
+        }
+    }
+}
+
+/// What the app shows
+enum Scene {
+    Title(Title),
+    Adv(Adv),
+}
+
+impl Scene {
+    fn save_data(&self) -> &SaveData {
+        match self {
+            Scene::Title(title) => &title.global,
+            Scene::Adv(adv) => adv.save_data(),
+        }
+    }
+
+    fn render(&self, pass: &mut RenderPass) {
+        match self {
+            Scene::Title(title) => title.render(pass),
+            Scene::Adv(adv) => adv.render(pass),
+        }
+    }
+}
+
+/// Where a scene asked to go
+enum Next {
+    Story(GameDataEntry),
+    Title,
+}
+
+/// The old screen (or black) over the new one, fading out (the transition of `Title::First`, program 8)
+struct SceneFade {
+    from: Option<RenderTexture>,
+    elapsed: f32,
+    duration: f32,
+}
+
+impl SceneFade {
+    fn new(from: Option<RenderTexture>, duration: f32) -> Self {
+        Self {
+            from,
+            elapsed: 0.0,
+            duration,
+        }
+    }
+
+    fn render(&self, pass: &mut RenderPass) {
+        let alpha = 1.0 - (self.elapsed / self.duration).clamp(0.0, 1.0);
+        let full = [0.0, 0.0, 1920.0, 1080.0];
+        match &self.from {
+            Some(texture) => ui::draw_texture(
+                pass,
+                texture.as_texture_source(),
+                ui::projection(),
+                full,
+                [0.0, 0.0, 1.0, 1.0],
+                FloatColor4::WHITE.with_alpha(alpha),
+                ui::builder(),
+            ),
+            None => ui::fill(pass, ui::projection(), full, FloatColor4::BLACK.with_alpha(alpha)),
         }
     }
 }
 
 /// The original draws a random seed for each new game (`0x71000fc2c0`); debug runs that seek lines keep a fixed one
 /// so they repeat
-fn new_game_seed(cli: &Cli) -> u32 {
-    use std::hash::BuildHasher;
+fn new_game_seed_for(cli: &Cli) -> u32 {
     if cli.fast_forward_to.is_some() || !cli.capture_messages.is_empty() {
         return 42;
     }
+    new_game_seed()
+}
+
+/// A random seed for a new game (`0x71000fc2c0`)
+pub fn new_game_seed() -> u32 {
+    use std::hash::BuildHasher;
     std::collections::hash_map::RandomState::new().hash_one(0u8) as u32
 }

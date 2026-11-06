@@ -40,6 +40,17 @@ pub struct MenuAssets {
     pub scenario: Arc<Scenario>,
 }
 
+impl MenuAssets {
+    pub fn new(assets: &crate::adv::assets::AdvAssets) -> Self {
+        Self {
+            system_textures: assets.system_textures.clone(),
+            adv_textures: assets.hud_textures.clone(),
+            system_font: assets.fonts.system_font.clone(),
+            scenario: assets.scenario.clone(),
+        }
+    }
+}
+
 /// What a task asks of the adventure screen
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdvRequest {

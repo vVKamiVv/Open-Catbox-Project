@@ -20,6 +20,7 @@ mod random;
 mod render;
 mod savedata;
 mod time;
+mod title;
 mod ui;
 mod update;
 mod wiper;

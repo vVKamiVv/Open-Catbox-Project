@@ -979,12 +979,7 @@ impl AdvState {
             skip_auto: 0,
             skipping: false,
             hud: hud::AdvHud::new(assets.hud_textures.clone(), assets.fonts.system_font.clone()),
-            menu_assets: menu::MenuAssets {
-                system_textures: assets.system_textures.clone(),
-                adv_textures: assets.hud_textures.clone(),
-                system_font: assets.fonts.system_font.clone(),
-                scenario: assets.scenario.clone(),
-            },
+            menu_assets: menu::MenuAssets::new(&assets),
             backdrop: None,
             backdrop_alpha: Tweener::new(0.0),
             back_layer_group: None,
