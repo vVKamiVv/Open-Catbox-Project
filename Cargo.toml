@@ -14,6 +14,7 @@ members = [
     "shin-primitives",
     "sdu",
     "shin",
+    "launcher",
 ]
 resolver = "2"
 

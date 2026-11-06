@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Catbox</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="sky" aria-hidden="true"></canvas>
+
+  <!-- First run: extract the game data from the player's own dump -->
+  <section id="setup" class="screen" hidden>
+    <div class="panel setup-panel">
+      <p class="kicker">First-time setup</p>
+      <h1 class="display">Bring your copy to the island</h1>
+      <p class="lead">Open Catbox plays <em>Umineko no Naku Koro ni Saku</em> from your own Nintendo Switch dump.
+        Choose the files you dumped from your console. Everything stays on this computer.</p>
+
+      <div class="file-rows">
+        <div class="file-row">
+          <div class="file-label">Base game NSP <small>01006A300BA2C000 · required</small></div>
+          <output class="path" data-path="base">Not chosen</output>
+          <button class="btn ghost" data-pick="base">Browse…</button>
+        </div>
+        <div class="file-row">
+          <div class="file-label">1.0.3 update NSP <small>01006A300BA2C800 · optional, only for Japanese</small></div>
+          <output class="path" data-path="update">Not chosen</output>
+          <button class="btn ghost" data-pick="update">Browse…</button>
+        </div>
+        <div class="file-row">
+          <div class="file-label">prod.keys <small>required</small></div>
+          <output class="path" data-path="prodKeys">Not chosen</output>
+          <button class="btn ghost" data-pick="prodKeys">Browse…</button>
+        </div>
+        <div class="file-row">
+          <div class="file-label">title.keys <small>optional, for personalised tickets</small></div>
+          <output class="path" data-path="titleKeys">Not chosen</output>
+          <button class="btn ghost" data-pick="titleKeys">Browse…</button>
+        </div>
+      </div>
+
+      <p class="note">The game data goes to <span id="setup-data" class="mono"></span>.
+        Setup needs about 25 GB free there while it works and keeps about 11 GB.</p>
+
+      <div id="setup-progress" class="progress" hidden>
+        <div class="progress-label"></div>
+        <div class="bar"><span></span></div>
+      </div>
+      <div id="setup-msg" class="message" role="status"></div>
+
+      <div class="actions">
+        <button id="setup-cancel" class="btn ghost" hidden>Back</button>
+        <button id="setup-start" class="btn primary">Begin setup</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main launcher -->
+  <section id="main" class="screen" hidden>
+    <header class="topbar">
+      <div class="brand"><svg class="brand-mark" viewBox="180 190 664 620" aria-hidden="true"><path id="w" d="M520 470C560 330 700 200 850 210C930 216 900 330 840 400C790 460 660 500 530 500ZM528 510C640 520 760 570 770 680C778 760 690 790 630 730C580 680 545 600 522 530Z"/><use href="#w" transform="translate(1024 0) scale(-1 1)"/><ellipse cx="512" cy="520" rx="15" ry="118"/></svg>Open Catbox</div>
+      <nav class="nav" aria-label="Launcher sections">
+        <button data-view="play" class="active">Play</button>
+        <button data-view="languages">Languages</button>
+        <button data-view="settings">Settings</button>
+        <button data-view="about">About</button>
+      </nav>
+    </header>
+
+    <div class="view" id="view-play">
+      <div class="hero">
+        <p class="kicker">Open Catbox Project</p>
+        <h1 class="title">Umineko<span>no Naku Koro ni</span>Saku</h1>
+        <p class="tagline">Without love, it cannot be seen.</p>
+        <fieldset class="lang-picker" id="lang-picker">
+          <legend>Language</legend>
+        </fieldset>
+        <button id="play" class="btn play">Play</button>
+        <div id="play-msg" class="message" role="status"></div>
+      </div>
+    </div>
+
+    <div class="view" id="view-languages" hidden>
+      <div class="panel scroll">
+        <div class="panel-head">
+          <h2 class="display">Languages</h2>
+          <button id="check-updates" class="btn ghost">Check for updates</button>
+        </div>
+        <p class="note">The English translations are downloaded from their authors' GitHub releases when you ask for them.
+          They are the translators' work and are not part of this project.</p>
+        <div id="lang-cards" class="cards"></div>
+      </div>
+    </div>
+
+    <div class="view" id="view-settings" hidden>
+      <div class="panel scroll">
+        <h2 class="display">Settings</h2>
+
+        <section class="group">
+          <h3>Game data</h3>
+          <div class="file-row">
+            <div class="file-label">Data folder <small>data.rom and the installed languages</small></div>
+            <output class="path" id="data-dir"></output>
+            <button class="btn ghost" id="move-data">Move…</button>
+          </div>
+          <div class="file-row">
+            <div class="file-label">hactool <small>used by setup to read your dump</small></div>
+            <output class="path" id="hactool-path"></output>
+            <button class="btn ghost" id="pick-hactool">Choose…</button>
+            <button class="btn ghost" id="reset-hactool">Auto</button>
+          </div>
+          <div class="actions start"><button class="btn ghost" id="rerun-setup">Run setup again</button></div>
+        </section>
+
+        <section class="group">
+          <h3>Display</h3>
+          <label class="switch">
+            <input type="checkbox" id="fullscreen">
+            <span class="switch-track" aria-hidden="true"></span>
+            Start in fullscreen <small>(for now, press F11 in the game)</small>
+          </label>
+        </section>
+
+        <section class="group" id="graphics">
+          <h3>Graphics <small>coming in a later version</small></h3>
+          <label class="field">Resolution scale
+            <select disabled><option>100%</option></select>
+          </label>
+        </section>
+        <section class="group">
+          <h3>Troubleshooting</h3>
+          <label class="switch">
+            <input type="checkbox" id="debug-logging">
+            <span class="switch-track" aria-hidden="true"></span>
+            Debug logging <small>(more detail in logs\shin.log in the data folder)</small>
+          </label>
+        </section>
+        <div id="settings-msg" class="message" role="status"></div>
+      </div>
+    </div>
+
+    <div class="view" id="view-about" hidden>
+      <div class="panel scroll prose">
+        <h2 class="display">About</h2>
+        <p><strong>Open Catbox Project</strong> is a free PC port of the Nintendo Switch engine behind
+          <em>Umineko no Naku Koro ni Saku</em>. It is licensed under the Mozilla Public License 2.0.
+          <a href="https://github.com/vVKamiVv/Open-Catbox-Project">Source code</a></p>
+        <p>It is built on <a href="https://github.com/DCNick3/shin">shin</a> by DCNick3 and its contributors.</p>
+        <h3>Translations</h3>
+        <p><strong>Catbox English</strong> by &amp;Olga and its contributors
+          (<a href="https://github.com/andOlga/umineko-catbox-english">repository</a>).<br>
+          <strong>Catbox X</strong> by Foxdear
+          (<a href="https://github.com/Foxdear/umineko-catbox-X-english">repository</a>).<br>
+          Both are downloaded from their authors and are not part of this project.</p>
+        <h3>The game</h3>
+        <p><em>Umineko no Naku Koro ni</em> was created by Ryukishi07 and 07th Expansion. The Switch release
+          <em>Saku</em> is published by Entergram. This project contains none of the game's files:
+          <strong>you need to own the game</strong> and dump it from your own console.</p>
+        <h3>Also used</h3>
+        <p>hactool by SciresM (ISC licence) · Tauri · the Cinzel and Cormorant Garamond typefaces (SIL Open Font Licence).</p>
+      </div>
+    </div>
+  </section>
+
+  <script src="sky.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -4,3 +4,4 @@ heaptrack.*.zst
 *.snr
 *.cap
 __pycache__/
+/launcher/gen/
