@@ -218,6 +218,9 @@ impl ShinApp for App {
             .dev
             .then(|| DevTools::new(&context.wgpu.device, context.render.surface_texture_format));
         // the game boots to the title; debugging options and --new-game/--load go straight to the story
+        if cli.fullscreen {
+            context.winit.toggle_fullscreen();
+        }
         let straight_to_story = cli.new_game
             || cli.load.is_some()
             || cli.fast_forward_to.is_some()

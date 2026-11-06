@@ -62,6 +62,9 @@ pub struct Cli {
     /// time, F7 steps one frame while paused, F8/F9 halve/double its speed (1/8x to 8x), F10 resets it to 1x
     #[clap(long)]
     pub dev: bool,
+    /// Start in fullscreen (F11 still toggles it)
+    #[clap(long)]
+    pub fullscreen: bool,
 }
 
 /// A save slot to load
