@@ -97,30 +97,30 @@ testimony text was compared (it breaks lines mid-word in English as the original
 
 ## Accuracy
 
-**99.0 %**: the mean, over every side-by-side comparison with a recorded per-pixel figure, of the share of pixels
-whose difference from the original is within 32 of 255 (largest channel difference, the original's 5760x3240 Eden
-screenshot downscaled to 1920x1080):
+**99.7 %**: the mean, over every side-by-side comparison with a recorded per-pixel figure, of the share of pixels
+whose difference from the original is within 32 of 255 (the largest channel difference):
 
 `accuracy = (1/N) × Σ share_i`, where `share_i` = pixels at most 32/255 away from the original's ÷ pixels compared,
 for comparison i, and N = 6.
 
-| Comparison | Within 32 |
-|---|---|
-| Blur (property 66), Ep2 line 7652, the upper half (the blurred background) | 99.9 % |
-| Whirl wipe, Ep2: line 11556 right after it | 99.6 % |
-| Ripple with ghosting on the screen layer, Ep8 line 61681 | 99.3 % |
-| Tips submenu on the title (Episode list), full-resolution Eden screenshot | 99.13 % |
-| Characters screen, Episode 1, full-resolution Eden screenshot | 98.27 % |
-| Tips screen, Episode 1, full-resolution Eden screenshot | 97.98 % |
+| Comparison | Within 32 | Original captured at |
+|---|---|---|
+| Blur (property 66), Ep2 line 7652, the upper half (the blurred background) | 99.90 % | 3x, downscaled |
+| Whirl wipe, Ep2: line 11556 right after it | 99.60 % | 3x, downscaled |
+| Ripple with ghosting on the screen layer, Ep8 line 61681 | 99.30 % | 3x, downscaled |
+| Characters screen, Episode 1 | 100.00 % | 1x |
+| Tips screen, Episode 1 | 99.94 % | 1x |
+| Tips episode list on the title | 99.40 % | 1x; the header band's slowly drifting floral pattern was caught at a different moment |
 
-(99.9 + 99.6 + 99.3 + 99.13 + 98.27 + 97.98) / 6 = 99.03, shown as 99.0 %.
+(99.9 + 99.6 + 99.3 + 100 + 99.94 + 99.4) / 6 = 99.69, shown as 99.7 %.
 
-What keeps it below 100 %: the remaining misses sit almost entirely on the edges of text and fine artwork, where
-two GPUs filter the same textures slightly differently (offset search finds the port's text at the same pixel as the
-original, 0 px off). No layout, colour or timing difference was found in these screens. The Tips, Characters and quiz
-figures were first measured against a small window grab of the emulator (95.6-97.2 %); the full-resolution
-recaptures replaced them. The quiz was not recaptured and is listed below; the title's left side measured 99.8 %
-(its menu column differs only because the test save has no auto save, so no Continue item, and is left out).
+Capture the original with Eden at **1x** (Umineko's per-game graphics setting; Eden numbers it 3), which renders the
+Switch's native 1920x1080, and take Eden's own screenshot (`eden_capture.py --shot` for menus, or the line capture).
+At 3x the screenshot has to be downscaled, and the resampling alone cost one to two points on text-heavy screens:
+the same three menus measured 98.0-99.1 % from 3x captures and 99.4-100 % at 1x. The three story effects above are
+still 3x captures and will likely gain the same way when recaptured. Two screens compared at 1x match pixel for pixel
+except for animation timing; no layout, colour or text difference remains in them. The quiz (95.7 % from a small
+window grab) and the title (its menu items depend on the save) are not in the number.
 
 Compared with the original and found to match, but left out of the number because no within-32 share was recorded
 for them (only a mean difference, a frame-by-frame look, or random patterns that differ in both by design): the
