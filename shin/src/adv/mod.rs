@@ -959,6 +959,8 @@ pub struct LogEntry {
     pub text: String,
     /// The save point a jump to this entry rebuilds at
     pub save_position: u32,
+    /// The chapter list's label of a marker: the choice's prompt, the chapter's second title or the minigame's name
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1030,6 +1032,7 @@ pub(crate) fn build_log(scenario: &Scenario, global: SaveData, entry: GameDataEn
                     kind: LogKind::Message { voiced },
                     text,
                     save_position: vm_state.save.counter,
+                    label: String::new(),
                 });
                 match step {
                     ReplayStep::Continue(r) => r,
@@ -1056,6 +1059,7 @@ pub(crate) fn build_log(scenario: &Scenario, global: SaveData, entry: GameDataEn
                         kind: LogKind::Choice,
                         text: format!("@r《{title}》@r{option}"),
                         save_position: vm_state.save.counter,
+                        label: title.to_string(),
                     });
                 }
                 r
@@ -1071,6 +1075,9 @@ pub(crate) fn build_log(scenario: &Scenario, global: SaveData, entry: GameDataEn
                     kind: LogKind::Quiz,
                     text: "@r《クイズ》".to_string(),
                     save_position: vm_state.save.counter,
+                    // "クイズ" (`0x710015dd7a`)
+                    label: crate::asset::executable::text_at(0x710015dd7a)
+                        .unwrap_or_else(|| "クイズ".to_string()),
                 });
                 r
             }
@@ -1081,6 +1088,7 @@ pub(crate) fn build_log(scenario: &Scenario, global: SaveData, entry: GameDataEn
                     kind: LogKind::Chapter,
                     text: format!("@r{first}@r{second}"),
                     save_position: vm_state.save.counter,
+                    label: second.to_string(),
                 });
                 match step {
                     ReplayStep::Continue(r) => r,

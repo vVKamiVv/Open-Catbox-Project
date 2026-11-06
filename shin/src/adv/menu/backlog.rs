@@ -18,7 +18,11 @@ use shin_render::{
 };
 use tracing::warn;
 
-use super::{AdvRequest, MenuAssets, Task, TaskCx, dialog::Dialog};
+use super::{
+    AdvRequest, MenuAssets, Task, TaskCx,
+    chapter_list::{ChapterList, ListEvent},
+    dialog::Dialog,
+};
 use crate::{
     adv::{Log, LogKind},
     asset::texture_archive::NamedTextures,
@@ -84,6 +88,8 @@ struct Line {
     kind: LogKind,
     /// The text with its colour (`0x710016ee40`: 999 for lines, 977 choices and quizzes, 799 chapters)
     text: String,
+    /// The chapter list's label of a marker
+    label: String,
     save_position: u32,
     y: f32,
     height: f32,
@@ -136,6 +142,10 @@ pub struct Backlog {
     jump: Option<u32>,
     /// The laid-out lines on screen, by index
     texts: HashMap<usize, TextBlock>,
+    /// The game's current line
+    current: usize,
+    /// X: the chapter list over the backlog (`+0xf8`)
+    chapters: Option<ChapterList>,
     voice: VoicePlayer,
     target_size: (u32, u32),
 }
@@ -168,6 +178,7 @@ impl Backlog {
                 Line {
                     kind: entry.kind,
                     text,
+                    label: entry.label,
                     save_position: entry.save_position,
                     y: 0.0,
                     height: height + 20.0,
@@ -207,6 +218,8 @@ impl Backlog {
             dialog: None,
             jump: None,
             texts: HashMap::new(),
+            current,
+            chapters: None,
             voice: VoicePlayer::new(cx.audio.clone(), cx.asset_server.clone()),
             target_size: (1920, 1080),
         })
@@ -242,6 +255,31 @@ impl Backlog {
             return;
         };
         ui::tween(&mut self.scroll, target, 4.0, Easing::Linear);
+    }
+
+    /// The chapter list's selection: the cursor on `to`, brought into view over 4 frames from where it is now
+    fn scroll_to(&mut self, to: usize) {
+        self.cursor = to;
+        let line = &self.lines[to];
+        let current = self.scroll.value();
+        let target = if line.y < current {
+            line.y.max(self.top)
+        } else if line.y + line.height - current > VIEW {
+            (line.y + line.height - VIEW).clamp(self.top, self.max_scroll())
+        } else {
+            return;
+        };
+        self.scroll = Tweener::new(current);
+        ui::tween(&mut self.scroll, target, 4.0, Easing::Linear);
+    }
+
+    /// `0x71000a7100`: the cursor line flashes, then the jump question
+    fn ask_jump(&mut self, cx: &TaskCx) {
+        cx.sound("decide");
+        let flash = &mut self.lines[self.cursor].jump_flash;
+        *flash = Tweener::new(0.0);
+        minigame::flash(flash);
+        self.state = State::Asking;
     }
 
     fn close(&mut self, cx: &TaskCx) {
@@ -301,12 +339,15 @@ impl Backlog {
         } else if input.confirm {
             self.play_voice();
         } else if input.y {
-            // `0x71000a7100`: the line flashes, then the question
+            self.ask_jump(cx);
+        } else if input.x {
             cx.sound("decide");
-            let flash = &mut self.lines[self.cursor].jump_flash;
-            *flash = Tweener::new(0.0);
-            minigame::flash(flash);
-            self.state = State::Asking;
+            let markers = self
+                .lines
+                .iter()
+                .map(|line| (line.kind, line.label.as_str()))
+                .collect::<Vec<_>>();
+            self.chapters = Some(ChapterList::new(&markers, self.cursor, self.current));
         } else if input.scroll != 0.0 {
             let scroll =
                 (self.scroll.value() + input.scroll * 32.0).clamp(self.top, self.max_scroll());
@@ -375,7 +416,22 @@ impl Task for Backlog {
                 }
             }
             State::Active => {
-                if cx.focused && self.scroll.is_idle() {
+                if let Some(mut chapters) = self.chapters.take() {
+                    let flash_done = self.close_flash.is_idle();
+                    match chapters.update(cx, &self.assets, flash_done) {
+                        ListEvent::None => {}
+                        ListEvent::Select(line) => self.scroll_to(line),
+                        ListEvent::Close => {
+                            self.close_flash = Tweener::new(0.0);
+                            minigame::flash(&mut self.close_flash);
+                        }
+                        ListEvent::Voice => self.play_voice(),
+                        ListEvent::Jump => self.ask_jump(cx),
+                    }
+                    if !chapters.is_done() {
+                        self.chapters = Some(chapters);
+                    }
+                } else if cx.focused && self.scroll.is_idle() {
                     self.handle_keys(cx);
                 }
             }
@@ -388,6 +444,10 @@ impl Task for Backlog {
                     }
                     if !running {
                         self.dialog = None;
+                        // `$_11`: the answer also closes the chapter list
+                        if let Some(chapters) = &mut self.chapters {
+                            chapters.close();
+                        }
                         if self.jump.is_some() {
                             self.voice.stop();
                             self.close_flash = Tweener::new(0.0);
@@ -554,6 +614,10 @@ impl Task for Backlog {
             self.bottom - self.top,
         );
 
+        if let Some(chapters) = &self.chapters {
+            chapters.render(pass, &self.textures, self.target_size);
+        }
+
         Sprite::new(t("caption"), [480.0, top, 1440.0, top + 128.0])
             .draw(pass, builder, projection);
         Sprite::new(t("close"), [1764.0, top + 32.0, 1848.0, top + 116.0])
@@ -570,6 +634,9 @@ impl Task for Backlog {
         };
         let mut x = self.draw_help(pass, 1872.0, y, &[4], 48.0, 72.0, FloatColor4::WHITE);
         x = self.draw_help(pass, x, y, &[3], 96.0, 140.0, voice_color);
+        if self.chapters.is_none() {
+            x = self.draw_help(pass, x, y, &[5], 192.0, 266.0, FloatColor4::WHITE);
+        }
         x = self.draw_help(pass, x, y, &[6], 144.0, 240.0, FloatColor4::WHITE);
         self.draw_help(pass, x, y, &[7, 0], 0.0, 206.0, FloatColor4::WHITE);
 

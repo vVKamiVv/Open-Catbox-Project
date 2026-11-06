@@ -6,6 +6,7 @@
 //! place of the original's callbacks.
 
 pub mod backlog;
+pub mod chapter_list;
 pub mod chars;
 pub mod config_menu;
 pub mod dialog;

@@ -53,6 +53,13 @@ fn load_from(dir: &Path) -> Result<Executable> {
     Executable::load(&nso, &patches.iter().map(Vec::as_slice).collect::<Vec<_>>())
 }
 
+/// The string at `address`, decoded (Shift-JIS)
+pub fn text_at(address: u64) -> Option<String> {
+    let bytes = executable()?.c_string(address)?;
+    shin_core::format::text::read_sjis_string(&mut std::io::Cursor::new(bytes), Some(bytes.len()))
+        .ok()
+}
+
 /// The string a pointer at `address` points to, decoded (Shift-JIS, which covers the ASCII of translations)
 pub fn text_at_pointer(address: u64) -> Option<String> {
     let bytes = executable()?.string_at_pointer(address)?;

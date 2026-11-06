@@ -43,23 +43,33 @@ pub fn fill(pass: &mut RenderPass, transform: Mat4, rect: [f32; 4], color: Float
 pub fn fill_with(
     pass: &mut RenderPass,
     transform: Mat4,
-    [x0, y0, x1, y1]: [f32; 4],
+    rect: [f32; 4],
     color: FloatColor4,
     builder: RenderRequestBuilder,
 ) {
     if color.a <= 0.0 {
         return;
     }
-    let color = color.into_unorm();
-    let vertex = |x: f32, y: f32| PosColVertex {
+    fill_corners(pass, transform, rect, [color; 4], builder);
+}
+
+/// A rectangle coloured by its corners (top left, top right, bottom left, bottom right), blended between them
+pub fn fill_corners(
+    pass: &mut RenderPass,
+    transform: Mat4,
+    [x0, y0, x1, y1]: [f32; 4],
+    colors: [FloatColor4; 4],
+    builder: RenderRequestBuilder,
+) {
+    let vertex = |x: f32, y: f32, color: FloatColor4| PosColVertex {
         position: vec3(x, y, 0.0),
-        color,
+        color: color.into_unorm(),
     };
     let vertices = [
-        vertex(x0, y0),
-        vertex(x1, y0),
-        vertex(x0, y1),
-        vertex(x1, y1),
+        vertex(x0, y0, colors[0]),
+        vertex(x1, y0, colors[1]),
+        vertex(x0, y1, colors[2]),
+        vertex(x1, y1, colors[3]),
     ];
     pass.run(builder.build(
         RenderProgramWithArguments::Fill {
