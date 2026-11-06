@@ -861,8 +861,66 @@ changed settings, and on a manual save or delete (`0x71000d52f0`). A version-0 f
 In the port: `adv/vm_state/save.rs` (counter, route, pending SSETs, snapshot), `adv/command/mod.rs`
 (`replay_command`), `Adv::new` (the replay and its fallback), `adv/restore.rs` (the scene rebuild: layers, masks,
 group properties, BGM, looping sounds) and `savedata.rs` (the file, by default `%APPDATA%\shin\SAVEDATA`).
-shortcuts: there are no save or load menus yet, so F5 saves to the slot the menu would open at and `--load auto` or
-`--load <1-100>` loads; closing the window writes the file (the port's way back to the title); the rebuild starts on
-a black screen instead of the 0.3 s cross-fade, and does not restore a minigame's answer, the message box style or
-the unlocks. The user's Switch save (22 h, Tsubasa Story03, save points 316 and 182) replays in 40–80 ms and resumes
+The save and load screens (section 15) save and load; F5 still saves to the slot the menu would open at, and
+`--load auto` or `--load <1-100>` loads at start. shortcuts: the rebuild starts on a black screen instead of the 0.3 s
+cross-fade, and does not restore a minigame's answer or the message box style. The user's Switch save (22 h, Tsubasa Story03, save points 316 and 182) replays in 40–80 ms and resumes
 on a line; that it is the same line as on the Switch is still to be checked.
+
+## 15. Scenes, menus and the story's controls **confirmed** (compared with the original on screen)
+
+**Scenes.** The game runs one scene at a time and switches with a crossfade from a snapshot of the old screen:
+FirstBoot (black while the system assets and the save load; its logo and caution screens are dead code in v1.0.3) ->
+TitleDemo (the opening movie, movie table entry 0, `sakucs_op`; confirm, + or a tap skips with a 90-frame fade of
+the picture and the sound) -> Title (`CreateTitle(-1)`: 90-frame fade and the background's blur clearing; `(0)` when
+coming back from the scenario select: 60 frames, everything shown at once) -> ScenarioSelect -> the bridge -> ADV.
+The system menu's "Title" writes the save and goes to `CreateTitle(-1)`.
+
+**Tasks.** A scene owns a task pool (`ADV+0x158`, add `0x7100100930`): every task updates each frame, the top one
+has the input, and the ADV's own buttons only work while the pool is empty. A menu that opens another reports back
+through a callback with 0 when its close starts and 1 when it has ended; the shared dialog does the same with
+`(event, button)`, button -1 for cancel.
+
+**The dialog** (`0x71000223d0`): message (system.fnt, size 54, width 1440, line spacing 3, no room for rubi) over a
+0.5 black dim, buttons of size 44 in a row (or a column when a row would not fit in 0.75 of the width), at least 600
+wide, grown from 1.4 to 1 (sine-out) and faded in over 12 frames; the cursor starts on No. Colours, 9-slice tables
+and the button layout are in the code (`adv/menu/dialog.rs`).
+
+**The system menu** (Y, `0x710001c100`): pauses the script, voices and sounds, hides the message window and banners,
+and shows a blurred capture of the scene (two passes of the blur program at full size, taps 0.75/2.25/3.75/5.25 px)
+drawn at **half brightness**, colour (0.5a, 0.5a, 0.5a, a), premultiplied while it fades in over 10 frames and
+opaque once up (`0x71000126b4`; measured 0.49 in Eden). Characters shows only once CHARS has run (its state starts
+below 0); Tips only with tips. Panels: scene title and play time, size 38 without rubi room. B (cancel) hides the
+window until any button (`0x7100013720`), pausing nothing.
+
+**Config** (`0x71000586b0`, `/config.txa`): 3 tabs, 14 items (table in `adv/menu/config_menu.rs`); settings apply
+live, Y resets to the defaults after a dialog, closing writes the save when anything changed.
+
+**Save and load** (`0x71000d5b40`, `/saveload.txa`): 100 bookmarks 186 px apart in a 730 px view; each visible
+bookmark replays in the background to show its SAVEINFO levels 0 and 1 and a 288x162 thumbnail of its scene (the
+layers loaded into a screen layer of their own, rendered and halved twice). Saving and removing ask first and write
+the file; loading starts a new ADV.
+
+**Title** (`0x710010b130`, `/title.txa`): background, BGM and volume follow persist[0] (table `0x7100187796`); the
+items depend on persist data and the auto slot; Continue fades everything and the music over 90 frames and starts
+the auto slot. **Scenario select** (`0x71000dc8f0`, `/snrsel.txa`): tabs show once one of their pieces is open; a
+piece's state is its persist slot (scenario + 1; Episode 1 always at least 2); read pieces ask "Start the game?";
++ unlocks the main episodes. **The bridge** (`0x71000e3a20`): the last screen as two doors hinged on the outer
+edges, perspective camera (fovy 2 atan 0.54, 1000 px away, moving 500 px in), opening over 180 frames onto white;
+the new game starts at frame 360 with a fresh seed.
+
+**The story's controls** (`0x7100011f08`, system enabled, auto and skip off): Y system menu, B hide window (inside
+an event: skip the event), + "Skip this chapter?", - "Return to the last chapter?", Up roll back one line. The
+jumps and event skip **look ahead**: replay to the current line, then keep running the commands a jump passes (slot
+3) until one stops it: for +, the next AUTOSAVE (chapter), choice or minigame, or with setting v11 an unread line;
+for event skip, the event's EVEND; EXIT means nothing to jump to ("error"). The screen is then rebuilt at that save
+point as a load. "Return to the last chapter" goes to the current chapter's AUTOSAVE once more than one of its lines
+has played, else the one before (`+0x2dbc[(+0x2dd0 > 1)]`); rollback goes to the previous line's save point
+(`+0x2db4`) once two lines have played. With v11 on, the + dialog shows a Japanese text the English patch does not
+translate (`0x710015eedb`).
+
+In the port: `app.rs` (scenes), `title_demo.rs`, `title.rs`, `scenario_select.rs`, `adv/menu/` (dialog, system menu,
+hidden window, config, save menu, thumbnails, jump dialog) and `ui/` (drawing and input helpers). shortcuts: no
+backlog, galleries, Characters, Tips or manual yet; the scenario select fades in instead of the curtain mask wipe;
+the bridge has no bloom glow; the dialog fades its pieces instead of a render texture; the BGM player is per scene
+instead of shared, so music does not carry across scenes. Keyboard: Y and X keys for the Y and X buttons, = and -
+for + and -.
