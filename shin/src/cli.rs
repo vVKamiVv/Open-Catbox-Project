@@ -54,6 +54,10 @@ pub struct Cli {
     /// Seconds to wait after a captured line has typed out, so animations settle
     #[clap(long, default_value_t = 4.0)]
     pub capture_settle: f32,
+    /// Developer tools: F3 opens the debug overlays (FPS, VM state, layers and their tweens); F6 pauses the game's
+    /// time, F7 steps one frame while paused, F8/F9 halve/double its speed (1/8x to 8x), F10 resets it to 1x
+    #[clap(long)]
+    pub dev: bool,
 }
 
 /// A save slot to load

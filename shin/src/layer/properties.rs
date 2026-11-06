@@ -63,6 +63,14 @@ impl LayerProperties {
         &self.properties[property]
     }
 
+    /// The properties that are, or are tweening, away from their initial value (for the layers overlay)
+    pub fn changed(&self) -> impl Iterator<Item = (LayerProperty, &Tweener)> {
+        self.properties.iter().filter(|(property, tweener)| {
+            let initial = property.initial_value() as f32;
+            tweener.value() != initial || tweener.target_value() != initial
+        })
+    }
+
     pub fn property_tweener_mut(&mut self, property: LayerProperty) -> &mut Tweener {
         &mut self.properties[property]
     }

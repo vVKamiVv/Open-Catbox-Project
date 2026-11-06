@@ -41,8 +41,12 @@ use crate::{
     },
     capture::{self, CaptureTargets, PendingCapture},
     cli::Cli,
+    fps_counter::FpsCounter,
     layer::user::EffectTextures,
-    render::PreRenderContext,
+    render::{
+        PreRenderContext,
+        overlay::{OverlayManager, OverlayVisitable},
+    },
     savedata,
     update::UpdateContext,
     wiper::{mask::MaskWiperImpl, timed::TimedWiper},
@@ -79,6 +83,13 @@ pub enum AppAction {
     Minus,
     /// shortcut: the port has no save menu yet, so F5 saves to the slot the menu would open at
     Save,
+    /// `--dev` only (ignored otherwise): F3 the overlay window, F6 pause, F7 one frame, F8/F9 slower/faster, F10 1x
+    DevOverlay,
+    DevPause,
+    DevStep,
+    DevSlower,
+    DevFaster,
+    DevSpeedReset,
 }
 
 impl Action for AppAction {
@@ -126,6 +137,12 @@ impl Action for AppAction {
             AppAction::Plus => key(KeyCode::Equal) || pad(GamepadButton::Plus),
             AppAction::Minus => key(KeyCode::Minus) || pad(GamepadButton::Minus),
             AppAction::Save => key(KeyCode::F5),
+            AppAction::DevOverlay => key(KeyCode::F3),
+            AppAction::DevPause => key(KeyCode::F6),
+            AppAction::DevStep => key(KeyCode::F7),
+            AppAction::DevSlower => key(KeyCode::F8),
+            AppAction::DevFaster => key(KeyCode::F9),
+            AppAction::DevSpeedReset => key(KeyCode::F10),
         })
     }
 }
@@ -149,6 +166,8 @@ pub struct App {
     pending_capture: Option<PendingCapture>,
     /// Where the save file is written; `None` when no location is known
     savedata_path: Option<PathBuf>,
+    /// `--dev`
+    dev: Option<DevTools>,
 }
 
 impl ShinApp for App {
@@ -196,6 +215,9 @@ impl ShinApp for App {
             None => SaveData::new(),
         };
         let effect_textures = adv_assets.effect_textures.clone();
+        let dev = cli
+            .dev
+            .then(|| DevTools::new(&context.wgpu.device, context.render.surface_texture_format));
         // the game boots to the title; debugging options and --new-game/--load go straight to the story
         let straight_to_story = cli.new_game
             || cli.load.is_some()
@@ -238,6 +260,7 @@ impl ShinApp for App {
                 capture_dir: cli.capture_dir,
                 pending_capture: None,
                 savedata_path,
+                dev,
             });
         }
 
@@ -360,6 +383,7 @@ impl ShinApp for App {
             capture_dir: cli.capture_dir,
             pending_capture: None,
             savedata_path,
+            dev,
         })
     }
 
@@ -378,6 +402,21 @@ impl ShinApp for App {
         if input[AppAction::ToggleFullscreen].is_clicked {
             context.winit.toggle_fullscreen();
         }
+        // the one place the frame's time enters the game
+        let elapsed_time = match &mut self.dev {
+            Some(dev) => dev.game_time(&input, elapsed_time),
+            None => elapsed_time,
+        };
+        // paused (and not stepping), the game sees no input either, so a click cannot advance a line
+        let (input, pointer) = if self.dev.as_ref().is_some_and(|dev| dev.paused) && elapsed_time.is_zero() {
+            let released = Pointer {
+                position: pointer.position,
+                held: false,
+            };
+            (EnumMap::default(), released)
+        } else {
+            (input, pointer)
+        };
 
         if let Some(pending) = self.pending_capture.take() {
             match pending.save(&context.wgpu.device, &self.capture_dir) {
@@ -607,6 +646,97 @@ impl ShinApp for App {
         }
 
         // render_layer(pass, &transform, &self.adv, FloatColor4::BLACK, 0);
+    }
+
+    /// `--dev`: runs the overlays' egui pass, which takes the clicks egui wants before the game sees them
+    fn filter_input(&mut self, context: AppContext<Self>, input: &mut RawInputState) {
+        let Some(dev) = &mut self.dev else { return };
+        let window = &context.winit.window;
+        let size = window.inner_size();
+        dev.overlay
+            .start_update(input, (size.width, size.height), window.scale_factor() as f32);
+        let (fps, paused, speed) = (&dev.fps, dev.paused, dev.speed);
+        let scene = &self.scene;
+        dev.overlay.visit_overlays(|collector| {
+            collector.overlay(
+                "Time",
+                |_ctx, top_left| {
+                    if paused {
+                        top_left.label(format!("PAUSED at {speed}x (F6 resume, F7 step)"));
+                    } else if speed != 1.0 {
+                        top_left.label(format!("Speed {speed}x (F10 resets)"));
+                    }
+                },
+                true,
+            );
+            fps.visit_overlay(collector);
+            if let Scene::Adv(adv) = scene {
+                adv.visit_overlay(collector);
+            }
+        });
+        dev.overlay
+            .finish_update(&context.wgpu.device, &context.wgpu.queue, input);
+    }
+
+    fn render_overlay(
+        &mut self,
+        context: RenderContext,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+    ) {
+        if let Some(dev) = &mut self.dev {
+            dev.overlay
+                .render(&context.wgpu.device, &context.wgpu.queue, encoder, target);
+        }
+    }
+}
+
+/// `--dev`: the debug overlays and the control of the game's time
+struct DevTools {
+    overlay: OverlayManager,
+    fps: FpsCounter,
+    paused: bool,
+    /// A power of two from 1/8 to 8
+    speed: f32,
+}
+
+impl DevTools {
+    fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+        Self {
+            overlay: OverlayManager::new(device, surface_format),
+            fps: FpsCounter::new(),
+            paused: false,
+            speed: 1.0,
+        }
+    }
+
+    /// Handles the dev keys and turns the real frame time into the game's
+    // shortcut: only the scenes' delta is scaled; audio, videos and wall-clock timers run on at 1x. Stretch them
+    // in shin-audio/shin-video if slowed-down sound is ever needed
+    fn game_time(&mut self, input: &EnumMap<AppAction, ActionState>, elapsed: Duration) -> Duration {
+        self.fps.record(elapsed);
+        if input[AppAction::DevOverlay].is_clicked {
+            self.overlay.toggle_window();
+        }
+        if input[AppAction::DevPause].is_clicked {
+            self.paused = !self.paused;
+        }
+        if input[AppAction::DevSlower].is_clicked {
+            self.speed = (self.speed / 2.0).max(0.125);
+        }
+        if input[AppAction::DevFaster].is_clicked {
+            self.speed = (self.speed * 2.0).min(8.0);
+        }
+        if input[AppAction::DevSpeedReset].is_clicked {
+            self.speed = 1.0;
+        }
+        if !self.paused {
+            elapsed.mul_f32(self.speed)
+        } else if input[AppAction::DevStep].is_clicked {
+            Duration::from_secs_f64(1.0 / 60.0)
+        } else {
+            Duration::ZERO
+        }
     }
 }
 

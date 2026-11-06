@@ -7,7 +7,7 @@ use std::{
 use cfg_if::cfg_if;
 use derive_where::derive_where;
 use enum_map::EnumMap;
-use shin_input::{Action, ActionState, ActionsState, Pointer, RawInputAccumulator};
+use shin_input::{Action, ActionState, ActionsState, Pointer, RawInputAccumulator, RawInputState};
 use shin_render::{
     init::{RenderResources, WgpuInitResult, WgpuResources},
     render_pass::RenderPass,
@@ -69,6 +69,18 @@ pub trait ShinApp: Sized {
     // can't pass context here because `RenderPass` borrows a bunch of stuff from there
     // let's hope it won't be an issue ;)
     fn render(&mut self, context: RenderContext, pass: &mut RenderPass);
+
+    /// Sees the frame's raw input before it becomes actions, so debug tools can take the clicks they use
+    fn filter_input(&mut self, _context: AppContext<Self>, _input: &mut RawInputState) {}
+
+    /// Draws over the finished frame (debug overlays), after `render`'s pass has ended
+    fn render_overlay(
+        &mut self,
+        _context: RenderContext,
+        _encoder: &mut wgpu::CommandEncoder,
+        _target: &wgpu::TextureView,
+    ) {
+    }
 
     /// The window is being closed
     fn exiting(&mut self) {}
@@ -565,7 +577,17 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                 let elapsed = now_update.duration_since(*last_update);
                 *last_update = now_update;
 
-                let raw_instantaneous_input_state = raw_input_state.start_frame();
+                let mut raw_instantaneous_input_state = raw_input_state.start_frame();
+                app.filter_input(
+                    AppContext {
+                        event_loop,
+                        event_loop_proxy,
+                        winit,
+                        wgpu,
+                        render,
+                    },
+                    &mut raw_instantaneous_input_state,
+                );
                 let instantaneous_input_state =
                     A::ActionType::lower(&raw_instantaneous_input_state);
                 // NOTE: this interface does not expose analog stick positions, as well as mouse wheel (and buttons...)
@@ -643,6 +665,12 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                     let context = RenderContext { winit, wgpu };
 
                     app.render(context, &mut pass);
+                    drop(pass);
+                    app.render_overlay(
+                        RenderContext { winit, wgpu },
+                        &mut render_encoder,
+                        &surface_texture.view,
+                    );
                 });
 
                 info_span!("submit").in_scope(|| {

@@ -199,6 +199,11 @@ impl MessageLayer {
         self.finished.take()
     }
 
+    /// The last MSGSET's line (for the debug overlay)
+    pub fn message_id(&self) -> MessageId {
+        self.message_id
+    }
+
     pub fn new(
         adv_fonts: AdvFonts,
         messagebox_textures: Arc<MessageboxTextures>,

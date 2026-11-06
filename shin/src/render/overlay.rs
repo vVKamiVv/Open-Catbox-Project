@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, time::Instant};
 
 use bevy_utils::HashMap;
 use egui::{
@@ -7,36 +7,15 @@ use egui::{
     ViewportIdMap,
 };
 use egui_wgpu::{Renderer, ScreenDescriptor};
-use enum_map::{enum_map, Enum};
-use glam::vec2;
-use shin_input::{inputs::MouseButton, Action, ActionState, RawInputState};
-use winit::keyboard::KeyCode;
+use shin_input::{inputs::MouseButton, RawInputState};
 
-use crate::time::Time;
-
-/// Overlay Manager actions
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Enum)]
-pub enum OverlayManagerAction {
-    ToggleOverlayManager,
-}
-
-// impl Action for OverlayManagerAction {
-//     fn default_action_map() -> ActionMap<Self> {
-//         fn map(v: OverlayManagerAction) -> InputSet {
-//             match v {
-//                 OverlayManagerAction::ToggleOverlayManager => {
-//                     [KeyCode::F3.into()].into_iter().collect()
-//                 }
-//             }
-//         }
-//
-//         ActionMap::new(enum_map! { v => map(v) })
-//     }
-// }
-
+/// The debug overlays (`--dev`), drawn with egui over the finished frame; the app toggles the window with F3
 pub struct OverlayManager {
     show_overlays_window: bool,
-    // action_state: ActionState<OverlayManagerAction>,
+    start: Instant,
+    /// The surface's size in pixels and the scale, as of the last update
+    size_in_pixels: [u32; 2],
+    pixels_per_point: f32,
     renderer: Renderer,
     context: Context,
     primitives: Vec<ClippedPrimitive>,
@@ -112,7 +91,9 @@ impl OverlayManager {
 
         Self {
             show_overlays_window: false,
-            // action_state: ActionState::new(),
+            start: Instant::now(),
+            size_in_pixels: [1, 1],
+            pixels_per_point: 1.0,
             renderer,
             context,
             primitives: Vec::new(),
@@ -122,53 +103,37 @@ impl OverlayManager {
         }
     }
 
-    fn screen_descriptor(&self) -> ScreenDescriptor {
-        let ctx = &self.context;
+    pub fn toggle_window(&mut self) {
+        self.show_overlays_window = !self.show_overlays_window;
+    }
 
-        let pixels_per_point = ctx.pixels_per_point();
-        let size = ctx.input(|i| i.screen_rect.size());
-        let size = vec2(size.x, size.y); // convert from egui Vec2 to glam Vec2
-        assert_ne!(
-            size,
-            vec2(10000.0, 10000.0),
-            "Screen size is not set, was the update method called?"
-        );
+    fn screen_descriptor(&self) -> ScreenDescriptor {
         ScreenDescriptor {
-            size_in_pixels: [size.x as u32, size.y as u32],
-            pixels_per_point,
+            size_in_pixels: self.size_in_pixels,
+            pixels_per_point: self.pixels_per_point,
         }
     }
 
+    /// `window_size` in physical pixels, `pixels_per_point` the window's scale factor
     pub fn start_update(
         &mut self,
-        time: &Time,
-        // yes, we can mutate the input state
-        // this is needed to consume the mouse events
         raw_input_state: &RawInputState,
         window_size: (u32, u32),
+        pixels_per_point: f32,
     ) {
-        let ctx = &self.context;
-
-        // self.action_state.update(raw_input_state);
-        //
-        // if self
-        //     .action_state
-        //     .is_just_pressed(OverlayManagerAction::ToggleOverlayManager)
-        // {
-        //     self.show_overlays_window = !self.show_overlays_window;
-        // }
-
         for id in self.free_textures.drain(..) {
             self.renderer.free_texture(&id);
         }
 
-        let pixels_per_point = 2.0;
+        self.size_in_pixels = [window_size.0.max(1), window_size.1.max(1)];
+        self.pixels_per_point = pixels_per_point;
 
         let mut events = Vec::new();
 
+        // winit gives the cursor in physical pixels, egui wants points
         let mouse_pos = Pos2::new(
-            raw_input_state.mouse.position.x / ctx.pixels_per_point(),
-            raw_input_state.mouse.position.y / ctx.pixels_per_point(),
+            raw_input_state.mouse.position.x / pixels_per_point,
+            raw_input_state.mouse.position.y / pixels_per_point,
         );
 
         events.push(egui::Event::PointerMoved(mouse_pos));
@@ -220,10 +185,13 @@ impl OverlayManager {
             viewports,
             screen_rect: Some(Rect::from_min_max(
                 Pos2::default(),
-                Pos2::new(window_size.0 as f32, window_size.1 as f32),
+                Pos2::new(
+                    window_size.0 as f32 / pixels_per_point,
+                    window_size.1 as f32 / pixels_per_point,
+                ),
             )),
             max_texture_side: None,
-            time: Some(time.elapsed_seconds_f64()),
+            time: Some(self.start.elapsed().as_secs_f64()),
             predicted_dt: 0.0,
             modifiers: Default::default(),
             events,
@@ -244,11 +212,15 @@ impl OverlayManager {
         let ctx = &self.context;
 
         egui::Area::new(egui::Id::new("top-left")).show(ctx, |top_left| {
+            // the area is as narrow as its content, so wrapping would break every label at its first space
+            top_left.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
             let mut visit_fn = Some(visit_fn);
 
             let window_shown = if self.show_overlays_window {
                 let result = egui::Window::new("Overlays")
                     .resizable(false)
+                    // out of the way of the labels in the top left, which grow with the overlays shown
+                    .anchor(egui::Align2::RIGHT_TOP, [-8.0, 8.0])
                     .show(ctx, |ui| {
                         let mut collector = OverlayCollector {
                             ctx,
@@ -300,41 +272,46 @@ impl OverlayManager {
 
         // TODO: handle platform outputs or smth
 
-        self.primitives = ctx.tessellate(full_output.shapes, 2.0);
+        self.primitives = ctx.tessellate(full_output.shapes, self.pixels_per_point);
 
         // update the textures as requested
         for (id, tex) in full_output.textures_delta.set {
             self.renderer.update_texture(device, queue, id, &tex);
         }
-
-        // let mut encoder =
-        //     resources
-        //         .device
-        //         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        //             label: Some("Egui Encoder"),
-        //         });
-        //
-        // let user_cmd_bufs = self.renderer.update_buffers(
-        //     &resources.device,
-        //     &resources.queue,
-        //     &mut encoder,
-        //     &self.primitives,
-        //     &self.screen_descriptor(),
-        // );
-        //
-        // resources.queue.submit(
-        //     user_cmd_bufs
-        //         .into_iter()
-        //         .chain(std::iter::once(encoder.finish())),
-        // );
+        // freed after this frame has drawn with them
+        self.free_textures.extend(full_output.textures_delta.free);
     }
 
-    pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
-        render_pass.push_debug_group("Overlay");
-        todo!();
-        // self.renderer
-        //     .render(render_pass, &self.primitives, &self.screen_descriptor());
-        render_pass.pop_debug_group();
+    /// Draws the overlays over `target` (the whole surface, outside the game's letterbox too)
+    pub fn render(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+    ) {
+        let screen = self.screen_descriptor();
+        // the returned command buffers are for paint callbacks, which the overlays do not use
+        let _ = self
+            .renderer
+            .update_buffers(device, queue, encoder, &self.primitives, &screen);
+        let mut pass = encoder
+            .begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Overlay"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: target,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            })
+            .forget_lifetime();
+        self.renderer.render(&mut pass, &self.primitives, &screen);
     }
 }
 

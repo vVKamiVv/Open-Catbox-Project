@@ -125,7 +125,6 @@ impl<T> LayerGroup<T> {
             .ok()
     }
 
-    #[expect(unused)] // for future stuff
     pub fn get_used_layerbank_ids(&self) -> Vec<LayerbankId> {
         self.layers.iter().map(|item| item.layerbank_id).collect()
     }

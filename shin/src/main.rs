@@ -14,7 +14,6 @@ mod audio;
 mod capture;
 mod character_box;
 mod cli;
-#[expect(unused)]
 mod fps_counter;
 mod layer;
 mod random;

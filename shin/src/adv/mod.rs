@@ -56,7 +56,8 @@ use crate::{
     audio::{BgmPlayer, SePlayer, VoicePlayer, play_sys_se},
     capture::CaptureTargets,
     layer::{
-        AnyLayer, AnyLayerMut, Layer as _, LayerGroup, PageLayer, RootLayerGroup, ScreenLayer,
+        AnyLayer, AnyLayerMut, DrawableLayer as _, Layer as _, LayerGroup, PageLayer, RootLayerGroup,
+        ScreenLayer,
         message_layer::{MessageLayer, MessageboxTextures},
         apply_backdrop_blur, render_layer_without_bg,
         render_params::TransformParams,
@@ -1276,62 +1277,73 @@ fn replay(
 //     }
 // }
 
-// impl OverlayVisitable for Adv {
-//     fn visit_overlay(&self, collector: &mut OverlayCollector) {
-//         collector.subgroup(
-//             "ADV",
-//             |collector| {
-//                 collector.overlay(
-//                     "Command",
-//                     |_ctx, top_left| {
-//                         let command = if let Some(command) = &self.current_command {
-//                             Cow::Owned(format!("{:?}", command))
-//                         } else {
-//                             Cow::Borrowed("None")
-//                         };
-//                         top_left.label(format!(
-//                             "Command: {:08x} {}",
-//                             self.scripter.position().0,
-//                             command
-//                         ));
-//                     },
-//                     true,
-//                 );
-//                 self.adv_state
-//                     .root_layer_group
-//                     .message_layer()
-//                     .visit_overlay(collector);
-//                 collector.overlay(
-//                     "User Layers",
-//                     |ctx, _top_left| {
-//                         let page_layer =
-//                             self.adv_state.root_layer_group.screen_layer().page_layer();
-//                         Window::new("User Layers").show(ctx, |ui| {
-//                             for plane in 0..PLANES_COUNT {
-//                                 let layer_group = page_layer.plane(plane as u32);
-//                                 let layer_ids =
-//                                     layer_group.get_layer_ids().sorted().collect::<Vec<_>>();
-//                                 if !layer_ids.is_empty() {
-//                                     ui.monospace(format!("Plane {}:", plane));
-//                                     for layer_id in layer_ids {
-//                                         let layer = layer_group.get_layer(layer_id).unwrap();
-//                                         ui.monospace(format!(
-//                                             "  {:>2}: {:?}",
-//                                             layer_id.raw(),
-//                                             layer
-//                                         ));
-//                                     }
-//                                 }
-//                             }
-//                         });
-//                     },
-//                     false,
-//                 );
-//             },
-//             true,
-//         );
-//     }
-// }
+impl OverlayVisitable for Adv {
+    fn visit_overlay(&self, collector: &mut OverlayCollector) {
+        collector.overlay(
+            "ADV",
+            |_ctx, top_left| {
+                let command = match &self.current_command {
+                    // a command's fields can hold a whole line of text
+                    Some(command) => Cow::Owned(format!("{command:?}").chars().take(120).collect()),
+                    None => Cow::Borrowed("None"),
+                };
+                let save = &self.vm_state.save;
+                let skip_auto = self.adv_state.skip_auto;
+                top_left.label(format!(
+                    "Script {:08x} {command}
+Message {}  save counter {}  event {:?}
+auto {}  skip {}  skipping {}",
+                    self.scripter.position().0,
+                    self.adv_state.root_layer_group.message_layer().message_id().0,
+                    save.counter,
+                    save.event,
+                    skip_auto & AUTO != 0,
+                    skip_auto & SKIP != 0,
+                    self.adv_state.skipping,
+                ));
+            },
+            false,
+        );
+        collector.overlay(
+            "Layers",
+            |ctx, _top_left| {
+                let plane = self.vm_state.layers.current_plane;
+                let group = self
+                    .adv_state
+                    .root_layer_group
+                    .screen_layer()
+                    .page_layer()
+                    .get_plane(plane);
+                Window::new("Layers").default_pos([8.0, 160.0]).show(ctx, |ui| {
+                    ui.monospace(format!("Plane {}", plane.raw()));
+                    let banks = group
+                        .get_used_layerbank_ids()
+                        .into_iter()
+                        .map(|bank| (&self.vm_state.layers.layerbanks[bank], bank))
+                        .sorted_by_key(|(state, _)| state.layer_id.raw());
+                    for (state, bank) in banks {
+                        ui.monospace(format!(
+                            "layer {:>3} {:?} (bank {})",
+                            state.layer_id.raw(),
+                            state.layer_type,
+                            bank.raw()
+                        ));
+                        let Some(layer) = group.get_layer(bank) else { continue };
+                        for (property, tweener) in layer.properties().changed() {
+                            let running = if tweener.is_idle() { "" } else { " tweening" };
+                            ui.monospace(format!(
+                                "    {property:?}: {} -> {}{running}",
+                                tweener.value(),
+                                tweener.target_value()
+                            ));
+                        }
+                    }
+                });
+            },
+            false,
+        );
+    }
+}
 
 /// The bits of [`AdvState::skip_auto`]
 const AUTO: u8 = 1;

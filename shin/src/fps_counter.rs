@@ -1,9 +1,6 @@
 use std::{collections::VecDeque, time::Duration};
 
-use crate::{
-    render::overlay::{OverlayCollector, OverlayVisitable},
-    update::{Updatable, UpdateContext},
-};
+use crate::render::overlay::{OverlayCollector, OverlayVisitable};
 
 const WINDOW_SIZE: usize = 60;
 
@@ -17,13 +14,10 @@ impl FpsCounter {
             values: VecDeque::new(),
         }
     }
-}
 
-impl Updatable for FpsCounter {
-    fn update(&mut self, context: &mut UpdateContext) {
-        todo!();
-
-        // self.values.push_back(context.time_delta());
+    /// Takes the real frame time, not the game's (scaled) delta
+    pub fn record(&mut self, elapsed: Duration) {
+        self.values.push_back(elapsed);
         if self.values.len() > WINDOW_SIZE {
             self.values.pop_front();
         }
