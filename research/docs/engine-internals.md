@@ -296,7 +296,8 @@ Render: one full-screen quad, old screen in texture slot 0, new screen in slot 1
 
 ### GlassWiper **confirmed** (constructor `0x710006b930`, update `0x710006c980`, render `0x710006cae0`, shader program `0x29`)
 
-Implemented in shin as `shin/src/wiper/glass.rs` + `wgsl/wiper_glass.wgsl` (not yet compared on screen). Summary first,
+Implemented in shin as `shin/src/wiper/glass.rs` + `wgsl/wiper_glass.wgsl`; compared with the original on screen
+(Ep5, after line 32648): the lighting and the culling below match. Summary first,
 then the details as they were worked out:
 
 - `GlassWiperLoader` (`0x710011c740`) passes only the duration; Umineko's 167 uses all have zero parameters.
@@ -338,9 +339,8 @@ then the details as they were worked out:
 - Cull state: `0x71000cf6e0` stores an index that the state flush `0x71000cf980` looks up in the table at
   `0x7100233af8` (filled by `0x71000ce600`: 0 → 0, 1 → 2, 2 → 1, i.e. NVN cull none / back / front) and applies
   through an NVN polygon state together with a front-face value of 0. shin's `CullFace` enum has the same order
-  (`None`, `Back`, `Front`), so the glass shards use `CullFace::Front`. **Inferred:** combined with the clip-space y
-  flip that both engines apply, this hides faces turned away from the camera; check against the original (shards
-  should look brighter than the old screen after the flash, not darker).
+  (`None`, `Back`, `Front`), so the glass shards use `CullFace::Front`. Combined with the clip-space y flip that both
+  engines apply, this hides faces turned away from the camera (confirmed on screen against the original).
 
 Data layout and constant addresses (for anyone re-checking the numbers):
 

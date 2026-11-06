@@ -83,6 +83,7 @@ set-up; `--unsafe-entry-point` skips the start-up block, so sprites and the text
 | Blur (property 66) on the background | Ep2 line 7652 | Match: mean difference 0.43 in the background, 99.9 % of the upper half within 32 |
 | Whirl wipe (WIPE 8, with ghosting 900) | Ep2 after line 11555 | Match: same spiral and unwinding; the line after it, 11556, mean difference 0.81, 99.6 % within 32 |
 | Butterfly summoning (pictures 862, 854, 856 and the golden glow) | Ep2 lines 11555-11556 | Same stages and look frame by frame |
+| Glass wipe (WIPE 9) | Ep5 after line 32648 | Match: same flash, lighting (lit faces up, dark sides) and fade at the end; shard paths are random in both |
 
-Still to compare: Glass (TP4 31739, Ep5 32648), mosaic (Ep5 34483), dissolve (TP1 7409), raster (extra pieces),
+Still to compare: mosaic (Ep5 34483), dissolve (TP1 7409), raster (extra pieces),
 ripple and transparent movies on screen (Ep8 61681, 64886), the quiz and the main8 minigames.
