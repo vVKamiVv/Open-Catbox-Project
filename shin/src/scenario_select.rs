@@ -770,7 +770,12 @@ pub struct Bridge {
 }
 
 /// The glow textures' shrink factors and their greys when added over the screen (`0x710015a7b0`, `6f4`, `8c8`, `94c`)
-const GLOW: [(f32, f32); 4] = [(4.0, 1.0 / 15.0), (8.0, 2.0 / 15.0), (16.0, 4.0 / 15.0), (32.0, 8.0 / 15.0)];
+const GLOW: [(f32, f32); 4] = [
+    (4.0, 1.0 / 15.0),
+    (8.0, 2.0 / 15.0),
+    (16.0, 4.0 / 15.0),
+    (32.0, 8.0 / 15.0),
+];
 
 /// Clip space onto the top-left `1 / shrink` of the target
 fn glow_region(shrink: f32) -> Mat4 {
@@ -819,8 +824,11 @@ impl Bridge {
         });
         for ((texture, scratch), (shrink, _)) in glow.iter_mut().zip(GLOW) {
             let depth_stencil = ctx.depth_stencil;
-            let mut pass =
-                ctx.begin_pass(texture.as_texture_target(), Some(depth_stencil), "bridge/glow");
+            let mut pass = ctx.begin_pass(
+                texture.as_texture_target(),
+                Some(depth_stencil),
+                "bridge/glow",
+            );
             pass.clear(Some(UnormColor::BLACK), Some(0), Some(1.0));
             self.draw_doors(&mut pass, glow_region(shrink), FloatColor4::BLACK);
             drop(pass);
