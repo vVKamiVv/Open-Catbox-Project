@@ -1024,3 +1024,56 @@ it and does not tap. The dialog decays by 0.9 instead.
 
 The port (`shin/src/ui/gesture.rs`) takes the mouse's left button as one finger. A mouse does not report every
 frame, so its flick speed is the last frame the pointer moved, if under two frames before the release.
+
+### 17.1 The other screens' listeners
+
+Long presses do nothing on these screens. Shared: a press tweens the item's highlight to 0.7 over 0.2 s (a drag,
+cancel or end tweens it back to 0 over 0.2 s; a tap flashes 0.7 then 0); a down that returns false is not tracked;
+the close button (1764..1848, 32..116) plays `decide` on a tap; a down while a list coasts stops it and that touch
+selects nothing; list flicks store only `vy` and coast with the shared idiom.
+
+- **Tips** (down `0x7100109b80`, hit `0x7100109800`): list x 86..552, y 188..918, rows from the item rects (88 px
+  pitch from y 193); the item already under the cursor counts as empty. A down on the text (x 602..1834, y
+  188..918) grabs it. Press: highlight 0.7 and the cursor moves to the item (the text rebuilds). Tap on an item:
+  decide, flash, cursor; close: decide and close. Drag scrolls the text, clamp [0, height - 730]; over an item it
+  only drops the highlight. Flick only when the text was grabbed (coasting `0x7100108070`).
+- **Characters** (down `0x71000543e0`): grid x 86..494, y 188..918, ignored while the page slides; the cell under
+  the cursor gives "selected". Buttons only when shown, at the render's rects from x 90, y 724; profile text x
+  544..1516, y 188..918 grabs. A press on a new cell selects it at once. Tap: the selected cell steps through its
+  sub-characters (2+) as A does; another cell decides, flashes, selects, resets the scroll and loads the picture;
+  buttons 0/1 turn the page (move sound), 2/3 the life state +1/-1, 4 the outfit. Drag scrolls the profile, clamp
+  [0, h - 730]; pages are never flicked; the flick is the profile's.
+- **Picture Box** (down `0x7100049ba0`, hit `0x7100049a60`): x 136..1784, y 190..916, content y = y - 190 +
+  scroll; a miss is not tracked. Press: highlight and cursor. Tap: cursor, then open the viewer or error
+  (`0x7100049540`). Drag clamp [0, rows height - 726], the cursor following on every drag and coasting frame.
+  **Viewer:** down stops the pan; tap: decide, next picture or exit; drag (only with a picture, not fit to the
+  screen): pan.x += dx, pan.y += dy * -0.5625, then the layout clamps; flick (vx, vy * 0.5625); coasting adds the
+  speed each frame without dt, decaying by 0.95^dt, until fit mode, no picture or a scale tween.
+- **Music Box** (down `0x7100031d40`, hit `0x7100031bb0`): x 136..1784, y 188..918; two columns 800 wide, 20 apart,
+  from the list's x; row = (y - 188 + scroll) / 92, its bottom 3 px a gap; index row * 2 + column. Press:
+  highlight, cursor. Tap: cursor; a track not playing plays as A does; **the playing track stops** (30-frame fade).
+  Drag clamp [0, h - 730], the cursor following; flick coasts (`0x71000306d0`).
+- **Movie Box** (down `0x7100089300`): x 136..1784, y 190..916, the 216 px thumbnail centred in its cell; a miss is
+  not tracked. Press: highlight, cursor. Tap: cursor, then play. Drag only drops the highlight: no scroll, no flick.
+  Its viewer: a tap anywhere plays decide and skips.
+- **Character Box** (down `0x710003bd60`): close, the hide button (1668..1752, 32..116) and the panel band 162 <= y
+  < 980; rows at y 248 (144 tall), 392, 504, 616 (112), 728; arrows 80 tall at y 280, 408, 520, 632, 760, hit only
+  when the value can move that way. Press: the row cursor, an arrow's highlight. Tap: an arrow steps the value (and
+  flashes if it changed); hide: decide and hide; close: decide and close. No flick. **Viewer:** tap: decide, back
+  to the panel; drag: cam.x -= dx, cam.y -= 0.5625 * dy, clamped to x +-420, y +-130; flick (vx, 0.5625 vy),
+  coasting cam -= v without dt, v *= 0.95^dt, the same clamp.
+- **Scenario select** (down `0x71000e0210`): tracked for 160 <= y < 980; tabs (2+, never the current one) at the
+  tab rects; the list x 86..526, y 246..916, content y = y - 246 + scroll. Press: highlight, cursor. Tap on an item:
+  cursor, then decide (state 0: error); on a tab: flash, decide, switch tab (each tab keeps its cursor and scroll;
+  the details picture fades 1 to 0 over 10 frames). Drag clamp [0, tab height - 670], the cursor moving to the
+  first row fully in view; coasting `0x71000ddb70` the same.
+- **Config** (down `0x710005d4b0`): list x 136..1784, y 252..918, content x' = x - 136, y' = y - 252 + scroll, view
+  666, clamp [0, h - 666]. A slider grabs only on its knob (|x' - (value * 6 + 1000)| < 48 within the row); options
+  are 240 wide, 12 apart, right-aligned to x' 1624. Press: cursor, the option's highlight. Tap on an option: select
+  it, flash, write the setting, decide; tab: flash, decide, switch; close: **decide**. A drag on a grabbed knob, or
+  starting on the knob within 40 degrees of the horizontal, sets value = start + trunc(sum dx / 6), 0..100;
+  otherwise the list scrolls with the cursor following; the flick coasts the list (`0x710005b270`).
+- **System menu:** besides tap-to-select and a tap outside closing with cancel, a flick over 20 within 30 degrees
+  of leftward closes it with cancel (`0x710001eaa0`).
+- **Title submenu:** down hit `0x7100110a30`; press: highlight and cursor (`0x71001106d0`); tap on an item: cursor
+  and decide; elsewhere: cancel and close (`0x71001103b0`).
