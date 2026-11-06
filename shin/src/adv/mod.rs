@@ -138,6 +138,8 @@ pub struct Adv {
     load_request: Option<GameDataEntry>,
     /// Where the jump dialog on screen goes if confirmed
     pending_jump: Option<GameDataEntry>,
+    /// Frames until EXIT leaves for the title
+    exit_wait: Option<f32>,
 }
 
 /// Where a load's replay left the script
@@ -189,6 +191,7 @@ impl Adv {
             exit_to_title: false,
             load_request: None,
             pending_jump: None,
+            exit_wait: None,
         }
     }
 
@@ -796,8 +799,8 @@ impl Adv {
                             self.current_command = Some(executing_command);
                         }
                         CommandStartResult::Exit => {
-                            self.write_requested = true;
                             self.script_exited = true;
+                            self.exit_wait = Some(30.0);
                         }
                     },
                 }
@@ -858,18 +861,26 @@ impl Adv {
                     self.current_command = Some(executing_command);
                 }
                 CommandStartResult::Exit => {
-                    self.write_requested = true;
-                    // the original returns to the menus here, which the port does not have yet
-                    info!(
-                        "Script reached EXIT at {:?}; no menus to return to, so the script stops here",
-                        self.scripter.position()
-                    );
+                    info!("Script reached EXIT at {:?}", self.scripter.position());
                     self.script_exited = true;
+                    self.exit_wait = Some(30.0);
                 }
             }
         }
 
         self.adv_state.update(context);
+
+        // EXIT: after 30 frames and once the box has closed, the save is written and the title opens
+        // (`0x7100004b10`, `0x71000147e0`)
+        if let Some(wait) = &mut self.exit_wait {
+            *wait -= context.delta_ticks.as_f32();
+            if *wait <= 0.0 && self.adv_state.message_layer().is_closed() && self.tasks.is_empty() {
+                self.exit_wait = None;
+                info!("The piece is over; returning to the title");
+                self.write_requested = true;
+                self.exit_to_title = true;
+            }
+        }
 
         let settings = &self.vm_state.global.settings;
         let modes = hud::HudModes {
