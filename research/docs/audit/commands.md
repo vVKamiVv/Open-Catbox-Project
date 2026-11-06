@@ -4,7 +4,7 @@
 > are kept as written so the evidence stays readable. Fixed since: read flags, MSGSET's event flags, MSGCLOSE, skip
 > and auto with the original's rules, rollback, the chapter jumps, event skip (by B and by a long press), the
 > scene-title and song-title banners, the notifications, CHARS, NOTIFYSET, TIPSGET, UNLOCK and EXIT's return to the
-> title. SHOWCHARS (1 use) is still a stub. Current status of every finding: [alignment-plan.md](../alignment-plan.md),
+> title. SHOWCHARS (1 use) is implemented since. Current status of every finding: [alignment-plan.md](../alignment-plan.md),
 > which also lists what was compared with the original and the port's measured accuracy.
 
 Area: every `shin::ADV::*` class (class-inventory "Script commands"), the VM run loop, and how `shin::ADV` drives

@@ -65,7 +65,7 @@ its Accuracy section gives the port's measured likeness to the original.
 
 | Area | Original | shin | Missing or stubbed in shin |
 |---|---|---|---|
-| Script commands | 61 | all 49 that Umineko uses | SHOWCHARS (1 use) is a stub: the original opens the Characters screen there, the port carries on. TROPHY does nothing, as on the Switch. The commands Umineko never uses (TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET) finish at once. SYSCALL 0 does not fade the touch screen's buttons, which the port does not draw |
+| Script commands | 61 | all 49 that Umineko uses | SHOWCHARS (1 use, Episode 5) opens the Characters screen and waits for it, as the original; compared with Eden. TROPHY does nothing, as on the Switch. The commands Umineko never uses (TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET) finish at once. SYSCALL 0 does not fade the touch screen's buttons, which the port does not draw |
 | Layer types | 10 | 7, all that Umineko loads | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's texts come from the player's executable (§3) |
 | Wipers | 11 | 5, all that Umineko uses (Whirl and Glass compared with the original, §7) | Ripple, Scanline, Scroll, Turn, Wave, Zoom (none used by Umineko) |
 | Systems | all menus and modes | all: adventure screen, saving and loading (§14), every scene and menu (§15), voices (§16), touch gestures and the touch effect (§17) | the touch screen's on-screen buttons |

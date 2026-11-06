@@ -43,7 +43,7 @@ pub use vm_state::{VmState, layers::LayerSelection};
 use winit::keyboard::KeyCode;
 
 use menu::{
-    AdvRequest, Task, TaskCx, backlog::Backlog, save_notice::SaveNotice, dialog::Dialog, hidden_window::HiddenWindow, jump::JumpDialog,
+    AdvRequest, Task, TaskCx, backlog::Backlog, chars::Chars, save_notice::SaveNotice, dialog::Dialog, hidden_window::HiddenWindow, jump::JumpDialog,
     system_menu::SystemMenu,
 };
 use shin_core::{primitives::color::FloatColor4, time::{Tween, Tweener}};
@@ -409,6 +409,50 @@ impl Adv {
         self.tasks.push(Box::new(backlog));
     }
 
+    /// SHOWCHARS (`0x710000e3c0`): opens the character screen with the scenario's CHARS state, and tells the command
+    /// when it has closed
+    fn update_show_chars(&mut self, context: &mut UpdateContext) {
+        use command::showchars::ShowChars;
+        match self.adv_state.show_chars {
+            ShowChars::None => {}
+            ShowChars::Requested => {
+                let audio = self.adv_state.audio_manager.clone();
+                let (grid, page) = self.vm_state.chars;
+                let chars = {
+                    let mut requests = Vec::new();
+                    let cx = TaskCx {
+                        frames: 0.0,
+                        focused: false,
+                        input: MenuInput::released(Default::default()),
+                        pre_render: &mut *context.pre_render,
+                        asset_server: context.asset_server,
+                        audio: &audio,
+                        assets: context.asset_server,
+                        global: &mut self.vm_state.global,
+                        requests: &mut requests,
+                    };
+                    Chars::new(&cx, &self.adv_state.menu_assets, grid, page)
+                };
+                match chars {
+                    Some(chars) => {
+                        self.hide_interface(true);
+                        self.pause(true);
+                        self.tasks.push(Box::new(chars));
+                        self.adv_state.show_chars = ShowChars::Open;
+                    }
+                    // without the screen's textures the script goes on
+                    None => self.adv_state.show_chars = ShowChars::None,
+                }
+            }
+            ShowChars::Open if self.tasks.is_empty() => {
+                self.pause(false);
+                self.hide_interface(false);
+                self.adv_state.show_chars = ShowChars::None;
+            }
+            ShowChars::Open => {}
+        }
+    }
+
     /// B (`0x7100013720`): hides the message window and the banners until the next press
     fn open_hidden_window(&mut self) {
         self.adv_state.skip_auto = 0;
@@ -767,6 +811,7 @@ impl Adv {
         //         .advance();
         // }
 
+        self.update_show_chars(context);
         // a task in the pool takes the input; the ADV's buttons only work without one (`0x7100011ea0`)
         let task_has_input = self.update_tasks(context, &input_state, pointer);
         let gestures = self.gestures.update(pointer, context.delta_ticks.as_f32());
@@ -1397,6 +1442,8 @@ pub struct AdvState {
     voice_duck: f32,
     /// The player's modes (`ADV+0x47c`): bit 0 auto, bit 1 skip
     pub skip_auto: u8,
+    /// A SHOWCHARS waiting for the character screen
+    pub show_chars: command::showchars::ShowChars,
     /// Whether the script is being skipped this frame (`isSkipping` `0x7100012430`), for the commands as they start
     pub skipping: bool,
     /// When this frame's update began (the frame clock `0x71000fc290`), for LAYERLOAD's short wait
@@ -1453,6 +1500,7 @@ impl AdvState {
             ),
             voice_duck: 1.0,
             skip_auto: 0,
+            show_chars: Default::default(),
             skipping: false,
             frame_start: std::time::Instant::now(),
             hud: hud::AdvHud::new(assets.hud_textures.clone(), assets.fonts.system_font.clone()),

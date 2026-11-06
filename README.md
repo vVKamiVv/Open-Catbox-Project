@@ -47,9 +47,7 @@ Characters 96.9 %, quiz 95.7 %, Tips 95.6 %. The formula, each comparison and th
 a per-pixel figure (glass, mosaic, dissolve, raster, transparent movies, every menu) are in the
 [accuracy notes](research/docs/alignment-plan.md#accuracy).
 
-Separately, **every command, layer type, transition and layer effect the game's script uses is implemented**,
-with one exception: SHOWCHARS, used once, which in the original opens the Characters screen and in the port just
-carries on. The inventory comes from statically analysing the whole script
+Separately, **every command, layer type, transition and layer effect the game's script uses is implemented**. The inventory comes from statically analysing the whole script
 ([`engine-internals.md`](research/docs/engine-internals.md) §2 and §10).
 
 ## 🍰 Preparing the tea party

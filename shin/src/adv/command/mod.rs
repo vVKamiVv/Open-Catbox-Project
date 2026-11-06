@@ -62,7 +62,7 @@ mod sestopall;
 mod sevol;
 mod sewait;
 mod sget;
-mod showchars;
+pub mod showchars;
 mod sset;
 mod syscall;
 mod sysse;
@@ -87,7 +87,7 @@ use shin_core::{
 use self::{
     bgmsync::BGMSYNC, layerload::LAYERLOAD, layerwait::LAYERWAIT, maskload::MASKLOAD,
     moviewait::MOVIEWAIT, msgclose::MSGCLOSE, msgset::MSGSET, msgwait::MSGWAIT, seonce::SEONCE,
-    quiz::QUIZ, select::SELECT, sewait::SEWAIT, voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
+    quiz::QUIZ, select::SELECT, showchars::SHOWCHARS, sewait::SEWAIT, voicewait::VOICEWAIT, wait::WAIT, wipe::WIPE, wipewait::WIPEWAIT,
 };
 use crate::{
     adv::{AdvState, VmState},
@@ -146,6 +146,8 @@ pub enum ExecutingCommand {
     SELECT,
     #[derivative(Debug = "transparent")]
     QUIZ,
+    #[derivative(Debug = "transparent")]
+    SHOWCHARS,
 }
 
 /// What a command does while a save is loaded (its replay slot, vtable slot 2)
