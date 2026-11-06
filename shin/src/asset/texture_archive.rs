@@ -70,6 +70,11 @@ impl NamedTextures {
             .unwrap_or_else(|| panic!("texture archive has no texture {name:?}"))
     }
 
+    /// Whether the archive has a texture called `name` (`0x7100118b00`)
+    pub fn contains(&self, name: &str) -> bool {
+        self.by_name.contains_key(name)
+    }
+
     /// The first texture of the archive (`0x7100118ae0` with index 0)
     pub fn first(&self) -> Option<&GpuTexture> {
         self.order.first().map(|name| self.get(name))

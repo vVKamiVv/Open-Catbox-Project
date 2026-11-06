@@ -29,6 +29,7 @@ use crate::{
     adv::menu::{
         AdvRequest, MenuAssets, Task, TaskCx,
         config_menu::ConfigMenu,
+        manual::Manual,
         save_menu::{Mode, SaveMenu},
     },
     app::AppAction,
@@ -431,14 +432,15 @@ impl Title {
                 ui::tween(&mut self.dim, 1.0, 90.0, Easing::Linear);
                 self.state = State::Continuing;
             }
-            LOAD | CONFIG => {
+            LOAD | CONFIG | MANUAL => {
                 minigame::tween_now(&mut self.dim, 0.5, 0.1);
                 let assets = self.assets.clone();
                 let cx = self.task_cx(context, true, MenuInput::default());
-                let child: Option<Box<dyn Task>> = if ty == LOAD {
-                    SaveMenu::new(&cx, &assets, Mode::Load).map(|m| Box::new(m) as Box<dyn Task>)
-                } else {
-                    ConfigMenu::new(&cx, &assets).map(|m| Box::new(m) as Box<dyn Task>)
+                let child: Option<Box<dyn Task>> = match ty {
+                    LOAD => SaveMenu::new(&cx, &assets, Mode::Load)
+                        .map(|m| Box::new(m) as Box<dyn Task>),
+                    CONFIG => ConfigMenu::new(&cx, &assets).map(|m| Box::new(m) as Box<dyn Task>),
+                    _ => Manual::new(&cx).map(|m| Box::new(m) as Box<dyn Task>),
                 };
                 self.child = child;
             }

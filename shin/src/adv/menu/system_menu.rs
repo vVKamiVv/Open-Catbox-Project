@@ -17,6 +17,7 @@ use tracing::warn;
 use super::{
     AdvRequest, MenuAssets, Task, TaskCx,
     config_menu::ConfigMenu,
+    manual::Manual,
     dialog::Dialog,
     save_menu::{Mode, SaveMenu},
 };
@@ -225,7 +226,14 @@ impl SystemMenu {
                     }
                 }
             }
-            CHARACTERS | TIPS | MANUAL => {
+            MANUAL => match Manual::new(cx) {
+                Some(manual) => self.child = Some(Child::Screen(Box::new(manual))),
+                None => {
+                    cx.sound("error");
+                    return;
+                }
+            },
+            CHARACTERS | TIPS => {
                 warn!("System menu item {id} has no screen in the port yet");
                 cx.sound("error");
                 return;

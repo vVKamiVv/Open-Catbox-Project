@@ -10,6 +10,7 @@ pub mod config_menu;
 pub mod dialog;
 pub mod hidden_window;
 pub mod jump;
+pub mod manual;
 pub mod save_menu;
 pub mod save_notice;
 pub mod system_menu;
