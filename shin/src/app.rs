@@ -496,7 +496,9 @@ impl ShinApp for App {
                 }
             }
             Scene::Bridge(bridge) => {
-                if let Some(scenario) = bridge.update(update_context.delta_ticks.as_f32()) {
+                let scenario = bridge.update(update_context.delta_ticks.as_f32());
+                bridge.pre_render(update_context.pre_render);
+                if let Some(scenario) = scenario {
                     // `0x71000e4630`: the new game's first entry
                     next = Some(Next::Story(
                         GameDataEntry {

@@ -1,10 +1,11 @@
 //! The scenario select (`shin::ScenarioSelect`, ctor `0x71000dc8f0`, update `0x71000ddb70`, render `0x71000de100`,
 //! keys `0x71000df440`): Start's list of story pieces in tabs, each with its details picture, from `/snrsel.txa`;
 //! and the bridge into a new game (`ScenarioSelectBridge`, `0x71000e3a20`): the screen splits into two doors that
-//! swing open onto white light.
+//! swing open onto white light, which glows through the opening (black doors on white, blurred at four sizes and
+//! added over the screen), then the screen goes from white to black.
 //!
-//! shortcut: the screen fades in instead of the curtain mask wipe, the bridge leaves out its bloom glow, and the list
-//! cannot be dragged or flung with the pointer.
+//! shortcut: the list cannot be dragged or flung with the pointer, and the glow's blur reads black past the edges of
+//! its shrunk picture where the original's small textures repeat their edge.
 
 use std::{f32::consts::FRAC_PI_2, sync::Arc};
 
@@ -16,7 +17,7 @@ use shin_core::{
         save::SaveData,
         scenario::{info::BgmId, instruction_elements::FromNumber},
     },
-    primitives::color::FloatColor4,
+    primitives::color::{FloatColor4, UnormColor},
     time::{Easing, Ticks, Tween, Tweener},
     vm::command::types::Volume,
 };
@@ -35,7 +36,11 @@ use crate::{
     app::AppAction,
     asset::{system::AssetServer, texture_archive::NamedTextures},
     audio::{BgmPlayer, play_sys_se},
-    layer::user::minigame::{self, Sprite},
+    layer::{
+        apply_region_blur,
+        user::minigame::{self, Sprite},
+    },
+    render::PreRenderContext,
     ui::{self, MenuInput},
     update::UpdateContext,
 };
@@ -759,6 +764,18 @@ pub struct Bridge {
     camera: Tweener,
     white: Tweener,
     timer: Tweener,
+    /// The glow (`+0x18..+0x30`, their scratch at `+0x38..`): the light through the opening (black doors on white)
+    /// at 1/4, 1/8, 1/16 and 1/32 of the size, blurred, made when first rendered
+    glow: Option<Vec<(RenderTexture, RenderTexture)>>,
+}
+
+/// The glow textures' shrink factors and their greys when added over the screen (`0x710015a7b0`, `6f4`, `8c8`, `94c`)
+const GLOW: [(f32, f32); 4] = [(4.0, 1.0 / 15.0), (8.0, 2.0 / 15.0), (16.0, 4.0 / 15.0), (32.0, 8.0 / 15.0)];
+
+/// Clip space onto the top-left `1 / shrink` of the target
+fn glow_region(shrink: f32) -> Mat4 {
+    Mat4::from_translation(vec3(-1.0 + 1.0 / shrink, 1.0 - 1.0 / shrink, 0.0))
+        * Mat4::from_scale(vec3(1.0 / shrink, 1.0 / shrink, 1.0))
 }
 
 impl Bridge {
@@ -772,7 +789,8 @@ impl Bridge {
         let mut white = Tweener::new(0.0);
         ui::hold(&mut white, 60.0);
         ui::tween(&mut white, 1.0, 180.0, Easing::SineIn);
-        let mut timer = Tweener::new(0.0);
+        // the last quad's grey: 1 from the start, held 240 frames, then down to black over 120 (`0x71000e3a20`)
+        let mut timer = Tweener::new(1.0);
         ui::hold(&mut timer, 240.0);
         timer.enqueue(1.0, Tween::linear(Ticks::ZERO));
         ui::tween(&mut timer, 0.0, 120.0, Easing::Linear);
@@ -783,7 +801,32 @@ impl Bridge {
             camera,
             white,
             timer,
+            glow: None,
         }
+    }
+
+    /// `0x71000e5400`: black doors on white into each glow texture, then the blur across and down
+    pub fn pre_render(&mut self, ctx: &mut PreRenderContext) {
+        let mut glow = self.glow.take().unwrap_or_else(|| {
+            (0..GLOW.len())
+                .map(|i| {
+                    (
+                        ctx.new_render_texture(format!("bridge/glow{i}")),
+                        ctx.new_render_texture(format!("bridge/glow{i}/scratch")),
+                    )
+                })
+                .collect()
+        });
+        for ((texture, scratch), (shrink, _)) in glow.iter_mut().zip(GLOW) {
+            let depth_stencil = ctx.depth_stencil;
+            let mut pass =
+                ctx.begin_pass(texture.as_texture_target(), Some(depth_stencil), "bridge/glow");
+            pass.clear(Some(UnormColor::BLACK), Some(0), Some(1.0));
+            self.draw_doors(&mut pass, glow_region(shrink), FloatColor4::BLACK);
+            drop(pass);
+            apply_region_blur(ctx, texture, scratch, shrink);
+        }
+        self.glow = Some(glow);
     }
 
     /// The scenario to start, once the bridge is over
@@ -799,13 +842,20 @@ impl Bridge {
         self.timer.is_idle().then_some(self.scenario)
     }
 
-    /// `0x71000e4be0` with a white background, then the white-out
-    pub fn render(&self, pass: &mut RenderPass) {
+    /// `0x71000e4be0`: white, then the two doors tinted by `tint`, in clip space mapped by `region`
+    fn draw_doors(&self, pass: &mut RenderPass, region: Mat4, tint: FloatColor4) {
         let full = [0.0, 0.0, 1920.0, 1080.0];
-        ui::fill(pass, ui::projection(), full, FloatColor4::WHITE);
+        ui::fill_with(
+            pass,
+            region * ui::projection(),
+            full,
+            FloatColor4::WHITE,
+            RenderRequestBuilder::new().color_blend_type(ColorBlendType::Opaque),
+        );
         // a camera 1000 px away sees exactly the screen (fovy = 2 atan 0.54); the doors hinge on the outer edges and
         // swing away from the camera
-        let projection = Mat4::perspective_rh(2.0 * 0.54f32.atan(), 16.0 / 9.0, 1.0, 10000.0)
+        let projection = region
+            * Mat4::perspective_rh(2.0 * 0.54f32.atan(), 16.0 / 9.0, 1.0, 10000.0)
             * Mat4::from_translation(vec3(0.0, 0.0, -1000.0 + self.camera.value()));
         let angle = self.angle.value() * FRAC_PI_2;
         let doors = [
@@ -826,7 +876,7 @@ impl Bridge {
         ];
         let opaque = RenderRequestBuilder::new().color_blend_type(ColorBlendType::Opaque);
         for ([x0, y0, x1, y1], [u0, v0, u1, v1], model) in doors {
-            let color = FloatColor4::WHITE.into_unorm();
+            let color = tint.into_unorm();
             let vertex = |x: f32, y: f32, u: f32, v: f32| PosColTexVertex {
                 position: vec3(x, y, 0.0),
                 color,
@@ -849,21 +899,38 @@ impl Bridge {
                 DrawPrimitive::TrianglesStrip,
             ));
         }
-        // additive while it rises, opaque once full
-        let white = self.white.value();
-        if white > 0.0 {
-            let blend = if white < 1.0 {
-                ColorBlendType::Layer2
-            } else {
-                ColorBlendType::Opaque
-            };
-            ui::fill_with(
+    }
+
+    /// `0x71000e50d0`: the doors on white, the glow added over them, then the last quad in the timer's grey: added
+    /// while `white` rises, opaque once it is full (so the white screen goes to black as the timer runs down)
+    pub fn render(&self, pass: &mut RenderPass) {
+        let full = [0.0, 0.0, 1920.0, 1080.0];
+        self.draw_doors(pass, Mat4::IDENTITY, FloatColor4::WHITE);
+        let additive = RenderRequestBuilder::new().color_blend_type(ColorBlendType::Layer2);
+        for ((texture, _), (shrink, grey)) in self.glow.iter().flatten().zip(GLOW) {
+            ui::draw_texture(
                 pass,
+                texture.as_texture_source(),
                 ui::projection(),
                 full,
-                FloatColor4::WHITE.with_alpha(white),
-                RenderRequestBuilder::new().color_blend_type(blend),
+                [0.0, 0.0, 1.0 / shrink, 1.0 / shrink],
+                FloatColor4::from_rgba(grey, grey, grey, 1.0),
+                additive,
             );
         }
+        let white = self.white.value();
+        let grey = self.timer.value();
+        let blend = if white < 1.0 {
+            ColorBlendType::Layer2
+        } else {
+            ColorBlendType::Opaque
+        };
+        ui::fill_with(
+            pass,
+            ui::projection(),
+            full,
+            FloatColor4::from_rgba(grey, grey, grey, white),
+            RenderRequestBuilder::new().color_blend_type(blend),
+        );
     }
 }

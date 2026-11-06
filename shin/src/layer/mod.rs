@@ -17,7 +17,7 @@ use derive_more::From;
 use glam::vec3;
 pub use layer_group::LayerGroup;
 pub use new_drawable_layer::{NewDrawableLayer, NewDrawableLayerWrapper};
-pub(crate) use new_drawable_layer::effect_passes::apply_backdrop_blur;
+pub(crate) use new_drawable_layer::effect_passes::{apply_backdrop_blur, apply_region_blur};
 pub use page_layer::PageLayer;
 pub use properties::{LayerProperties, LayerPropertiesState};
 pub use root_layer_group::RootLayerGroup;

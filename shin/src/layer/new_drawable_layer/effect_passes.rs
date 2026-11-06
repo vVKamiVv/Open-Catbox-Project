@@ -262,8 +262,26 @@ pub fn apply_blur(
 /// The system menu's backdrop (`0x7100013af0`): `source` blurred horizontally into `scratch`, then vertically back,
 /// at full size with taps 0.75, 2.25, 3.75 and 5.25 px apart (radius 1.5) and the blur's weights
 pub fn apply_backdrop_blur(context: &mut PreRenderContext, source: &mut RenderTexture, scratch: &mut RenderTexture) {
-    backdrop_blur_pass(context, source, scratch, Vec2::X);
-    backdrop_blur_pass(context, scratch, source, Vec2::Y);
+    apply_region_blur(context, source, scratch, 1.0);
+}
+
+/// The same blur on the top-left `1 / shrink` of `source`, a picture rendered at that fraction of the size (the
+/// bridge's glow textures, 480 down to 60 px wide in the original); the taps keep their offsets in canvas pixels,
+/// which is the original's texel spacing at every size
+pub fn apply_region_blur(
+    context: &mut PreRenderContext,
+    source: &mut RenderTexture,
+    scratch: &mut RenderTexture,
+    shrink: f32,
+) {
+    backdrop_blur_pass(context, source, scratch, Vec2::X, shrink);
+    backdrop_blur_pass(context, scratch, source, Vec2::Y, shrink);
+}
+
+/// Maps the canvas onto the top-left `1 / shrink` of a target
+pub fn shrunk_projection_matrix(shrink: f32) -> Mat4 {
+    let size = VIRTUAL_CANVAS_SIZE_VEC * shrink;
+    shin_orthographic_projection_matrix(0.0, size.x, size.y, 0.0, -1.0, 1.0)
 }
 
 fn backdrop_blur_pass(
@@ -271,10 +289,11 @@ fn backdrop_blur_pass(
     from: &RenderTexture,
     to: &mut RenderTexture,
     direction: Vec2,
+    shrink: f32,
 ) {
     let vertices = &build_quad_vertices(|t| PosTexVertex {
         position: t * VIRTUAL_CANVAS_SIZE_VEC,
-        texture_position: t,
+        texture_position: t / shrink,
     });
     let mut pass = context.begin_pass(to.as_texture_target(), None, "backdrop_blur");
     pass.run(
@@ -284,7 +303,7 @@ fn backdrop_blur_pass(
                 RenderProgramWithArguments::Blur {
                     vertices: VertexSource::VertexData { vertices },
                     texture: from.as_texture_source(),
-                    transform: top_left_projection_matrix(),
+                    transform: shrunk_projection_matrix(shrink),
                     offsets: blur_offsets(1.5, direction),
                     weights: blur_weights(),
                 },
