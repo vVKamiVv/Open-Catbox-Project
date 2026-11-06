@@ -919,8 +919,17 @@ has played, else the one before (`+0x2dbc[(+0x2dd0 > 1)]`); rollback goes to the
 translate (`0x710015eedb`).
 
 In the port: `app.rs` (scenes), `title_demo.rs`, `title.rs`, `scenario_select.rs`, `adv/menu/` (dialog, system menu,
-hidden window, config, save menu, thumbnails, jump dialog) and `ui/` (drawing and input helpers). shortcuts: no
-backlog, galleries, Characters, Tips or manual yet; the scenario select fades in instead of the curtain mask wipe;
+hidden window, config, save menu, thumbnails, jump dialog, backlog) and `ui/` (drawing and input helpers).
+
+**The backlog** (X, `0x71000a20b0`, `/logview.txa`): the LogBuilder replays the current chapter from its start through
+the current line and on through read text (stopping at an unread line with v11, a choice or minigame not played,
+or EXIT), collecting lines (colour 999), choices `@r《prompt》@r option` (977), chapter titles from SAVEINFO 0 and 1
+at each AUTOSAVE (799) and minigames (977). Lines are newrodin at size 40, 97 % width, 1480 wide, at least 76 tall
+when voiced, plus 20, 14 px apart, the current one at 0. A replays a voiced line, L/R move between markers, Y asks
+"Start reading from the selected line?" and rebuilds there.
+
+shortcuts: no backlog chapter list, galleries, Characters, Tips or manual yet; the backlog's text starts at a guessed
+x; the scenario select fades in instead of the curtain mask wipe;
 the bridge has no bloom glow; the dialog fades its pieces instead of a render texture; the BGM player is per scene
 instead of shared, so music does not carry across scenes. Keyboard: Y and X keys for the Y and X buttons, = and -
 for + and -.
