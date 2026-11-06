@@ -45,6 +45,11 @@ impl BgmPlayer {
         }
     }
 
+    /// The BGM volume setting last given (v0, 0-100)
+    pub fn setting_volume(&self) -> u8 {
+        self.setting_volume
+    }
+
     /// The BGM volume setting (v0, 0-100) and the voice-focus factor scale the BGM track (`0x7100033eb0`)
     pub fn set_gain(&mut self, setting_volume: u8, duck: f32) {
         self.setting_volume = setting_volume;

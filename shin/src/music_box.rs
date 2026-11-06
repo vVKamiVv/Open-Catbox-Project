@@ -69,7 +69,7 @@ pub struct MusicBox {
     assets: MenuAssets,
     audio: Arc<AudioManager>,
     textures: Arc<NamedTextures>,
-    bgm: BgmPlayer,
+    pub bgm: BgmPlayer,
     pub global: SaveData,
     items: Vec<Item>,
     height: f32,
@@ -89,6 +89,7 @@ impl MusicBox {
         audio: Arc<AudioManager>,
         assets: MenuAssets,
         global: SaveData,
+        bgm: BgmPlayer,
     ) -> anyhow::Result<Self> {
         let textures = asset_server.load_sync::<NamedTextures>("/bgmmode.txa")?;
         let items = assets
@@ -139,7 +140,7 @@ impl MusicBox {
             assets,
             audio: audio.clone(),
             textures,
-            bgm: BgmPlayer::new(audio),
+            bgm,
             global,
             items,
             height,

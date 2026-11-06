@@ -118,7 +118,7 @@ pub struct ScenarioSelect {
     assets: MenuAssets,
     audio: Arc<AudioManager>,
     textures: Arc<NamedTextures>,
-    bgm: BgmPlayer,
+    pub bgm: BgmPlayer,
     pub global: SaveData,
     tabs: Vec<Tab>,
     tab: usize,
@@ -152,6 +152,7 @@ impl ScenarioSelect {
         audio: Arc<AudioManager>,
         assets: MenuAssets,
         global: SaveData,
+        bgm: BgmPlayer,
     ) -> anyhow::Result<Self> {
         let textures = asset_server.load_sync::<NamedTextures>("/snrsel.txa")?;
         let mut tabs = Vec::new();
@@ -203,7 +204,7 @@ impl ScenarioSelect {
             assets,
             audio: audio.clone(),
             textures,
-            bgm: BgmPlayer::new(audio),
+            bgm,
             global,
             tabs,
             tab: 0,

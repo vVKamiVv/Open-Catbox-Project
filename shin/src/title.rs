@@ -2,9 +2,8 @@
 //! `0x710010e1a0`): a background that follows the story's progress, the logo, and the menu items with their
 //! description panels, all from `/title.txa`. Load and Config open over it; Continue starts the auto slot.
 //!
-//! shortcut: Characters, Tips, the galleries and the manual have no screens in the port yet (choosing them only
-//! flashes), and the BGM does not carry over from the adventure screen (the original's player is shared by every
-//! scene).
+//! The BGM player is the one every scene shares: the title's track crossfades in over whatever was playing, or only
+//! takes its volume when it is already the one playing.
 
 use std::sync::Arc;
 
@@ -169,7 +168,7 @@ pub struct Title {
     background: PictureLayer,
     /// The background rendered each frame (`+0x2c8`), drawn under everything and over fading items
     background_texture: Option<RenderTexture>,
-    bgm: BgmPlayer,
+    pub bgm: BgmPlayer,
     pub global: SaveData,
     items: Vec<Item>,
     cursor: usize,
@@ -206,6 +205,7 @@ impl Title {
         assets: MenuAssets,
         global: SaveData,
         cursor_type: i32,
+        mut bgm: BgmPlayer,
     ) -> anyhow::Result<Self> {
         let textures = asset_server.load_sync::<NamedTextures>("/title.txa")?;
         let progress = global.persist_data.get(0).clamp(0, 255);
@@ -298,7 +298,6 @@ impl Title {
         };
         let cursor = types.iter().position(|&ty| ty == cursor_type).unwrap_or(0);
 
-        let mut bgm = BgmPlayer::new(audio.clone());
         let bgm_id = BgmId::from_number(bgm_id);
         let info = assets.scenario.info_tables().bgm_info(bgm_id);
         match asset_server.load_sync(info.path()) {

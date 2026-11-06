@@ -166,11 +166,12 @@ impl Adv {
         global: SaveData,
         entry: GameDataEntry,
         entry_point: Option<CodeAddress>,
+        bgm_player: BgmPlayer,
     ) -> Self {
         let scenario = assets.scenario.clone();
         let play_frames = global.play_seconds as f64 * 60.0;
         let (scripter, vm_state, load) = replay(&scenario, global, entry, entry_point);
-        let adv_state = AdvState::new(audio_manager, asset_server, assets);
+        let adv_state = AdvState::new(audio_manager, asset_server, assets, bgm_player);
 
         Self {
             scenario,
@@ -292,11 +293,19 @@ impl Adv {
     }
 
     /// Stops this screen's sounds before it is replaced (the original destroys its players with it)
+    /// The sounds and voices stop as the adventure screen goes; the music goes on into the next scene, as the
+    /// original's shared player does (`ExitGame $_6` `0x71000187c0` only lifts its duck)
     pub fn shutdown(&mut self) {
         let quick = Tween::linear(Ticks::ZERO);
-        self.adv_state.bgm_player.stop(quick);
+        self.adv_state.bgm_player.set_gain(self.adv_state.bgm_player.setting_volume(), 1.0);
         self.adv_state.se_player.stop_all(quick);
         self.adv_state.message_layer_mut().stop_voices();
+    }
+
+    /// The music player, for the next scene
+    pub fn take_bgm(&mut self) -> BgmPlayer {
+        let fresh = BgmPlayer::new(self.adv_state.audio_manager.clone());
+        std::mem::replace(&mut self.adv_state.bgm_player, fresh)
     }
 
     /// Whether the player chose "Return to title" (once)
@@ -1391,6 +1400,7 @@ impl AdvState {
         audio_manager: Arc<AudioManager>,
         asset_server: Arc<AssetServer>,
         assets: AdvAssets,
+        bgm_player: BgmPlayer,
     ) -> Self {
         Self {
             root_layer_group: RootLayerGroup::new(
@@ -1407,7 +1417,7 @@ impl AdvState {
             backdrop_alpha: Tweener::new(0.0),
             back_layer_group: None,
             audio_manager: audio_manager.clone(),
-            bgm_player: BgmPlayer::new(audio_manager.clone()),
+            bgm_player,
             se_player: SePlayer::new(audio_manager),
             allow_running_animations: true,
             fonts: assets.fonts.clone(),

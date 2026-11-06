@@ -111,7 +111,7 @@ pub struct PictureBox {
     assets: MenuAssets,
     audio: Arc<AudioManager>,
     textures: Arc<NamedTextures>,
-    bgm: BgmPlayer,
+    pub bgm: BgmPlayer,
     pub global: SaveData,
     items: Vec<Item>,
     height: f32,
@@ -131,6 +131,7 @@ impl PictureBox {
         audio: Arc<AudioManager>,
         assets: MenuAssets,
         global: SaveData,
+        bgm: BgmPlayer,
     ) -> anyhow::Result<Self> {
         let textures = asset_server.load_sync::<NamedTextures>("/cgmode.txa")?;
         let items = assets
@@ -184,7 +185,7 @@ impl PictureBox {
             assets,
             audio: audio.clone(),
             textures,
-            bgm: BgmPlayer::new(audio),
+            bgm,
             global,
             items,
             height,

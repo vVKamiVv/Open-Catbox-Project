@@ -33,6 +33,7 @@ use crate::{
     title::{Title, TitleExit},
     title_demo::TitleDemo,
     ui,
+    audio::BgmPlayer,
     asset::{
         mask::MaskTexture,
         system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
@@ -136,6 +137,8 @@ pub struct App {
     scene: Scene,
     /// The previous screen fading out over the new one, when the scene changed
     fade: Option<SceneFade>,
+    /// The music player while a scene without one shows (the opening movie, the Movie Box, the bridge)
+    idle_bgm: Option<BgmPlayer>,
     /// The save data while the bridge plays, which has none of its own
     bridge_global: Option<SaveData>,
     /// What a new adventure screen is built from
@@ -215,6 +218,7 @@ impl ShinApp for App {
                         MenuAssets::new(&adv_assets),
                         save,
                         -1,
+                        BgmPlayer::new(audio_manager.clone()),
                     )?;
                     // the title fades in from the black of the boot over 90 frames (`Title::First`)
                     (Scene::Title(title), Some(SceneFade::new(None, 90.0)))
@@ -227,6 +231,7 @@ impl ShinApp for App {
                 effect_textures,
                 scene,
                 fade,
+                idle_bgm: None,
                 bridge_global: None,
                 adv_assets,
                 capture_dir: cli.capture_dir,
@@ -255,6 +260,7 @@ impl ShinApp for App {
             save,
             entry,
             cli.unsafe_entry_point.map(CodeAddress),
+            BgmPlayer::new(audio_manager.clone()),
         );
 
         if let Some(addr) = cli.fast_forward_to {
@@ -347,6 +353,7 @@ impl ShinApp for App {
             effect_textures,
             scene: Scene::Adv(adv),
             fade: None,
+            idle_bgm: None,
             bridge_global: None,
             adv_assets,
             capture_dir: cli.capture_dir,
@@ -638,6 +645,11 @@ impl App {
             Scene::PictureBox(pictures) => pictures.shutdown(30.0),
             Scene::Bridge(_) | Scene::TitleDemo(_) | Scene::MovieBox(_) => {}
         }
+        // one player for every scene, as the original's (`0x7100033eb0` runs outside the scenes)
+        let mut bgm = Some(
+            self.scene
+                .take_bgm_from(&mut self.idle_bgm, &self.audio_manager),
+        );
         let mut snapshot = || {
             let mut old = ctx.new_render_texture("scene_fade".to_string());
             let depth_stencil = ctx.depth_stencil;
@@ -656,6 +668,7 @@ impl App {
                     self.audio_manager.clone(),
                     MenuAssets::new(&self.adv_assets),
                     global,
+                    bgm.take().unwrap(),
                 ) {
                     Ok(pictures) => {
                         self.scene = Scene::PictureBox(pictures);
@@ -677,6 +690,7 @@ impl App {
                 ) {
                     Ok(movies) => {
                         self.scene = Scene::MovieBox(movies);
+                        self.idle_bgm = bgm.take();
                         self.fade = Some(SceneFade::new(Some(old), 60.0));
                     }
                     Err(e) => error!("Could not open the Movie Box: {e:?}"),
@@ -692,6 +706,7 @@ impl App {
                     self.audio_manager.clone(),
                     MenuAssets::new(&self.adv_assets),
                     global,
+                    bgm.take().unwrap(),
                 ) {
                     Ok(music) => {
                         self.scene = Scene::MusicBox(music);
@@ -708,6 +723,7 @@ impl App {
                     self.audio_manager.clone(),
                     MenuAssets::new(&self.adv_assets),
                     global,
+                    bgm.take().unwrap(),
                 ) {
                     Ok(select) => {
                         self.scene = Scene::ScenarioSelect(select);
@@ -732,6 +748,7 @@ impl App {
                 let old = snapshot();
                 self.fade = None;
                 self.scene = Scene::Bridge(Bridge::new(old, scenario));
+                self.idle_bgm = bgm.take();
                 // the bridge keeps the save data in memory for the story that follows
                 self.bridge_global = Some(global);
                 return;
@@ -744,6 +761,7 @@ impl App {
                     MenuAssets::new(&self.adv_assets),
                     global,
                     cursor,
+                    bgm.take().unwrap(),
                 ) {
                     Ok(title) => {
                         self.scene = Scene::Title(title);
@@ -766,6 +784,7 @@ impl App {
                     global,
                     entry,
                     None,
+                    bgm.take().unwrap(),
                 ));
             }
             Next::Title => {
@@ -776,6 +795,7 @@ impl App {
                     MenuAssets::new(&self.adv_assets),
                     global,
                     -1,
+                    bgm.take().unwrap(),
                 ) {
                     Ok(title) => {
                         self.scene = Scene::Title(title);
@@ -805,6 +825,25 @@ enum Scene {
 }
 
 impl Scene {
+    /// The scene's music player, for the next one; the scenes without music hand back the app's (`idle`)
+    fn take_bgm_from(
+        &mut self,
+        idle: &mut Option<BgmPlayer>,
+        audio: &Arc<AudioManager>,
+    ) -> BgmPlayer {
+        let fresh = || BgmPlayer::new(audio.clone());
+        match self {
+            Scene::Title(title) => std::mem::replace(&mut title.bgm, fresh()),
+            Scene::ScenarioSelect(select) => std::mem::replace(&mut select.bgm, fresh()),
+            Scene::MusicBox(music) => std::mem::replace(&mut music.bgm, fresh()),
+            Scene::PictureBox(pictures) => std::mem::replace(&mut pictures.bgm, fresh()),
+            Scene::Adv(adv) => adv.take_bgm(),
+            Scene::TitleDemo(_) | Scene::MovieBox(_) | Scene::Bridge(_) => {
+                idle.take().unwrap_or_else(fresh)
+            }
+        }
+    }
+
     fn render(&self, pass: &mut RenderPass) {
         match self {
             Scene::TitleDemo(demo) => demo.render(pass),
