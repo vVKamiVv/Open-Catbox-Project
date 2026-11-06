@@ -103,6 +103,9 @@ Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the 
 | F5 | | Save to the last used bookmark |
 | F11 | | Fullscreen |
 
+For working on the port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its animations) and
+time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 normal speed).
+
 ## 🗝️ Inside the mansion
 
 | Path | Contents |
