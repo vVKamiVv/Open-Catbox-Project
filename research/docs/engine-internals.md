@@ -943,6 +943,13 @@ counter when partly unlocked) and plays BGM 6 (unlocking it); its viewer shows a
 MusicBoxInfo tracks in two columns; the **Movie Box** (`MovieMode`) the ten openings after a fade to black. Leaving
 returns to the title with the cursor on the gallery while the music fades over 30 frames.
 
+**The Character Box** (`BustupMode`, `/bupmode.txa`) groups the CharacterBoxInfo into character -> variant -> pose ->
+face (an 0x02 end closes a pose, 0x12 also a variant, 0x22 also a character; backgrounds apart), 65 characters and
+219 backgrounds in English, nothing locked. Its scene is a screen of three layers (secondary and primary backgrounds
+at depth 2000 and 200 %, the bustup at depth 1000) shifted 200 px left of a five-row panel; a change swaps the layer
+with a 10-frame wiper; A hides the UI and lets the d-pad pan the plane's camera (±420 x ±130), the backgrounds at half
+the parallax. Entering plays BGM 7.
+
 **Characters, Tips and the manual** are tasks over the title (through its episode list, `Title::SubMenu`, for
 Characters and Tips) or the system menu, opening over 10 frames between translucent `obi` bands. **Characters**
 (`CharsMode`, `/chars.txa`): a grid of portraits (CharsGridInfo; grids 0-7 are the title's episodes, others the
