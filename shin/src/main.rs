@@ -12,6 +12,7 @@ mod app;
 mod asset;
 mod audio;
 mod capture;
+mod character_box;
 mod cli;
 #[expect(unused)]
 mod fps_counter;

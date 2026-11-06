@@ -59,7 +59,12 @@ static PANS: Mutex<Vec<(u16, f32)>> = Mutex::new(Vec::new());
 /// A bustup of `character_id` at `pan` (its screen x over the half-width): the voice player pans that character's
 /// voices there (`0x7100119ef0`)
 pub fn request_voice_pan(character_id: u16, pan: f32) {
-    PANS.lock().unwrap().push((character_id, pan));
+    // one entry per character, the last bustup's: nothing drains them outside the story (the Character Box)
+    let mut pans = PANS.lock().unwrap();
+    match pans.iter_mut().find(|(id, _)| *id == character_id) {
+        Some(entry) => entry.1 = pan,
+        None => pans.push((character_id, pan)),
+    }
 }
 
 /// The mouth level (0-2) of `character_id` from the voices playing now, or -1 when the character is not speaking

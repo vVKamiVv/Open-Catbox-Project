@@ -175,6 +175,7 @@ impl Task for Manual {
             label_height: 96.0,
             y: 1080.0 - 88.0 * a + 20.0,
             glyph_offset: 2.0,
+            glyph_step: 48.0,
             gap: 16.0,
         };
         let x = help.draw(pass, 1872.0, &[4], 48.0, 72.0, FloatColor4::WHITE);
@@ -198,13 +199,15 @@ pub(super) fn draw_obi(pass: &mut RenderPass, obi: &shin_render::gpu_texture::Gp
 }
 
 /// The key help of the paged screens: label rows of 48 in a 320-wide texture, the keys' glyphs to their left
-pub(super) struct KeyHelp<'a> {
+pub(crate) struct KeyHelp<'a> {
     pub labels: &'a shin_render::gpu_texture::GpuTexture,
     pub keys: &'a shin_render::gpu_texture::GpuTexture,
     pub label_height: f32,
     pub y: f32,
     /// From the label's left edge to the first glyph's right edge
     pub glyph_offset: f32,
+    /// From one glyph to the next (48 in most screens, 46 in the Character Box)
+    pub glyph_step: f32,
     /// From the last glyph to the next entry's right edge
     pub gap: f32,
 }
@@ -233,7 +236,7 @@ impl KeyHelp<'_> {
         label.draw(pass, ui::builder(), projection);
         let mut x = right - width + self.glyph_offset;
         for &key in glyphs {
-            x -= 48.0;
+            x -= self.glyph_step;
             let (u, v) = ((key & 7) as f32 * 0.125, (key >> 3) as f32 * 0.5);
             let mut icon =
                 Sprite::new(self.keys, [x, y, x + 48.0, y + 48.0]).uv([u, v, u + 0.125, v + 0.5]);

@@ -26,6 +26,7 @@ use shin_render::render_texture::RenderTexture;
 
 use crate::{
     adv::{Adv, assets::AdvAssets, menu::MenuAssets},
+    character_box::CharacterBox,
     movie_box::MovieBox,
     picture_box::PictureBox,
     music_box::MusicBox,
@@ -464,7 +465,15 @@ impl ShinApp for App {
                     Some(TitleExit::MusicBox) => next = Some(Next::MusicBox),
                     Some(TitleExit::MovieBox) => next = Some(Next::MovieBox),
                     Some(TitleExit::PictureBox) => next = Some(Next::PictureBox),
+                    Some(TitleExit::CharacterBox) => next = Some(Next::CharacterBox),
                     None => {}
+                }
+            }
+            Scene::CharacterBox(characters) => {
+                characters.update(&mut update_context, &input, pointer);
+                if characters.is_done() {
+                    // `CreateTitle(10)`: back with the cursor on the Character Box
+                    next = Some(Next::TitleAt(10));
                 }
             }
             Scene::PictureBox(pictures) => {
@@ -621,6 +630,7 @@ impl App {
             Scene::MusicBox(music) => &music.global,
             Scene::MovieBox(movies) => &movies.global,
             Scene::PictureBox(pictures) => &pictures.global,
+            Scene::CharacterBox(characters) => &characters.global,
             Scene::Adv(adv) => adv.save_data(),
             Scene::Bridge(_) => self.bridge_global.as_ref().expect("the bridge keeps the save data"),
         }
@@ -643,6 +653,8 @@ impl App {
             Scene::MusicBox(music) => music.shutdown(30.0),
             // `Close $_0` (`0x710004cf40`): the BGM fades over 30 frames
             Scene::PictureBox(pictures) => pictures.shutdown(30.0),
+            // `0x710003dc60`: the BGM fades over 30 frames
+            Scene::CharacterBox(characters) => characters.shutdown(30.0),
             Scene::Bridge(_) | Scene::TitleDemo(_) | Scene::MovieBox(_) => {}
         }
         // one player for every scene, as the original's (`0x7100033eb0` runs outside the scenes)
@@ -659,6 +671,24 @@ impl App {
             old
         };
         match next {
+            Next::CharacterBox => {
+                // `BustupMode::First`: a 60-frame crossfade while the title's music fades over 60 frames
+                let old = snapshot();
+                match CharacterBox::new(
+                    &self.asset_server,
+                    self.audio_manager.clone(),
+                    MenuAssets::new(&self.adv_assets),
+                    global,
+                    bgm.take().unwrap(),
+                ) {
+                    Ok(characters) => {
+                        self.scene = Scene::CharacterBox(characters);
+                        self.fade = Some(SceneFade::new(Some(old), 60.0));
+                    }
+                    Err(e) => error!("Could not open the Character Box: {e:?}"),
+                }
+                return;
+            }
             Next::PictureBox => {
                 // `CGMode::First`: a 60-frame crossfade while the title's music fades over 60 frames
                 let old = snapshot();
@@ -806,7 +836,8 @@ impl App {
             }
             Next::ScenarioSelect | Next::Bridge(_) | Next::TitleAt(_) | Next::MusicBox
             | Next::MovieBox
-            | Next::PictureBox => unreachable!(),
+            | Next::PictureBox
+            | Next::CharacterBox => unreachable!(),
         }
     }
 }
@@ -820,6 +851,7 @@ enum Scene {
     MusicBox(MusicBox),
     MovieBox(MovieBox),
     PictureBox(PictureBox),
+    CharacterBox(CharacterBox),
     Bridge(Bridge),
     Adv(Adv),
 }
@@ -837,6 +869,7 @@ impl Scene {
             Scene::ScenarioSelect(select) => std::mem::replace(&mut select.bgm, fresh()),
             Scene::MusicBox(music) => std::mem::replace(&mut music.bgm, fresh()),
             Scene::PictureBox(pictures) => std::mem::replace(&mut pictures.bgm, fresh()),
+            Scene::CharacterBox(characters) => std::mem::replace(&mut characters.bgm, fresh()),
             Scene::Adv(adv) => adv.take_bgm(),
             Scene::TitleDemo(_) | Scene::MovieBox(_) | Scene::Bridge(_) => {
                 idle.take().unwrap_or_else(fresh)
@@ -852,6 +885,7 @@ impl Scene {
             Scene::MusicBox(music) => music.render(pass),
             Scene::MovieBox(movies) => movies.render(pass),
             Scene::PictureBox(pictures) => pictures.render(pass),
+            Scene::CharacterBox(characters) => characters.render(pass),
             Scene::Bridge(bridge) => bridge.render(pass),
             Scene::Adv(adv) => adv.render(pass),
         }
@@ -871,6 +905,7 @@ enum Next {
     MusicBox,
     MovieBox,
     PictureBox,
+    CharacterBox,
 }
 
 /// The old screen (or black) over the new one, fading out (the transition of `Title::First`, program 8)

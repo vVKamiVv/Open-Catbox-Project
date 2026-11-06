@@ -384,6 +384,7 @@ impl Task for Tips {
             label_height: 192.0,
             y: 1080.0 - 88.0 * a + 20.0,
             glyph_offset: 0.0,
+            glyph_step: 48.0,
             gap: 10.0,
         };
         let grey = FloatColor4::from_rgba(0.502, 0.502, 0.502, 1.0);

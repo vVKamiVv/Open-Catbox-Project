@@ -153,6 +153,8 @@ pub enum TitleExit {
     ScenarioSelect,
     /// `CreateCGMode`
     PictureBox,
+    /// `CreateBustupMode`
+    CharacterBox,
     /// `CreateBGMMode`
     MusicBox,
     /// `CreateMovieMode`
@@ -525,6 +527,10 @@ impl Title {
                     _ => Manual::new(&cx).map(|m| Box::new(m) as Box<dyn Task>),
                 };
                 self.child = child;
+            }
+            CHARACTER_BOX => {
+                self.exit = Some(TitleExit::CharacterBox);
+                self.state = State::Done;
             }
             PICTURE_BOX => {
                 self.exit = Some(TitleExit::PictureBox);

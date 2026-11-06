@@ -1050,6 +1050,7 @@ impl Task for Chars {
             label_height: 336.0,
             y: 1080.0 - 88.0 * a + 20.0,
             glyph_offset: 2.0,
+            glyph_step: 48.0,
             gap: 16.0,
         };
         let white = FloatColor4::WHITE;
