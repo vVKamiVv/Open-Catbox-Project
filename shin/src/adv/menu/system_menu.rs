@@ -3,7 +3,8 @@
 //! scene's title and the play time. An item flashes, then opens its screen while the menu slides away, and the menu
 //! slides back when that screen closes.
 //!
-//! shortcut: Characters, Tips and Manual do not exist in the port yet; choosing them plays the error sound.
+//! shortcut: Save, Load, Characters, Tips and Manual do not exist in the port yet; choosing them plays the error
+//! sound.
 
 use glam::{Mat4, vec3};
 use shin_core::{
@@ -14,7 +15,7 @@ use shin_core::{
 use shin_render::render_pass::RenderPass;
 use tracing::warn;
 
-use super::{AdvRequest, MenuAssets, Task, TaskCx, dialog::Dialog};
+use super::{AdvRequest, MenuAssets, Task, TaskCx, config_menu::ConfigMenu, dialog::Dialog};
 use crate::{
     adv::hud::{OUTLINE, draw_text, text_layout},
     layer::{
@@ -61,6 +62,8 @@ struct Item {
 /// What the menu has opened over itself
 enum Child {
     Title(Dialog),
+    /// A screen that reports back once it has closed (the original's callback with 1)
+    Screen(Box<dyn Task>),
 }
 
 pub struct SystemMenu {
@@ -201,7 +204,14 @@ impl SystemMenu {
                     1,
                 )));
             }
-            SAVE | LOAD | CONFIG | CHARACTERS | TIPS | MANUAL => {
+            CONFIG => match ConfigMenu::new(cx, &self.assets) {
+                Some(config) => self.child = Some(Child::Screen(Box::new(config))),
+                None => {
+                    cx.sound("error");
+                    return;
+                }
+            },
+            SAVE | LOAD | CHARACTERS | TIPS | MANUAL => {
                 warn!("System menu item {id} has no screen in the port yet");
                 cx.sound("error");
                 return;
@@ -312,6 +322,12 @@ impl SystemMenu {
                     self.child = None;
                 }
             }
+            Child::Screen(screen) => {
+                if !screen.update(&mut cx.reborrow(cx.focused)) {
+                    self.child = None;
+                    self.start();
+                }
+            }
         }
     }
 }
@@ -400,8 +416,10 @@ impl Task for SystemMenu {
             draw_text(pass, text, transform, FloatColor4::WHITE, alpha);
         }
 
-        if let Some(Child::Title(dialog)) = &self.child {
-            dialog.render(pass);
+        match &self.child {
+            Some(Child::Title(dialog)) => dialog.render(pass),
+            Some(Child::Screen(screen)) => screen.render(pass),
+            None => {}
         }
     }
 }

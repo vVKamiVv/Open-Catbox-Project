@@ -285,6 +285,7 @@ impl Adv {
                     self.hide_interface(false);
                     minigame::tween_now(&mut self.adv_state.backdrop_alpha, 0.0, 0.1);
                 }
+                AdvRequest::WriteSave => self.write_requested = true,
                 AdvRequest::ExitToTitle => {
                     info!("Returning to the title");
                     self.write_requested = true;

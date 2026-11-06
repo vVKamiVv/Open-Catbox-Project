@@ -5,6 +5,7 @@
 //! A menu that opens another (the system menu's dialog, its config screen) owns it and runs it on top of itself, in
 //! place of the original's callbacks.
 
+pub mod config_menu;
 pub mod dialog;
 pub mod hidden_window;
 pub mod system_menu;
@@ -41,6 +42,8 @@ pub enum AdvRequest {
     SystemMenuClosed,
     /// "Return to title" (`ADV::ExitGame` `0x71000147e0`): write the save file, then go to the title
     ExitToTitle,
+    /// Write the save file (a `SaveGame` task, `0x71000d52f0`)
+    WriteSave,
 }
 
 /// What a task gets each frame
