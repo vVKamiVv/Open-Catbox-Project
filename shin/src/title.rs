@@ -3,8 +3,8 @@
 //! description panels, all from `/title.txa`. Load and Config open over it; Continue starts the auto slot.
 //!
 //! shortcut: Characters, Tips, the galleries and the manual have no screens in the port yet (choosing them only
-//! flashes), Start begins Episode 1 until the scenario select exists, and the BGM does not carry over from the
-//! adventure screen (the original's player is shared by every scene).
+//! flashes), and the BGM does not carry over from the adventure screen (the original's player is shared by every
+//! scene).
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use enum_map::EnumMap;
 use shin_audio::AudioManager;
 use shin_core::{
     format::{
-        save::{GameDataEntry, RouteData, SaveData},
+        save::{GameDataEntry, SaveData},
         scenario::{info::BgmId, instruction_elements::FromNumber},
     },
     primitives::color::{FloatColor4, UnormColor},
@@ -143,8 +143,8 @@ enum State {
 
 /// Where the title leaves for
 pub enum TitleExit {
-    /// Start: a new game (until the scenario select exists, Episode 1)
-    NewGame(GameDataEntry),
+    /// Start: the scenario select
+    ScenarioSelect,
     /// Continue or a bookmark from Load
     Load(GameDataEntry),
 }
@@ -339,9 +339,10 @@ impl Title {
         std::mem::take(&mut self.write_requested)
     }
 
-    /// Stops the music before the title is replaced
-    pub fn shutdown(&mut self) {
-        self.bgm.stop(Tween::linear(Ticks::from_f32(4.0)));
+    /// The music fades out over `frames` frames as the title is left
+    pub fn shutdown(&mut self, frames: f32) {
+        self.bgm
+            .stop(Tween::linear(Ticks::from_f32(frames.max(4.0))));
     }
 
     /// `0x710010d2e0`
@@ -416,12 +417,7 @@ impl Title {
         self.state = State::Active;
         match ty {
             START => {
-                self.exit = Some(TitleExit::NewGame(GameDataEntry {
-                    scenario_id: 0,
-                    random_seed: crate::app::new_game_seed(),
-                    save_position: 0,
-                    route_data: RouteData::default(),
-                }));
+                self.exit = Some(TitleExit::ScenarioSelect);
                 self.state = State::Done;
             }
             CONTINUE => {

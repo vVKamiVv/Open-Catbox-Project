@@ -35,11 +35,17 @@ pub fn projection() -> Mat4 {
 }
 
 /// A flat-coloured rectangle (left, top, right, bottom)
-pub fn fill(
+pub fn fill(pass: &mut RenderPass, transform: Mat4, rect: [f32; 4], color: FloatColor4) {
+    fill_with(pass, transform, rect, color, builder());
+}
+
+/// A flat-coloured rectangle drawn with `builder`'s blend
+pub fn fill_with(
     pass: &mut RenderPass,
     transform: Mat4,
     [x0, y0, x1, y1]: [f32; 4],
     color: FloatColor4,
+    builder: RenderRequestBuilder,
 ) {
     if color.a <= 0.0 {
         return;
@@ -55,7 +61,7 @@ pub fn fill(
         vertex(x0, y1),
         vertex(x1, y1),
     ];
-    pass.run(builder().build(
+    pass.run(builder.build(
         RenderProgramWithArguments::Fill {
             vertices: VertexSource::VertexData {
                 vertices: &vertices,

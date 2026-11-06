@@ -25,6 +25,7 @@ use shin_render::render_texture::RenderTexture;
 
 use crate::{
     adv::{Adv, assets::AdvAssets, menu::MenuAssets},
+    scenario_select::{Bridge, ScenarioSelect, SelectExit},
     title::{Title, TitleExit},
     ui,
     asset::system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
@@ -62,6 +63,9 @@ pub enum AppAction {
     /// X (backlog) and Y (system menu); either also stops auto and skip. The keyboard's X and Y keys
     ButtonX,
     ButtonY,
+    /// + and - (the keyboard's = and -): the scenario select's "Unlock all", the story's chapter jumps
+    Plus,
+    Minus,
     /// shortcut: the port has no save menu yet, so F5 saves to the slot the menu would open at
     Save,
 }
@@ -108,6 +112,8 @@ impl Action for AppAction {
             AppAction::SkipToggle => key(KeyCode::KeyS) || pad(GamepadButton::R),
             AppAction::ButtonX => key(KeyCode::KeyX) || pad(GamepadButton::X),
             AppAction::ButtonY => key(KeyCode::KeyY) || pad(GamepadButton::Y),
+            AppAction::Plus => key(KeyCode::Equal) || pad(GamepadButton::Plus),
+            AppAction::Minus => key(KeyCode::Minus) || pad(GamepadButton::Minus),
             AppAction::Save => key(KeyCode::F5),
         })
     }
@@ -121,6 +127,8 @@ pub struct App {
     scene: Scene,
     /// The previous screen fading out over the new one, when the scene changed
     fade: Option<SceneFade>,
+    /// The save data while the bridge plays, which has none of its own
+    bridge_global: Option<SaveData>,
     /// What a new adventure screen is built from
     adv_assets: AdvAssets,
     capture_dir: PathBuf,
@@ -197,6 +205,7 @@ impl ShinApp for App {
                 scene: Scene::Title(title),
                 // the title fades in from the black of the boot over 90 frames (`Title::First`)
                 fade: Some(SceneFade::new(None, 90.0)),
+                bridge_global: None,
                 adv_assets,
                 capture_dir: cli.capture_dir,
                 pending_capture: None,
@@ -316,6 +325,7 @@ impl ShinApp for App {
             effect_textures,
             scene: Scene::Adv(adv),
             fade: None,
+            bridge_global: None,
             adv_assets,
             capture_dir: cli.capture_dir,
             pending_capture: None,
@@ -346,7 +356,7 @@ impl ShinApp for App {
             }
             let more = match &mut self.scene {
                 Scene::Adv(adv) => adv.capture_saved(),
-                Scene::Title(_) => false,
+                _ => false,
             };
             if !more {
                 info!("All requested lines are captured");
@@ -420,8 +430,29 @@ impl ShinApp for App {
                 title.update(&mut update_context, &input, pointer);
                 write |= title.take_write_request();
                 match title.take_exit() {
-                    Some(TitleExit::NewGame(entry) | TitleExit::Load(entry)) => next = Some(Next::Story(entry)),
+                    Some(TitleExit::Load(entry)) => next = Some(Next::Story(entry)),
+                    Some(TitleExit::ScenarioSelect) => next = Some(Next::ScenarioSelect),
                     None => {}
+                }
+            }
+            Scene::ScenarioSelect(select) => {
+                select.update(&mut update_context, &input, pointer);
+                match select.take_exit() {
+                    Some(SelectExit::Title) => next = Some(Next::TitleAt(0)),
+                    Some(SelectExit::Start(scenario)) => next = Some(Next::Bridge(scenario)),
+                    Some(SelectExit::Rebuild) => next = Some(Next::ScenarioSelect),
+                    None => {}
+                }
+            }
+            Scene::Bridge(bridge) => {
+                if let Some(scenario) = bridge.update(update_context.delta_ticks.as_f32()) {
+                    // `0x71000e4630`: the new game's first entry
+                    next = Some(Next::Story(GameDataEntry {
+                        scenario_id: scenario as i32,
+                        random_seed: new_game_seed(),
+                        save_position: 0,
+                        route_data: RouteData::default(),
+                    }));
                 }
             }
         }
@@ -502,17 +533,87 @@ impl App {
             warn!("No location for the save file; not saving");
             return;
         };
-        if let Err(e) = savedata::write(path, self.scene.save_data()) {
+        if let Err(e) = savedata::write(path, self.save_data()) {
             error!("Saving failed: {e:?}");
         }
     }
 
-    /// Replaces the scene; the title fades in over the old screen (`Title::First`: 90 frames, as after the boot)
+    /// The save data, wherever the current scene keeps it
+    fn save_data(&self) -> &SaveData {
+        match &self.scene {
+            Scene::Title(title) => &title.global,
+            Scene::ScenarioSelect(select) => &select.global,
+            Scene::Adv(adv) => adv.save_data(),
+            Scene::Bridge(_) => self.bridge_global.as_ref().expect("the bridge keeps the save data"),
+        }
+    }
+
+    /// Replaces the scene; the title fades in over the old screen (`Title::First`: 90 frames, as after the boot,
+    /// or 60 when coming back), the scenario select over 60 frames
     fn switch_scene(&mut self, ctx: &mut PreRenderContext, next: Next) {
-        let global = self.scene.save_data().clone();
+        let global = self.save_data().clone();
+        // the music: the title's fades as the next screen comes in, the scenario select's over the bridge
+        let music_fade = match next {
+            Next::Bridge(_) => 120.0,
+            _ => 60.0,
+        };
         match &mut self.scene {
             Scene::Adv(adv) => adv.shutdown(),
-            Scene::Title(title) => title.shutdown(),
+            Scene::Title(title) => title.shutdown(music_fade),
+            Scene::ScenarioSelect(select) => select.shutdown(music_fade),
+            Scene::Bridge(_) => {}
+        }
+        let mut snapshot = || {
+            let mut old = ctx.new_render_texture("scene_fade".to_string());
+            let depth_stencil = ctx.depth_stencil;
+            let mut pass = ctx.begin_pass(old.as_texture_target(), Some(depth_stencil), "scene_fade");
+            self.scene.render(&mut pass);
+            drop(pass);
+            old
+        };
+        match next {
+            Next::ScenarioSelect => {
+                let old = snapshot();
+                match ScenarioSelect::new(
+                    &self.asset_server,
+                    self.audio_manager.clone(),
+                    MenuAssets::new(&self.adv_assets),
+                    global,
+                ) {
+                    Ok(select) => {
+                        self.scene = Scene::ScenarioSelect(select);
+                        self.fade = Some(SceneFade::new(Some(old), 60.0));
+                    }
+                    Err(e) => error!("Could not open the scenario select: {e:?}"),
+                }
+                return;
+            }
+            Next::Bridge(scenario) => {
+                let old = snapshot();
+                self.fade = None;
+                self.scene = Scene::Bridge(Bridge::new(old, scenario));
+                // the bridge keeps the save data in memory for the story that follows
+                self.bridge_global = Some(global);
+                return;
+            }
+            Next::TitleAt(cursor) => {
+                let old = snapshot();
+                match Title::new(
+                    &self.asset_server,
+                    self.audio_manager.clone(),
+                    MenuAssets::new(&self.adv_assets),
+                    global,
+                    cursor,
+                ) {
+                    Ok(title) => {
+                        self.scene = Scene::Title(title);
+                        self.fade = Some(SceneFade::new(Some(old), 60.0));
+                    }
+                    Err(e) => error!("Could not open the title: {e:?}"),
+                }
+                return;
+            }
+            _ => {}
         }
         match next {
             Next::Story(entry) => {
@@ -527,12 +628,7 @@ impl App {
                 ));
             }
             Next::Title => {
-                let mut old = ctx.new_render_texture("scene_fade".to_string());
-                {
-                    let depth_stencil = ctx.depth_stencil;
-                    let mut pass = ctx.begin_pass(old.as_texture_target(), Some(depth_stencil), "scene_fade");
-                    self.scene.render(&mut pass);
-                }
+                let old = snapshot();
                 match Title::new(
                     &self.asset_server,
                     self.audio_manager.clone(),
@@ -547,6 +643,7 @@ impl App {
                     Err(e) => error!("Could not open the title: {e:?}"),
                 }
             }
+            Next::ScenarioSelect | Next::Bridge(_) | Next::TitleAt(_) => unreachable!(),
         }
     }
 }
@@ -554,20 +651,17 @@ impl App {
 /// What the app shows
 enum Scene {
     Title(Title),
+    ScenarioSelect(ScenarioSelect),
+    Bridge(Bridge),
     Adv(Adv),
 }
 
 impl Scene {
-    fn save_data(&self) -> &SaveData {
-        match self {
-            Scene::Title(title) => &title.global,
-            Scene::Adv(adv) => adv.save_data(),
-        }
-    }
-
     fn render(&self, pass: &mut RenderPass) {
         match self {
             Scene::Title(title) => title.render(pass),
+            Scene::ScenarioSelect(select) => select.render(pass),
+            Scene::Bridge(bridge) => bridge.render(pass),
             Scene::Adv(adv) => adv.render(pass),
         }
     }
@@ -576,7 +670,12 @@ impl Scene {
 /// Where a scene asked to go
 enum Next {
     Story(GameDataEntry),
+    /// `CreateTitle(-1)`: as after the boot
     Title,
+    /// `CreateTitle(cursor)`: back to the title with the cursor on that item
+    TitleAt(i32),
+    ScenarioSelect,
+    Bridge(u8),
 }
 
 /// The old screen (or black) over the new one, fading out (the transition of `Title::First`, program 8)

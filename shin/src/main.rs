@@ -18,6 +18,7 @@ mod fps_counter;
 mod layer;
 mod random;
 mod render;
+mod scenario_select;
 mod savedata;
 mod time;
 mod title;
