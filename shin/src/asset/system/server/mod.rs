@@ -83,7 +83,7 @@ impl AssetServer {
         path: P,
         args: T::Args,
     ) -> Result<Arc<T>> {
-        let path = path.as_ref();
+        let path = &resolve_parent_dirs(path.as_ref());
 
         let asset_map_key = (path.to_string(), args.clone());
 
@@ -278,5 +278,36 @@ impl LayeredAssetIo {
             path,
             errors
         ))
+    }
+}
+
+/// Drops each `dir/..` pair: some table entries reach another directory this way (the title's sea sound is BGM
+/// `../se/umilse_002`, so `/bgm/../se/umilse_002.nxa`), which the original's file system resolves
+fn resolve_parent_dirs(path: &str) -> String {
+    if !path.contains("..") {
+        return path.to_string();
+    }
+    let mut parts: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            ".." if parts.len() > 1 => {
+                parts.pop();
+            }
+            ".." => {}
+            _ => parts.push(part),
+        }
+    }
+    parts.join("/")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn resolve_parent_dirs() {
+        assert_eq!(
+            super::resolve_parent_dirs("/bgm/../se/umilse_002.nxa"),
+            "/se/umilse_002.nxa"
+        );
+        assert_eq!(super::resolve_parent_dirs("/bgm/a.nxa"), "/bgm/a.nxa");
     }
 }
