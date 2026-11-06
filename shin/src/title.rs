@@ -694,7 +694,7 @@ impl Title {
                         self.state = State::Active;
                         return;
                     };
-                    match sub_menu.update(&input) {
+                    match sub_menu.update(&input, frames) {
                         SubMenuEvent::None => {}
                         SubMenuEvent::Sound(name) => self.sound(context, name),
                         SubMenuEvent::Open(episode) => {
@@ -918,6 +918,9 @@ struct SubMenu {
     items: Vec<Item>,
     cursor: usize,
     state: SubState,
+    gestures: ui::gesture::GestureRecognizer,
+    /// The row the touch went down on (`+0xbc`)
+    touched: Option<usize>,
 }
 
 impl SubMenu {
@@ -950,6 +953,8 @@ impl SubMenu {
             items,
             cursor: 0,
             state: SubState::In,
+            gestures: ui::gesture::GestureRecognizer::new(false),
+            touched: None,
         }
     }
 
@@ -959,7 +964,7 @@ impl SubMenu {
             .any(|item| !item.alpha.is_idle() || !item.x.is_idle())
     }
 
-    fn update(&mut self, input: &MenuInput) -> SubMenuEvent {
+    fn update(&mut self, input: &MenuInput, frames: f32) -> SubMenuEvent {
         match self.state {
             SubState::In => {
                 if !self.moving() {
@@ -967,7 +972,11 @@ impl SubMenu {
                 }
                 SubMenuEvent::None
             }
-            SubState::Active => self.handle_input(input),
+            // a touch holds the keys off (`0x710006b860`)
+            SubState::Active => match self.handle_pointer(input.pointer, frames) {
+                SubMenuEvent::None if !self.gestures.is_active() => self.handle_input(input),
+                event => event,
+            },
             SubState::Deciding => {
                 if self.items[self.cursor].flash.is_idle() {
                     self.state = SubState::Active;
@@ -988,22 +997,10 @@ impl SubMenu {
     fn handle_input(&mut self, input: &MenuInput) -> SubMenuEvent {
         let n = self.items.len();
         if input.confirm {
-            let flash = &mut self.items[self.cursor].flash;
-            *flash = Tweener::new(0.0);
-            minigame::flash(flash);
-            self.state = SubState::Deciding;
-            return SubMenuEvent::Sound("decide");
+            return self.decide();
         }
         if input.cancel {
-            for (k, item) in self.items.iter_mut().enumerate() {
-                let delay = 4.0 * k as f32;
-                ui::hold(&mut item.alpha, delay);
-                ui::tween(&mut item.alpha, 0.0, 10.0, Easing::Linear);
-                ui::hold(&mut item.x, delay);
-                ui::tween(&mut item.x, Self::X + 100.0, 10.0, Easing::SineIn);
-            }
-            self.state = SubState::Out;
-            return SubMenuEvent::Sound("cancel");
+            return self.close();
         }
         let to = if input.down {
             (self.cursor + 1) % n
@@ -1015,10 +1012,81 @@ impl SubMenu {
         if to == self.cursor {
             return SubMenuEvent::None;
         }
+        self.set_cursor(to);
+        SubMenuEvent::Sound("move")
+    }
+
+    /// `0x71001103b0` with 0: the row flashes, then its screen opens
+    fn decide(&mut self) -> SubMenuEvent {
+        let flash = &mut self.items[self.cursor].flash;
+        *flash = Tweener::new(0.0);
+        minigame::flash(flash);
+        self.state = SubState::Deciding;
+        SubMenuEvent::Sound("decide")
+    }
+
+    /// `0x71001103b0` with 1: the rows leave
+    fn close(&mut self) -> SubMenuEvent {
+        for (k, item) in self.items.iter_mut().enumerate() {
+            let delay = 4.0 * k as f32;
+            ui::hold(&mut item.alpha, delay);
+            ui::tween(&mut item.alpha, 0.0, 10.0, Easing::Linear);
+            ui::hold(&mut item.x, delay);
+            ui::tween(&mut item.x, Self::X + 100.0, 10.0, Easing::SineIn);
+        }
+        self.state = SubState::Out;
+        SubMenuEvent::Sound("cancel")
+    }
+
+    /// `0x71001106d0`: the highlight moves to row `to`
+    fn set_cursor(&mut self, to: usize) {
+        if to == self.cursor {
+            return;
+        }
         minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.05);
         self.cursor = to;
         minigame::tween_now(&mut self.items[to].highlight, 1.0, 0.1);
-        SubMenuEvent::Sound("move")
+    }
+
+    /// The rows' gesture listener (down `0x7100110b30`, hit `0x7100110a30`, press `0x7100110bb0`, tap
+    /// `0x7100110c70`, drag `0x7100110d30`): a press brightens a row and makes it the cursor, a tap decides it or,
+    /// off the rows, closes the list
+    fn handle_pointer(&mut self, pointer: Pointer, frames: f32) -> SubMenuEvent {
+        use ui::gesture::Gesture;
+        let mut event = SubMenuEvent::None;
+        for gesture in self.gestures.update(pointer, frames) {
+            match gesture {
+                // the rows as drawn, 400 x 72
+                Gesture::Down(at) => {
+                    self.touched = self.items.iter().position(|item| {
+                        let (x, y) = (item.x.value(), item.y.value());
+                        minigame::contains([x, y, x + 400.0, y + 72.0], at)
+                    })
+                }
+                Gesture::Press => {
+                    if let Some(k) = self.touched {
+                        minigame::raise(&mut self.items[k].flash);
+                        self.set_cursor(k);
+                    }
+                }
+                Gesture::Tap(_) => {
+                    event = match self.touched {
+                        Some(k) => {
+                            self.set_cursor(k);
+                            self.decide()
+                        }
+                        None => self.close(),
+                    }
+                }
+                Gesture::Drag(..) => {
+                    if let Some(k) = self.touched.take() {
+                        minigame::lower(&mut self.items[k].flash);
+                    }
+                }
+                _ => {}
+            }
+        }
+        event
     }
 }
 

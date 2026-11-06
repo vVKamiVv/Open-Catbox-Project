@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use enum_map::EnumMap;
-use glam::{Mat4, vec3};
+use glam::{Mat4, Vec2, vec3};
 use shin_audio::AudioManager;
 use shin_core::{
     format::{
@@ -41,7 +41,10 @@ use crate::{
         },
     },
     render::PreRenderContext,
-    ui::{self, MenuInput},
+    ui::{
+        self, MenuInput,
+        gesture::{Gesture, GestureRecognizer},
+    },
     update::{AdvUpdatable as _, AdvUpdateContext, UpdateContext},
 };
 
@@ -66,6 +69,13 @@ enum State {
     Done,
 }
 
+/// What a touch went down on
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Touch {
+    Close,
+    Item(usize),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ViewerState {
     /// The gallery fades to black over 30 frames
@@ -85,7 +95,8 @@ struct Viewer {
     /// The movie's picture and sound (`+0xc8`) and the black cover (`+0x120`)
     fade: Tweener,
     cover: Tweener,
-    pointer_held: bool,
+    /// The viewer's own touch input
+    gestures: GestureRecognizer,
 }
 
 pub struct MovieBox {
@@ -99,6 +110,9 @@ pub struct MovieBox {
     completion: TextBlock,
     viewer: Option<Viewer>,
     state: State,
+    /// The gallery's touch input (`GestureRecognizer`, listener `0x7100089300` and its neighbours)
+    gestures: GestureRecognizer,
+    touch: Option<Touch>,
 }
 
 impl MovieBox {
@@ -148,6 +162,8 @@ impl MovieBox {
             completion,
             viewer: None,
             state: State::Active,
+            gestures: GestureRecognizer::new(false),
+            touch: None,
         })
     }
 
@@ -162,22 +178,11 @@ impl MovieBox {
     fn handle_keys(&mut self, assets: &AssetServer, input: &MenuInput) {
         if input.cancel {
             self.sound(assets, "cancel");
-            self.close_flash = Tweener::new(0.0);
-            minigame::flash(&mut self.close_flash);
-            self.state = State::Closing;
+            self.close();
             return;
         }
         if input.confirm {
-            // `0x7100088fc0`
-            let item = &mut self.items[self.cursor];
-            item.flash = Tweener::new(0.0);
-            minigame::flash(&mut item.flash);
-            if item.unlocked {
-                self.sound(assets, "decide");
-                self.state = State::Deciding;
-            } else {
-                self.sound(assets, "error");
-            }
+            self.decide(assets);
             return;
         }
         let n = self.items.len();
@@ -197,9 +202,94 @@ impl MovieBox {
         let to = (column + 4 * row).min(n - 1);
         if to != self.cursor {
             self.sound(assets, "move");
-            minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.2);
-            self.cursor = to;
-            minigame::tween_now(&mut self.items[to].highlight, 1.0, 0.25);
+            self.set_cursor(to);
+        }
+    }
+
+    fn set_cursor(&mut self, to: usize) {
+        minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.2);
+        self.cursor = to;
+        minigame::tween_now(&mut self.items[to].highlight, 1.0, 0.25);
+    }
+
+    /// `0x7100088fc0`: the item flashes; an unlocked movie plays
+    fn decide(&mut self, assets: &AssetServer) {
+        let item = &mut self.items[self.cursor];
+        item.flash = Tweener::new(0.0);
+        minigame::flash(&mut item.flash);
+        if item.unlocked {
+            self.sound(assets, "decide");
+            self.state = State::Deciding;
+        } else {
+            self.sound(assets, "error");
+        }
+    }
+
+    /// `0x7100088e60`: the close button flashes, then the title
+    fn close(&mut self) {
+        self.close_flash = Tweener::new(0.0);
+        minigame::flash(&mut self.close_flash);
+        self.state = State::Closing;
+    }
+
+    /// `0x7100089170`: the thumbnail under a point, 216 px tall centred in its cell; the x is lost in the decompile,
+    /// so the thumbnails are the port's render's
+    fn item_at(&self, at: Vec2) -> Option<usize> {
+        if !minigame::contains([136.0, 190.0, 1784.0, 916.0], at) {
+            return None;
+        }
+        self.items.iter().position(|item| {
+            let (column, row) = ((item.movie % 4) as f32, (item.movie / 4) as f32);
+            let (x, y) = (150.0 + 412.0 * column, 203.0 + 242.0 * row);
+            minigame::contains([x, y, x + 384.0, y + 216.0], at)
+        })
+    }
+
+    /// The gallery's gesture listener (down `0x7100089300`, press `0x71000894c0`, tap `0x71000895e0`, drag
+    /// `0x7100089700`): a down off the thumbnails and the close button is not tracked, a press raises the item and
+    /// moves the cursor to it, a tap plays it; a drag only drops the highlight (nothing scrolls)
+    fn handle_pointer(&mut self, assets: &AssetServer, pointer: Pointer, frames: f32) {
+        for gesture in self.gestures.update(pointer, frames) {
+            match gesture {
+                Gesture::Down(at) => {
+                    self.touch = if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+                        Some(Touch::Close)
+                    } else if (150.0..992.0).contains(&at.y) {
+                        self.item_at(at).map(Touch::Item)
+                    } else {
+                        None
+                    };
+                    if self.touch.is_none() {
+                        self.gestures.cancel();
+                    }
+                }
+                Gesture::Press => match self.touch {
+                    Some(Touch::Close) => minigame::raise(&mut self.close_flash),
+                    Some(Touch::Item(index)) => {
+                        minigame::raise(&mut self.items[index].flash);
+                        self.set_cursor(index);
+                    }
+                    None => {}
+                },
+                // the flash and the close restart the raised highlight
+                Gesture::Tap(_) => match self.touch.take() {
+                    Some(Touch::Close) => {
+                        self.sound(assets, "decide");
+                        self.close();
+                    }
+                    Some(Touch::Item(index)) => {
+                        self.set_cursor(index);
+                        self.decide(assets);
+                    }
+                    None => {}
+                },
+                Gesture::Drag(..) | Gesture::End => match self.touch.take() {
+                    Some(Touch::Close) => minigame::lower(&mut self.close_flash),
+                    Some(Touch::Item(index)) => minigame::lower(&mut self.items[index].flash),
+                    None => {}
+                },
+                Gesture::LongPress | Gesture::Flick(_) => {}
+            }
         }
     }
 
@@ -219,7 +309,13 @@ impl MovieBox {
         );
         let input = MenuInput::new(state, pointer);
         match self.state {
-            State::Active => self.handle_keys(context.asset_server, &input),
+            State::Active => {
+                self.handle_pointer(context.asset_server, pointer, frames);
+                // a touch holds the buttons off (`0x710006b860`)
+                if !self.gestures.is_active() && self.state == State::Active {
+                    self.handle_keys(context.asset_server, &input);
+                }
+            }
             State::Deciding => {
                 if self.items[self.cursor].flash.is_idle() {
                     let mut cover = Tweener::new(0.0);
@@ -230,7 +326,7 @@ impl MovieBox {
                         state: ViewerState::Covering,
                         fade: Tweener::new(1.0),
                         cover,
-                        pointer_held: false,
+                        gestures: GestureRecognizer::new(false),
                     });
                     self.state = State::Watching;
                 }
@@ -261,8 +357,12 @@ impl MovieBox {
             return true;
         };
         let frames = context.delta_ticks.as_f32();
-        let released = viewer.pointer_held && !input.pointer.held;
-        viewer.pointer_held = input.pointer.held;
+        // `0x710008a900`: a tap anywhere skips the movie
+        let tapped = viewer
+            .gestures
+            .update(input.pointer, frames)
+            .iter()
+            .any(|gesture| matches!(gesture, Gesture::Tap(_)));
         let mut exit_sound = None;
         match viewer.state {
             ViewerState::Covering => {
@@ -303,9 +403,10 @@ impl MovieBox {
                     .is_none_or(|movie| movie.is_finished());
                 if ended {
                     viewer.state = ViewerState::Ending;
-                } else if input.confirm || input.cancel || released {
+                } else if tapped || !viewer.gestures.is_active() && (input.confirm || input.cancel)
+                {
                     // `0x710008a770`: A or B with "cancel", a tap with "decide"
-                    exit_sound = Some(if released { "decide" } else { "cancel" });
+                    exit_sound = Some(if tapped { "decide" } else { "cancel" });
                     ui::tween(&mut viewer.fade, 0.0, 30.0, Easing::Linear);
                     viewer.state = ViewerState::Ending;
                 }

@@ -8,13 +8,13 @@
 //! A change of selection crossfades the scene over 10 frames, as the original's 10-frame wiper on the changed layer:
 //! only that layer differs between the two pictures, so the two are the same.
 //!
-//! shortcut: bustups and backgrounds load synchronously (the original loads them in the background); the panel, the
-//! buttons and the viewer take no pointer input, and the viewer cannot pan with the left stick.
+//! shortcut: bustups and backgrounds load synchronously (the original loads them in the background), and the viewer
+//! cannot pan with the left stick.
 
 use std::sync::Arc;
 
 use enum_map::EnumMap;
-use glam::{Mat4, vec3};
+use glam::{Mat4, Vec2, vec3};
 use shin_audio::AudioManager;
 use shin_core::{
     format::{
@@ -53,7 +53,10 @@ use crate::{
         },
     },
     render::PreRenderContext,
-    ui::{self, MenuInput},
+    ui::{
+        self, MenuInput,
+        gesture::{Gesture, GestureRecognizer},
+    },
     update::{AdvUpdatable as _, AdvUpdateContext, UpdateContext},
 };
 
@@ -166,6 +169,15 @@ enum State {
     Done,
 }
 
+/// What a touch went down on
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Touch {
+    Close,
+    Hide,
+    /// The panel's band: a row and its part (0 the left arrow, 1 the right one, 2 the frame), or nothing
+    Panel(Option<(usize, usize)>),
+}
+
 pub struct CharacterBox {
     assets: MenuAssets,
     audio: Arc<AudioManager>,
@@ -193,6 +205,11 @@ pub struct CharacterBox {
     /// The old scene fading out over the new one after a change
     transition: Option<(RenderTexture, Tweener)>,
     state: State,
+    /// The panel's and the viewer's touch input (`GestureRecognizer`, listeners `0x710003bd60` and `0x710003d150`
+    /// with their neighbours), and the camera's speed after a flick (viewer `+0xc4`)
+    gestures: GestureRecognizer,
+    touch: Option<Touch>,
+    velocity: Vec2,
 }
 
 impl CharacterBox {
@@ -243,6 +260,9 @@ impl CharacterBox {
             arrows: std::array::from_fn(|_| Tweener::new(0.0)),
             transition: None,
             state: State::Entering(0),
+            gestures: GestureRecognizer::new(false),
+            touch: None,
+            velocity: Vec2::ZERO,
         };
         character_box.load_backgrounds();
         character_box.load_bustup();
@@ -406,18 +426,11 @@ impl CharacterBox {
     /// `0x7100039de0`
     fn handle_keys(&mut self, ctx: &mut PreRenderContext, input: &MenuInput) {
         if input.cancel {
-            // `0x7100039f90`
             self.sound("cancel");
-            self.close_flash = Tweener::new(0.0);
-            minigame::flash(&mut self.close_flash);
-            self.state = State::Closing;
+            self.close();
         } else if input.confirm {
-            // `0x710003a0f0`: the panel slides 500 px right while the hide button flashes
             self.sound("decide");
-            self.hide_flash = Tweener::new(0.0);
-            minigame::flash(&mut self.hide_flash);
-            ui::tween(&mut self.panel, 500.0, 30.0, Easing::SineOut);
-            self.state = State::Hiding;
+            self.hide();
         } else if input.up {
             if self.row >= 1 {
                 self.row -= 1;
@@ -446,18 +459,151 @@ impl CharacterBox {
         }
     }
 
+    /// `0x7100039f90`: the close button flashes, then the title
+    fn close(&mut self) {
+        self.close_flash = Tweener::new(0.0);
+        minigame::flash(&mut self.close_flash);
+        self.state = State::Closing;
+    }
+
+    /// `0x710003a0f0`: the panel slides 500 px right while the hide button flashes
+    fn hide(&mut self) {
+        self.hide_flash = Tweener::new(0.0);
+        minigame::flash(&mut self.hide_flash);
+        ui::tween(&mut self.panel, 500.0, 30.0, Easing::SineOut);
+        self.state = State::Hiding;
+    }
+
+    /// `0x710003b3b0`: the row and part under a point of the panel, the arrows only when the value can move that way;
+    /// the x are lost in the decompile, so they are the port's render's
+    fn panel_at(&self, at: Vec2) -> Option<(usize, usize)> {
+        let (indices, counts) = (self.indices(), self.counts());
+        ROWS.iter()
+            .enumerate()
+            .find_map(|(row, &(x, y, kind, _, arrows))| {
+                let s = if kind == 0 { 144.0 } else { 112.0 };
+                if minigame::contains([x, y, x + s, y + s], at) {
+                    return Some((row, 2));
+                }
+                let enabled = [indices[row] > 0, indices[row] + 2 <= counts[row]];
+                let y = ARROW_Y[row];
+                (0..2)
+                    .find(|&side| {
+                        let x = arrows[side];
+                        enabled[side] && minigame::contains([x, y, x + 80.0, y + 80.0], at)
+                    })
+                    .map(|side| (row, side))
+            })
+    }
+
+    /// The panel's gesture listener (down `0x710003bd60`, press `0x710003bfa0`, tap `0x710003c050`, drag
+    /// `0x710003c1a0`): a press moves the row cursor and raises an arrow, a tap steps the value with an arrow (and
+    /// flashes it) or presses the hide or close button; a drag only drops the highlights, and nothing is flicked
+    fn handle_pointer(&mut self, ctx: &mut PreRenderContext, pointer: Pointer, frames: f32) {
+        for gesture in self.gestures.update(pointer, frames) {
+            match gesture {
+                // a touch elsewhere is tracked but does nothing
+                Gesture::Down(at) => {
+                    self.touch = if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+                        Some(Touch::Close)
+                    } else if minigame::contains([1668.0, 32.0, 1752.0, 116.0], at) {
+                        Some(Touch::Hide)
+                    } else if (162.0..980.0).contains(&at.y) {
+                        Some(Touch::Panel(self.panel_at(at)))
+                    } else {
+                        None
+                    };
+                }
+                Gesture::Press => match self.touch {
+                    Some(Touch::Close) => minigame::raise(&mut self.close_flash),
+                    Some(Touch::Hide) => minigame::raise(&mut self.hide_flash),
+                    Some(Touch::Panel(Some((row, part)))) => {
+                        self.row = row;
+                        if part < 2 {
+                            minigame::raise(&mut self.arrows[2 * row + part]);
+                        }
+                    }
+                    _ => {}
+                },
+                // the flashes restart the raised highlights
+                Gesture::Tap(_) => match self.touch.take() {
+                    Some(Touch::Close) => {
+                        self.sound("decide");
+                        self.close();
+                    }
+                    Some(Touch::Hide) => {
+                        self.sound("decide");
+                        self.hide();
+                    }
+                    Some(Touch::Panel(Some((row, part)))) => {
+                        self.row = row;
+                        if part < 2 {
+                            minigame::lower(&mut self.arrows[2 * row + part]);
+                            if self.change(ctx, if part == 0 { -1 } else { 1 }) {
+                                self.flash_arrow(part);
+                            }
+                        }
+                    }
+                    _ => {}
+                },
+                Gesture::Drag(..) | Gesture::End => match self.touch.take() {
+                    Some(Touch::Close | Touch::Hide) => {
+                        minigame::lower(&mut self.close_flash);
+                        minigame::lower(&mut self.hide_flash);
+                    }
+                    Some(Touch::Panel(Some((row, part)))) if part < 2 => {
+                        minigame::lower(&mut self.arrows[2 * row + part]);
+                    }
+                    _ => {}
+                },
+                Gesture::LongPress | Gesture::Flick(_) => {}
+            }
+        }
+    }
+
+    /// `0x710003ceb0`: everything slides back over 30 frames
+    fn close_viewer(&mut self) {
+        ui::tween(&mut self.scene_x, SCENE_X, 30.0, Easing::SineOut);
+        for camera in &mut self.camera {
+            ui::tween(camera, 0.0, 30.0, Easing::SineOut);
+        }
+        ui::tween(&mut self.ui, 1.0, 30.0, Easing::Linear);
+        ui::tween(&mut self.panel, 0.0, 30.0, Easing::SineOut);
+        self.velocity = Vec2::ZERO;
+        self.state = State::ViewerClosing;
+    }
+
+    /// The camera moved against `d`, clamped to ±420 x ±130
+    fn move_camera(&mut self, d: Vec2) {
+        let [x, y] = &mut self.camera;
+        *x = Tweener::new((x.value() - d.x).clamp(-420.0, 420.0));
+        *y = Tweener::new((y.value() - d.y).clamp(-130.0, 130.0));
+    }
+
+    /// The viewer's gesture listener (down `0x710003d150`, tap `0x710003d1b0`, drag `0x710003d250`, flick
+    /// `0x710003d330`): a touch stops the coasting, a tap goes back to the panel, and drags and flicks move the camera
+    /// against the pointer, vertically by 0.5625 as the original
+    fn handle_viewer_pointer(&mut self, pointer: Pointer, frames: f32) {
+        let vertical = Vec2::new(1.0, 0.5625);
+        for gesture in self.gestures.update(pointer, frames) {
+            match gesture {
+                Gesture::Down(_) => self.velocity = Vec2::ZERO,
+                Gesture::Tap(_) => {
+                    self.sound("decide");
+                    self.close_viewer();
+                }
+                Gesture::Drag(from, to) => self.move_camera((to - from) * vertical),
+                Gesture::Flick(velocity) => self.velocity = velocity * vertical,
+                _ => {}
+            }
+        }
+    }
+
     /// `0x710003cd50`: pan with the d-pad (10 px a frame), clamped to ±420 x ±130
     fn handle_viewer_keys(&mut self, input: &MenuInput, frames: f32) {
         if input.confirm || input.cancel {
-            // `0x710003ceb0`: everything slides back over 30 frames
             self.sound("cancel");
-            ui::tween(&mut self.scene_x, SCENE_X, 30.0, Easing::SineOut);
-            for camera in &mut self.camera {
-                ui::tween(camera, 0.0, 30.0, Easing::SineOut);
-            }
-            ui::tween(&mut self.ui, 1.0, 30.0, Easing::Linear);
-            ui::tween(&mut self.panel, 0.0, 30.0, Easing::SineOut);
-            self.state = State::ViewerClosing;
+            self.close_viewer();
             return;
         }
         let step = 10.0 * frames;
@@ -504,7 +650,13 @@ impl CharacterBox {
                     self.state = State::Entering(elapsed);
                 }
             }
-            State::Active => self.handle_keys(context.pre_render, &input),
+            State::Active => {
+                self.handle_pointer(context.pre_render, pointer, frames);
+                // a touch holds the buttons off (`0x710006b860`)
+                if !self.gestures.is_active() && self.state == State::Active {
+                    self.handle_keys(context.pre_render, &input);
+                }
+            }
             State::Hiding => {
                 if self.hide_flash.is_idle() {
                     // `0x710003c840`
@@ -518,7 +670,17 @@ impl CharacterBox {
                     self.state = State::Viewer;
                 }
             }
-            State::Viewer => self.handle_viewer_keys(&input, frames),
+            State::Viewer => {
+                self.handle_viewer_pointer(pointer, frames);
+                // `0x710003cac0`: a flick's speed moves the camera each frame, without dt, slowing by 0.95^dt
+                if self.velocity != Vec2::ZERO {
+                    self.move_camera(self.velocity);
+                    self.velocity *= 0.95f32.powf(frames);
+                }
+                if !self.gestures.is_active() && self.state == State::Viewer {
+                    self.handle_viewer_keys(&input, frames);
+                }
+            }
             State::ViewerClosing => {
                 if self.scene_x.is_idle() && self.panel.is_idle() {
                     self.state = State::Active;

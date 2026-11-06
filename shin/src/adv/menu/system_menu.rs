@@ -30,7 +30,10 @@ use crate::{
         user::minigame::{self, Sprite},
     },
     render::PreRenderContext,
-    ui,
+    ui::{
+        self,
+        gesture::{Gesture, GestureRecognizer},
+    },
 };
 
 /// The item ids, which are also their rows in `sysmenu`
@@ -91,9 +94,9 @@ pub struct SystemMenu {
     /// The item whose flash is playing before it opens
     deciding: Option<u8>,
     child: Option<Child>,
-    /// The pointer as last frame, and the item a press went down on
-    pointer_held: bool,
-    pressed: Option<usize>,
+    gestures: GestureRecognizer,
+    /// The item the touch went down on (`+0xb4`)
+    touched: Option<usize>,
 }
 
 /// The panels' text objects: 756 wide, size 38, no room for rubi (`0x710001edc0`)
@@ -162,8 +165,8 @@ impl SystemMenu {
             chars,
             deciding: None,
             child: None,
-            pointer_held: false,
-            pressed: None,
+            gestures: GestureRecognizer::new(false),
+            touched: None,
         };
         menu.start();
         menu
@@ -274,46 +277,55 @@ impl SystemMenu {
         })
     }
 
+    /// "cancel", and the menu slides away
+    fn leave(&mut self, cx: &TaskCx) {
+        cx.sound("cancel");
+        self.close();
+        self.state = State::Closing;
+    }
+
+    /// The menu's gesture listener (down `0x710001e780`, press `0x710001e800`, tap `0x710001e8e0`, drag
+    /// `0x710001e9e0`, flick `0x710001eaa0`): a press brightens an item and makes it the cursor, a tap decides it or,
+    /// off the items, closes the menu, as does a flick to the left
+    fn handle_pointer(&mut self, cx: &mut TaskCx) {
+        // within 30 degrees of the horizontal (`tan 30`)
+        let flat = |v: glam::Vec2| v.y.abs() <= v.x.abs() * 0.577_350_3;
+        for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+            match gesture {
+                Gesture::Down(at) => self.touched = self.item_at(at),
+                Gesture::Press => {
+                    if let Some(i) = self.touched {
+                        minigame::raise(&mut self.items[i].flash);
+                        self.cursor = i;
+                    }
+                }
+                Gesture::Tap(_) => match self.touched {
+                    Some(i) => {
+                        self.cursor = i;
+                        self.decide(cx);
+                    }
+                    None => self.leave(cx),
+                },
+                Gesture::Drag(..) => {
+                    if let Some(i) = self.touched.take() {
+                        minigame::lower(&mut self.items[i].flash);
+                    }
+                }
+                Gesture::Flick(v) if flat(v) && v.x < 0.0 => self.leave(cx),
+                _ => {}
+            }
+        }
+    }
+
     fn handle_input(&mut self, cx: &mut TaskCx) {
-        // the pointer (vfuncs 7 and 8): a press flashes an item, a release on it decides, elsewhere closes
-        let pointer = cx.input.pointer;
-        let went_down = pointer.held && !self.pointer_held;
-        let went_up = !pointer.held && self.pointer_held;
-        self.pointer_held = pointer.held;
-        let hit = pointer.position.and_then(|p| self.item_at(p));
-        if went_down {
-            if let Some(i) = hit {
-                self.pressed = Some(i);
-                minigame::raise(&mut self.items[i].flash);
-                self.cursor = i;
-            }
-            return;
-        }
-        if went_up {
-            match self.pressed.take() {
-                Some(i) if hit == Some(i) => {
-                    // the press's flash goes on into the decide flash
-                    self.decide(cx);
-                }
-                Some(i) => minigame::lower(&mut self.items[i].flash),
-                None => {
-                    cx.sound("cancel");
-                    self.close();
-                    self.state = State::Closing;
-                }
-            }
-            return;
-        }
-        if self.pressed.is_some() || self.animating() {
+        if self.animating() {
             return;
         }
 
         let input = cx.input;
         let n = self.items.len();
         if input.cancel || input.y {
-            cx.sound("cancel");
-            self.close();
-            self.state = State::Closing;
+            self.leave(cx);
         } else if input.confirm {
             self.decide(cx);
         } else if input.up {
@@ -384,7 +396,14 @@ impl Task for SystemMenu {
                             self.open(cx, id);
                         }
                     } else if cx.focused {
-                        self.handle_input(cx);
+                        self.handle_pointer(cx);
+                        // touches hold the buttons off (`0x710006b860`)
+                        if self.state == State::Active
+                            && self.deciding.is_none()
+                            && !self.gestures.is_active()
+                        {
+                            self.handle_input(cx);
+                        }
                     }
                 }
                 State::Closing => {

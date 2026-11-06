@@ -6,14 +6,13 @@
 //!
 //! The portraits' looks (programs 48-51 over the `non` card) are composed here in memory: the portrait over the card,
 //! dead in red (`rgb × (1, 0.1, 0.1)`), missing in grey (BT.601), half dead red below the diagonal; all four measured
-//! against the original in Eden.
+//! against the original in Eden. The pointer picks cells, presses the buttons and drags and flicks the profile.
 //!
-//! shortcut: the grid, the buttons and the profile cannot be used with the pointer, and the full pictures load
-//! synchronously.
+//! shortcut: the full pictures load synchronously.
 
 use std::{collections::HashMap, sync::Arc};
 
-use glam::{Mat4, vec3};
+use glam::{Mat4, Vec2, vec3};
 use image::RgbaImage;
 use shin_core::{
     format::scenario::info::{
@@ -42,7 +41,10 @@ use crate::{
         user::minigame::{self, Sprite},
     },
     render::PreRenderContext,
-    ui,
+    ui::{
+        self,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
 };
 
 const VIEW: f32 = 730.0;
@@ -244,6 +246,17 @@ enum Pending {
     Sub,
 }
 
+/// What a touch went down on (`+0x124`..`+0x130`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Touched {
+    Close,
+    /// The page's selected cell (1000)
+    Selected,
+    Cell(usize),
+    Button(usize),
+    Profile,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     /// `Start $_6`: the screen opens over 10 frames
@@ -281,6 +294,10 @@ pub struct Chars {
     close_flash: Tweener,
     state: State,
     target_size: (u32, u32),
+    gestures: GestureRecognizer,
+    /// The profile's coasting after a flick (`+0x134`)
+    coast: Coast,
+    touched: Option<Touched>,
 }
 
 impl Chars {
@@ -415,6 +432,9 @@ impl Chars {
             close_flash: Tweener::new(0.0),
             state: State::Opening,
             target_size: (1920, 1080),
+            gestures: GestureRecognizer::new(false),
+            coast: Coast::default(),
+            touched: None,
         };
         chars.update_buttons();
         chars.build_texts(cx);
@@ -512,6 +532,7 @@ impl Chars {
         self.name = Some(name);
         self.description = Some(description);
         self.profile_scroll = 0.0;
+        self.coast.stop();
         self.load_full(cx, &full);
     }
 
@@ -558,19 +579,7 @@ impl Chars {
         let input = cx.input;
         // L/R: the previous or next present page
         if self.page_count > 0 && (input.l || input.r) {
-            let page = self.page as i32;
-            let to = if input.l {
-                (0..page).rev().find(|&p| self.pages[p as usize].present)
-            } else {
-                (page + 1..4).find(|&p| self.pages[p as usize].present)
-            };
-            if let Some(to) = to {
-                // `0x7100052f40`
-                cx.sound("move");
-                let button = if to < page { PREV } else { NEXT };
-                minigame::flash(&mut self.buttons[button].1);
-                self.pending = Some(Pending::Page(to as u8));
-            }
+            self.turn_page(cx, !input.l);
             return;
         }
         let dx = if input.right {
@@ -598,32 +607,60 @@ impl Chars {
             return;
         };
         if self.switchable && input.x {
-            // `0x7100053550`: the next outfit, wrapping to the first
-            let portrait = self.cells[cell].portrait();
-            let count = portrait.variant_count();
-            let current = portrait.slots.get(portrait.slot).map_or(0, |slot| slot.2);
-            let to = if current + 1 < count { current + 1 } else { 0 };
-            if to != current {
-                cx.sound("decide");
-                minigame::flash(&mut self.buttons[CHANGE].1);
-                self.pending = Some(Pending::Dress(to));
-            }
+            self.change_dress(cx, cell);
         } else if self.switchable && input.y {
             self.change_status(cx, cell, 1);
         } else if input.confirm {
-            // `0x71000530e0`
-            if self.cells[cell].portraits.len() >= 2 {
-                cx.sound("decide");
-                let flash = &mut self.cells[cell].flash;
-                *flash = Tweener::new(0.0);
-                minigame::flash(flash);
-                self.pending = Some(Pending::Sub);
-            }
+            self.step_sub(cx, cell);
         } else if input.cancel {
             self.close(cx);
         } else if input.scroll != 0.0 {
-            self.profile_scroll = (self.profile_scroll + input.scroll * 16.0)
-                .clamp(0.0, (self.total_height - VIEW).max(0.0));
+            self.profile_scroll =
+                (self.profile_scroll + input.scroll * 16.0).clamp(0.0, self.max_scroll());
+        }
+    }
+
+    fn max_scroll(&self) -> f32 {
+        (self.total_height - VIEW).max(0.0)
+    }
+
+    /// `0x7100052f40`: the previous or next present page, once its button has flashed
+    fn turn_page(&mut self, cx: &TaskCx, forward: bool) {
+        let page = self.page as i32;
+        let to = if forward {
+            (page + 1..4).find(|&p| self.pages[p as usize].present)
+        } else {
+            (0..page).rev().find(|&p| self.pages[p as usize].present)
+        };
+        if let Some(to) = to {
+            cx.sound("move");
+            let button = if to < page { PREV } else { NEXT };
+            minigame::flash(&mut self.buttons[button].1);
+            self.pending = Some(Pending::Page(to as u8));
+        }
+    }
+
+    /// `0x7100053550`: the next outfit, wrapping to the first
+    fn change_dress(&mut self, cx: &TaskCx, cell: usize) {
+        let portrait = self.cells[cell].portrait();
+        let count = portrait.variant_count();
+        let current = portrait.slots.get(portrait.slot).map_or(0, |slot| slot.2);
+        let to = if current + 1 < count { current + 1 } else { 0 };
+        if to != current {
+            cx.sound("decide");
+            minigame::flash(&mut self.buttons[CHANGE].1);
+            self.pending = Some(Pending::Dress(to));
+        }
+    }
+
+    /// `0x71000530e0`: a cell of several characters steps to the next
+    fn step_sub(&mut self, cx: &TaskCx, cell: usize) {
+        if self.cells[cell].portraits.len() >= 2 {
+            cx.sound("decide");
+            let flash = &mut self.cells[cell].flash;
+            *flash = Tweener::new(0.0);
+            minigame::flash(flash);
+            self.pending = Some(Pending::Sub);
         }
     }
 
@@ -687,11 +724,144 @@ impl Chars {
             return;
         };
         cx.sound("move");
-        minigame::tween_now(&mut self.cells[current].hover, 0.0, 0.1);
-        self.pages[self.page as usize].cell = Some(to);
+        self.select_cell(cx, to);
+    }
+
+    /// The page's cursor moves to cell `to`: the hover swaps, the buttons and the profile follow
+    fn select_cell(&mut self, cx: &TaskCx, to: usize) {
+        let page = self.page as usize;
+        if let Some(from) = self.pages[page].cell {
+            minigame::tween_now(&mut self.cells[from].hover, 0.0, 0.1);
+        }
+        self.pages[page].cell = Some(to);
         minigame::tween_now(&mut self.cells[to].hover, 1.0, 0.25);
         self.update_buttons();
         self.build_texts(cx);
+    }
+
+    /// The down listener's hit (`0x71000543e0`): the close button, then in the band 150 <= y < 992 a cell of the
+    /// page (`0x7100053ef0`) or a shown button (`0x7100054070`), both in x 86..494, y 188..918 and neither while the
+    /// page slides, else the profile
+    fn hit(&self, at: Vec2) -> Option<Touched> {
+        if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+            return Some(Touched::Close);
+        }
+        if !(150.0..992.0).contains(&at.y) {
+            return None;
+        }
+        if self.page_scroll.is_idle() && minigame::contains([86.0, 188.0, 494.0, 918.0], at) {
+            // the cells as `render_grid` draws them, from the grid's corner at (90, 198)
+            let scroll = self.page_scroll.value();
+            let cell = self.cells.iter().position(|cell| {
+                let origin = self.pages[cell.page as usize].origin;
+                let x = 90.0 + origin.0 + 24.0 * cell.x as f32 - scroll - 26.0;
+                let y = 198.0 + origin.1 + 26.0 * cell.y as f32 - 30.0;
+                cell.page == self.page
+                    && cell.selectable()
+                    && minigame::contains([x, y, x + 76.0, y + 86.0], at)
+            });
+            if let Some(cell) = cell {
+                return Some(if self.pages[self.page as usize].cell == Some(cell) {
+                    Touched::Selected
+                } else {
+                    Touched::Cell(cell)
+                });
+            }
+            let button = (0..BUTTONS.len()).find(|&k| {
+                let [x0, y0, x1, y1] = BUTTONS[k].1;
+                self.buttons[k].0 == ButtonState::Shown
+                    && minigame::contains([90.0 + x0, 724.0 + y0, 90.0 + x1, 724.0 + y1], at)
+            });
+            if let Some(button) = button {
+                return Some(Touched::Button(button));
+            }
+        }
+        minigame::contains([TEXT_X, TEXT_Y, 1516.0, 918.0], at).then_some(Touched::Profile)
+    }
+
+    /// The characters' gesture listener (down `0x71000543e0`, press `0x7100054790`, tap `0x7100054900`, drag
+    /// `0x7100054b70`, flick `0x7100054cb0`): a press brightens what it is on and selects a new cell at once, a tap
+    /// acts as the keys do, and the profile is dragged and flicked; the pages are never flicked
+    fn handle_pointer(&mut self, cx: &mut TaskCx) {
+        for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+            let selected = self.pages[self.page as usize].cell;
+            match gesture {
+                Gesture::Down(at) => {
+                    self.touched = self.hit(at);
+                    match self.touched {
+                        // grabbing the profile stops its coasting
+                        Some(Touched::Profile) => self.coast.stop(),
+                        // the band's empty places are not tracked
+                        None if (150.0..992.0).contains(&at.y) => self.gestures.cancel(),
+                        _ => {}
+                    }
+                }
+                Gesture::Press => match self.touched {
+                    Some(Touched::Close) => minigame::raise(&mut self.close_flash),
+                    Some(Touched::Button(k)) => minigame::raise(&mut self.buttons[k].1),
+                    Some(Touched::Selected) => {
+                        if let Some(cell) = selected {
+                            minigame::raise(&mut self.cells[cell].flash);
+                        }
+                    }
+                    Some(Touched::Cell(cell)) => {
+                        minigame::raise(&mut self.cells[cell].flash);
+                        self.select_cell(cx, cell);
+                    }
+                    _ => {}
+                },
+                Gesture::Tap(_) => match self.touched {
+                    Some(Touched::Close) => {
+                        // `0x7100053840` without the cancel sound
+                        cx.sound("decide");
+                        minigame::flash(&mut self.close_flash);
+                        self.state = State::Closing;
+                    }
+                    Some(Touched::Selected) => {
+                        if let Some(cell) = selected {
+                            self.step_sub(cx, cell);
+                        }
+                    }
+                    Some(Touched::Cell(cell)) => {
+                        cx.sound("decide");
+                        minigame::flash(&mut self.cells[cell].flash);
+                        if selected != Some(cell) {
+                            self.select_cell(cx, cell);
+                        }
+                    }
+                    Some(Touched::Button(button)) => match (button, selected) {
+                        (PREV | NEXT, _) => self.turn_page(cx, button == NEXT),
+                        (EXECUTE, Some(cell)) => self.change_status(cx, cell, 1),
+                        (RESURRECT, Some(cell)) => self.change_status(cx, cell, -1),
+                        (CHANGE, Some(cell)) => self.change_dress(cx, cell),
+                        _ => {}
+                    },
+                    _ => {}
+                },
+                Gesture::Drag(from, to) => match self.touched {
+                    Some(Touched::Profile) => {
+                        self.profile_scroll =
+                            (self.profile_scroll - (to.y - from.y)).clamp(0.0, self.max_scroll());
+                    }
+                    Some(Touched::Close) => {
+                        minigame::lower(&mut self.close_flash);
+                        self.touched = None;
+                    }
+                    Some(Touched::Button(k)) => minigame::lower(&mut self.buttons[k].1),
+                    Some(Touched::Selected) => {
+                        if let Some(cell) = selected {
+                            minigame::lower(&mut self.cells[cell].flash);
+                        }
+                    }
+                    Some(Touched::Cell(cell)) => minigame::lower(&mut self.cells[cell].flash),
+                    None => {}
+                },
+                Gesture::Flick(velocity) if self.touched == Some(Touched::Profile) => {
+                    self.coast.start(velocity.y)
+                }
+                _ => {}
+            }
+        }
     }
 
     /// The action whose flash has ended
@@ -909,8 +1079,17 @@ impl Task for Chars {
                         self.pending = None;
                         self.apply(cx, pending);
                     }
-                } else if cx.focused && self.page_scroll.is_idle() {
-                    self.handle_input(cx);
+                } else if cx.focused {
+                    self.handle_pointer(cx);
+                    // touches and the profile coasting hold the buttons off (`0x710006b860`)
+                    if self.state == State::Active
+                        && self.pending.is_none()
+                        && self.page_scroll.is_idle()
+                        && !self.gestures.is_active()
+                        && !self.coast.is_moving()
+                    {
+                        self.handle_input(cx);
+                    }
                 }
             }
             State::Closing => {
@@ -926,6 +1105,11 @@ impl Task for Chars {
             }
         }
         let frames = cx.frames;
+        if self.coast.is_moving() {
+            self.profile_scroll =
+                self.coast
+                    .update(self.profile_scroll, 0.0, self.max_scroll(), frames);
+        }
         ui::advance(&mut self.page_scroll, frames);
         ui::advance(&mut self.close_flash, frames);
         for tweener in &mut self.colors {

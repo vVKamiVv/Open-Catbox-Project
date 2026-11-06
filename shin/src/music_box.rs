@@ -3,12 +3,12 @@
 //! plays a track (looping, or once for the tracks marked so), Y stops it, B returns to the title.
 //!
 //! shortcut: the console's keep-awake request while music plays (setting v18, `0x71000fc3b0`) has no PC equivalent
-//! here, and the list cannot be dragged or flung with the pointer.
+//! here.
 
 use std::sync::Arc;
 
 use enum_map::EnumMap;
-use glam::Mat4;
+use glam::{Mat4, Vec2};
 use shin_audio::AudioManager;
 use shin_core::{
     format::{save::SaveData, scenario::info::BgmId},
@@ -35,7 +35,10 @@ use crate::{
         text_block::TextBlock,
         user::minigame::{self, Sprite},
     },
-    ui::{self, MenuInput},
+    ui::{
+        self, MenuInput,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
     update::UpdateContext,
 };
 
@@ -65,6 +68,14 @@ enum State {
     Done,
 }
 
+/// What a touch went down on
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Touch {
+    Close,
+    /// The list, on an item or between them
+    List(Option<usize>),
+}
+
 pub struct MusicBox {
     assets: MenuAssets,
     audio: Arc<AudioManager>,
@@ -80,6 +91,10 @@ pub struct MusicBox {
     completion: TextBlock,
     state: State,
     target_size: (u32, u32),
+    /// The list's touch input (`GestureRecognizer`, listener `0x7100031d40` and its neighbours)
+    gestures: GestureRecognizer,
+    coast: Coast,
+    touch: Option<Touch>,
 }
 
 impl MusicBox {
@@ -151,6 +166,9 @@ impl MusicBox {
             completion,
             state: State::Active,
             target_size: (1920, 1080),
+            gestures: GestureRecognizer::new(false),
+            coast: Coast::default(),
+            touch: None,
         })
     }
 
@@ -225,11 +243,8 @@ impl MusicBox {
         let assets = context.asset_server;
         let n = self.items.len();
         if input.cancel {
-            // `0x7100031800`
             self.sound(assets, "cancel");
-            self.close_flash = Tweener::new(0.0);
-            minigame::flash(&mut self.close_flash);
-            self.state = State::Closing;
+            self.close();
             return;
         }
         if input.confirm {
@@ -237,9 +252,7 @@ impl MusicBox {
             return;
         }
         if input.y {
-            if self.playing.take().is_some() {
-                self.bgm.stop(Tween::linear(Ticks::from_f32(30.0)));
-            }
+            self.stop();
             return;
         }
         let h: i32 = if input.left {
@@ -274,23 +287,148 @@ impl MusicBox {
         if input.scroll != 0.0 {
             let scroll = (self.scroll.value() + input.scroll * 32.0).clamp(0.0, self.max_scroll());
             self.scroll = Tweener::new(scroll);
-            // the cursor follows by rows into view (`0x71000308a0`)
-            let mut to = self.cursor as i32;
-            while to >= 0 && (to as usize) < n {
-                let y = ROW * (to / 2) as f32;
-                if y < scroll {
-                    to += 2;
-                } else if y + ITEM_H > scroll + VIEW {
-                    to -= 2;
-                } else {
-                    break;
+            self.follow_cursor(scroll);
+        }
+    }
+
+    /// `0x71000308a0`: the cursor follows by rows into the view
+    fn follow_cursor(&mut self, scroll: f32) {
+        let n = self.items.len();
+        let mut to = self.cursor as i32;
+        while to >= 0 && (to as usize) < n {
+            let y = ROW * (to / 2) as f32;
+            if y < scroll {
+                to += 2;
+            } else if y + ITEM_H > scroll + VIEW {
+                to -= 2;
+            } else {
+                break;
+            }
+        }
+        if to >= 0 && (to as usize) < n && to as usize != self.cursor {
+            minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.2);
+            self.cursor = to as usize;
+            minigame::tween_now(&mut self.items[self.cursor].highlight, 1.0, 0.25);
+        }
+    }
+
+    /// `0x7100031800`: the close button flashes, then the title
+    fn close(&mut self) {
+        self.close_flash = Tweener::new(0.0);
+        minigame::flash(&mut self.close_flash);
+        self.state = State::Closing;
+    }
+
+    /// The playing track fades out over 30 frames
+    fn stop(&mut self) {
+        if self.playing.take().is_some() {
+            self.bgm.stop(Tween::linear(Ticks::from_f32(30.0)));
+        }
+    }
+
+    /// `0x7100031bb0`: the item under a point of the list, `Some(None)` between items, `None` outside the list. The
+    /// two columns are 800 wide and 20 apart from the list's x (`+0xd4`, lost in the decompile: 150 as the port's
+    /// render); a row's bottom 3 px are a gap.
+    fn item_at(&self, at: Vec2) -> Option<Option<usize>> {
+        if !minigame::contains([136.0, LIST_Y, 1784.0, 918.0], at) {
+            return None;
+        }
+        let column = if (150.0..950.0).contains(&at.x) {
+            0
+        } else if (970.0..1770.0).contains(&at.x) {
+            1
+        } else {
+            return Some(None);
+        };
+        let y = (self.scroll.value() - LIST_Y + at.y) as i32;
+        if y % 92 > 88 {
+            return Some(None);
+        }
+        let index = (y / 92) as usize * 2 + column;
+        Some((index < self.items.len()).then_some(index))
+    }
+
+    /// The list's gesture listener (down `0x7100031d40`, press `0x7100031f20`, tap `0x7100032080`, drag
+    /// `0x71000321e0`, flick `0x71000322e0`): a press raises the item and moves the cursor to it, a tap plays it or,
+    /// when it is the playing track, stops it, and drags and flicks scroll the list with the cursor following
+    fn handle_pointer(&mut self, assets: &AssetServer, pointer: Pointer, frames: f32) {
+        for gesture in self.gestures.update(pointer, frames) {
+            match gesture {
+                Gesture::Down(at) => {
+                    self.touch = if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+                        Some(Touch::Close)
+                    } else if (150.0..992.0).contains(&at.y) {
+                        self.item_at(at).map(Touch::List)
+                    } else {
+                        None
+                    };
+                    match self.touch {
+                        None => self.gestures.cancel(),
+                        // touching a coasting list stops it, and that touch selects nothing
+                        Some(Touch::List(_)) if self.coast.is_moving() => {
+                            self.coast.stop();
+                            self.touch = Some(Touch::List(None));
+                        }
+                        _ => {}
+                    }
+                }
+                Gesture::Press => match self.touch {
+                    Some(Touch::Close) => minigame::raise(&mut self.close_flash),
+                    Some(Touch::List(Some(index))) => {
+                        minigame::raise(&mut self.items[index].flash);
+                        self.set_cursor(index);
+                    }
+                    _ => {}
+                },
+                // the flash and the close restart the raised highlight
+                Gesture::Tap(_) => match self.touch.take() {
+                    Some(Touch::Close) => {
+                        self.sound(assets, "decide");
+                        self.close();
+                    }
+                    Some(Touch::List(Some(index))) => {
+                        self.set_cursor(index);
+                        if self.playing == Some(index) {
+                            minigame::lower(&mut self.items[index].flash);
+                            self.stop();
+                        } else {
+                            self.play(assets);
+                        }
+                    }
+                    _ => {}
+                },
+                Gesture::Drag(from, to) => {
+                    self.lower_touch();
+                    if let Some(Touch::List(_)) = self.touch {
+                        let scroll =
+                            (self.scroll.value() - (to.y - from.y)).clamp(0.0, self.max_scroll());
+                        self.follow_cursor(scroll);
+                        self.scroll.fast_forward_to(scroll);
+                    }
+                }
+                Gesture::Flick(velocity) => {
+                    if let Some(Touch::List(_)) = self.touch {
+                        self.coast.start(velocity.y);
+                    }
+                }
+                Gesture::LongPress => {}
+                Gesture::End => {
+                    self.lower_touch();
+                    self.touch = None;
                 }
             }
-            if to >= 0 && (to as usize) < n && to as usize != self.cursor {
-                minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.2);
-                self.cursor = to as usize;
-                minigame::tween_now(&mut self.items[self.cursor].highlight, 1.0, 0.25);
+        }
+    }
+
+    /// A drag or the touch's end drops the press's highlight; the touch then selects nothing
+    fn lower_touch(&mut self) {
+        match self.touch {
+            Some(Touch::Close) => minigame::lower(&mut self.close_flash),
+            Some(Touch::List(Some(index))) => {
+                minigame::lower(&mut self.items[index].flash);
+                self.touch = Some(Touch::List(None));
             }
+            _ => {}
         }
     }
 
@@ -313,7 +451,21 @@ impl MusicBox {
 
         match self.state {
             State::Active => {
-                if self.scroll.is_idle() {
+                self.handle_pointer(context.asset_server, pointer, frames);
+                // `0x71000306d0`: a flick coasts the list, the cursor following
+                if self.coast.is_moving() {
+                    let scroll =
+                        self.coast
+                            .update(self.scroll.value(), 0.0, self.max_scroll(), frames);
+                    self.follow_cursor(scroll);
+                    self.scroll.fast_forward_to(scroll);
+                }
+                // touches and the list moving hold the buttons off (`0x710006b860`)
+                if !self.gestures.is_active()
+                    && !self.coast.is_moving()
+                    && self.scroll.is_idle()
+                    && self.state == State::Active
+                {
                     self.handle_keys(context, &MenuInput::new(state, pointer));
                 }
             }

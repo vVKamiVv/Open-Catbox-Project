@@ -3,13 +3,12 @@
 //! entries show the logo card, partly unlocked ones a "u/n" counter. A opens the entry's unlocked pictures full
 //! screen (`CGMode::Viewer` `0x710004a6e0`), one after another with 30-frame crossfades.
 //!
-//! shortcut: the list cannot be dragged or flung with the pointer, and the viewer's pictures cannot be dragged,
-//! flung or panned with the left stick; the d-pad pans them.
+//! shortcut: the viewer's pictures cannot be panned with the left stick; the d-pad and the pointer pan them.
 
 use std::sync::Arc;
 
 use enum_map::EnumMap;
-use glam::{Mat4, vec3};
+use glam::{Mat4, Vec2, vec3};
 use shin_audio::AudioManager;
 use shin_core::{
     format::{
@@ -49,7 +48,10 @@ use crate::{
         },
     },
     render::PreRenderContext,
-    ui::{self, MenuInput},
+    ui::{
+        self, MenuInput,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
     update::{AdvUpdatable as _, AdvUpdateContext, UpdateContext},
 };
 
@@ -90,6 +92,14 @@ enum State {
     Done,
 }
 
+/// What a touch went down on
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Touch {
+    Close,
+    /// The list, on an item or between them
+    List(Option<usize>),
+}
+
 /// `CGMode::Viewer`
 struct Viewer {
     item: usize,
@@ -104,7 +114,21 @@ struct Viewer {
     /// The old screen fading out over the new one (`+0xe0`)
     transition: Option<(RenderTexture, Tweener)>,
     finished: bool,
-    pointer_held: bool,
+    /// The viewer's own touch input, and the pan's speed after a flick (`+0xc8`)
+    gestures: GestureRecognizer,
+    velocity: Vec2,
+}
+
+impl Viewer {
+    /// The picture is tweening between fit and 1:1
+    fn is_scaling(&self) -> bool {
+        self.picture.as_ref().is_some_and(|picture| {
+            !picture
+                .properties()
+                .property_tweener(LayerProperty::ScaleX)
+                .is_idle()
+        })
+    }
 }
 
 pub struct PictureBox {
@@ -122,6 +146,10 @@ pub struct PictureBox {
     viewer: Option<Viewer>,
     state: State,
     target_size: (u32, u32),
+    /// The list's touch input (`GestureRecognizer`, listener `0x7100049ba0` and its neighbours)
+    gestures: GestureRecognizer,
+    coast: Coast,
+    touch: Option<Touch>,
 }
 
 impl PictureBox {
@@ -196,6 +224,9 @@ impl PictureBox {
             viewer: None,
             state: State::Entering(0),
             target_size: (1920, 1080),
+            gestures: GestureRecognizer::new(false),
+            coast: Coast::default(),
+            touch: None,
         })
     }
 
@@ -241,24 +272,12 @@ impl PictureBox {
     fn handle_keys(&mut self, assets: &AssetServer, input: &MenuInput) {
         let n = self.items.len();
         if input.confirm {
-            // `0x7100049540`
-            let item = &mut self.items[self.cursor];
-            item.flash = Tweener::new(0.0);
-            minigame::flash(&mut item.flash);
-            if item.unlocked_count() == 0 {
-                self.sound(assets, "error");
-            } else {
-                self.sound(assets, "decide");
-                self.state = State::Deciding;
-            }
+            self.decide(assets);
             return;
         }
         if input.cancel {
-            // `0x71000493e0`
             self.sound(assets, "cancel");
-            self.close_flash = Tweener::new(0.0);
-            minigame::flash(&mut self.close_flash);
-            self.state = State::Closing;
+            self.close();
             return;
         }
         let h: i32 = if input.left {
@@ -293,23 +312,139 @@ impl PictureBox {
         if input.scroll != 0.0 {
             let scroll = (self.scroll.value() + input.scroll * 32.0).clamp(0.0, self.max_scroll());
             self.scroll = Tweener::new(scroll);
-            // `0x7100048190`: the cursor follows by rows into view
-            let mut to = self.cursor as i32;
-            while to >= 0 && (to as usize) < n {
-                let y = Self::row_y(to as usize);
-                if y < scroll {
-                    to += COLUMNS as i32;
-                } else if y + ROW > scroll + VIEW {
-                    to -= COLUMNS as i32;
-                } else {
-                    break;
+            self.follow_cursor(scroll);
+        }
+    }
+
+    /// `0x7100048190`: the cursor follows by rows into the view
+    fn follow_cursor(&mut self, scroll: f32) {
+        let n = self.items.len();
+        let mut to = self.cursor as i32;
+        while to >= 0 && (to as usize) < n {
+            let y = Self::row_y(to as usize);
+            if y < scroll {
+                to += COLUMNS as i32;
+            } else if y + ROW > scroll + VIEW {
+                to -= COLUMNS as i32;
+            } else {
+                break;
+            }
+        }
+        if to >= 0 && (to as usize) < n && to as usize != self.cursor {
+            minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.2);
+            self.cursor = to as usize;
+            minigame::tween_now(&mut self.items[self.cursor].highlight, 1.0, 0.25);
+        }
+    }
+
+    /// `0x7100049540`: the item flashes; an entry with a picture unlocked opens in the viewer
+    fn decide(&mut self, assets: &AssetServer) {
+        let item = &mut self.items[self.cursor];
+        item.flash = Tweener::new(0.0);
+        minigame::flash(&mut item.flash);
+        if item.unlocked_count() == 0 {
+            self.sound(assets, "error");
+        } else {
+            self.sound(assets, "decide");
+            self.state = State::Deciding;
+        }
+    }
+
+    /// `0x71000493e0`: the close button flashes, then the title
+    fn close(&mut self) {
+        self.close_flash = Tweener::new(0.0);
+        minigame::flash(&mut self.close_flash);
+        self.state = State::Closing;
+    }
+
+    /// `0x7100049a60`: the item under a point of the list, `Some(None)` between items, `None` outside the list. The
+    /// items are 412 x 242 cells (the ctor's rects); their x is lost in the decompile, so the four columns fill the
+    /// list's x 136..1784, the port's render centring the thumbnails in them.
+    fn item_at(&self, at: Vec2) -> Option<Option<usize>> {
+        if !minigame::contains([136.0, LIST_Y, 1784.0, 916.0], at) {
+            return None;
+        }
+        let y = at.y - LIST_Y + self.scroll.value();
+        let index = (y / ROW) as usize * COLUMNS + ((at.x - 136.0) / CELL_W) as usize;
+        Some((index < self.items.len()).then_some(index))
+    }
+
+    /// The list's gesture listener (down `0x7100049ba0`, press `0x7100049de0`, tap `0x7100049ec0`, drag
+    /// `0x7100049ff0`, flick `0x710004a160`): a press raises the item and moves the cursor to it, a tap opens it, and
+    /// drags and flicks scroll the list with the cursor following
+    fn handle_pointer(&mut self, assets: &AssetServer, pointer: Pointer, frames: f32) {
+        for gesture in self.gestures.update(pointer, frames) {
+            match gesture {
+                Gesture::Down(at) => {
+                    self.touch = if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+                        Some(Touch::Close)
+                    } else if (150.0..992.0).contains(&at.y) {
+                        self.item_at(at).map(Touch::List)
+                    } else {
+                        None
+                    };
+                    match self.touch {
+                        None => self.gestures.cancel(),
+                        // touching a coasting list stops it, and that touch selects nothing
+                        Some(Touch::List(_)) if self.coast.is_moving() => {
+                            self.coast.stop();
+                            self.touch = Some(Touch::List(None));
+                        }
+                        _ => {}
+                    }
+                }
+                Gesture::Press => match self.touch {
+                    Some(Touch::Close) => minigame::raise(&mut self.close_flash),
+                    Some(Touch::List(Some(index))) => {
+                        minigame::raise(&mut self.items[index].flash);
+                        self.set_cursor(index);
+                    }
+                    _ => {}
+                },
+                // the flash and the close both restart the raised highlight
+                Gesture::Tap(_) => match self.touch.take() {
+                    Some(Touch::Close) => {
+                        self.sound(assets, "decide");
+                        self.close();
+                    }
+                    Some(Touch::List(Some(index))) => {
+                        self.set_cursor(index);
+                        self.decide(assets);
+                    }
+                    _ => {}
+                },
+                Gesture::Drag(from, to) => {
+                    self.lower_touch();
+                    if let Some(Touch::List(_)) = self.touch {
+                        let scroll =
+                            (self.scroll.value() - (to.y - from.y)).clamp(0.0, self.max_scroll());
+                        self.follow_cursor(scroll);
+                        self.scroll.fast_forward_to(scroll);
+                    }
+                }
+                Gesture::Flick(velocity) => {
+                    if let Some(Touch::List(_)) = self.touch {
+                        self.coast.start(velocity.y);
+                    }
+                }
+                Gesture::LongPress => {}
+                Gesture::End => {
+                    self.lower_touch();
+                    self.touch = None;
                 }
             }
-            if to >= 0 && (to as usize) < n && to as usize != self.cursor {
-                minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.2);
-                self.cursor = to as usize;
-                minigame::tween_now(&mut self.items[self.cursor].highlight, 1.0, 0.25);
+        }
+    }
+
+    /// A drag or the touch's end drops the press's highlight; the touch then selects nothing
+    fn lower_touch(&mut self) {
+        match self.touch {
+            Some(Touch::Close) => minigame::lower(&mut self.close_flash),
+            Some(Touch::List(Some(index))) => {
+                minigame::lower(&mut self.items[index].flash);
+                self.touch = Some(Touch::List(None));
             }
+            _ => {}
         }
     }
 
@@ -342,7 +477,21 @@ impl PictureBox {
                 }
             }
             State::Active => {
-                if self.scroll.is_idle() {
+                self.handle_pointer(context.asset_server, pointer, frames);
+                // `0x7100047ff0`: a flick coasts the list, the cursor following
+                if self.coast.is_moving() {
+                    let scroll =
+                        self.coast
+                            .update(self.scroll.value(), 0.0, self.max_scroll(), frames);
+                    self.follow_cursor(scroll);
+                    self.scroll.fast_forward_to(scroll);
+                }
+                // touches and the list moving hold the buttons off (`0x710006b860`)
+                if !self.gestures.is_active()
+                    && !self.coast.is_moving()
+                    && self.scroll.is_idle()
+                    && self.state == State::Active
+                {
                     self.handle_keys(context.asset_server, &input);
                 }
             }
@@ -358,7 +507,8 @@ impl PictureBox {
                         pan: (0.0, 0.0),
                         transition: None,
                         finished: false,
-                        pointer_held: false,
+                        gestures: GestureRecognizer::new(false),
+                        velocity: Vec2::ZERO,
                     });
                     // the viewer's ctor shows the first unlocked picture
                     self.next_picture(context);
@@ -551,8 +701,6 @@ impl PictureBox {
         let Some(viewer) = &mut self.viewer else {
             return;
         };
-        let released = viewer.pointer_held && !input.pointer.held;
-        viewer.pointer_held = input.pointer.held;
         if let Some((_, fade)) = &mut viewer.transition {
             ui::advance(fade, frames);
             if fade.is_idle() {
@@ -566,14 +714,34 @@ impl PictureBox {
             return;
         }
 
+        // `0x710004b0f0`: a flick's speed pans each frame, without dt, slowing by 0.95^dt, until the picture is fit,
+        // gone or scaling
+        if viewer.velocity != Vec2::ZERO {
+            if viewer.picture.is_some() && !viewer.is_scaling() && !viewer.fit {
+                viewer.pan.0 += viewer.velocity.x;
+                viewer.pan.1 -= viewer.velocity.y;
+                viewer.velocity *= 0.95f32.powf(frames);
+                Self::layout(viewer, false);
+            } else {
+                viewer.velocity = Vec2::ZERO;
+            }
+        }
+
         // `Viewer::Main` (`0x710004a940`): only once the picture's transition is over
         if viewer.transition.is_none() {
+            if self.handle_viewer_pointer(context, input.pointer, frames) {
+                return;
+            }
+            // a touch holds the buttons off (`0x710006b860`)
+            if self.viewer.as_ref().unwrap().gestures.is_active() {
+                return;
+            }
             if input.cancel {
                 self.sound(context.asset_server, "cancel");
                 self.exit_viewer(context);
                 return;
             }
-            if input.confirm || released {
+            if input.confirm {
                 self.sound(context.asset_server, "decide");
                 if !self.next_picture(context) {
                     self.exit_viewer(context);
@@ -588,13 +756,7 @@ impl PictureBox {
                 if input.y {
                     viewer.show_marks = !viewer.show_marks;
                 }
-                let scaling = viewer.picture.as_ref().is_some_and(|picture| {
-                    !picture
-                        .properties()
-                        .property_tweener(LayerProperty::ScaleX)
-                        .is_idle()
-                });
-                if viewer.picture.is_some() && !scaling && !viewer.fit {
+                if viewer.picture.is_some() && !viewer.is_scaling() && !viewer.fit {
                     let step = 16.0 * frames;
                     let mut d = (0.0, 0.0);
                     if input.held_up {
@@ -615,6 +777,47 @@ impl PictureBox {
                 }
             }
         }
+    }
+
+    /// The viewer's gesture listener (down `0x710004baf0`, tap `0x710004bb50`, drag `0x710004bc10`, flick
+    /// `0x710004bcb0`): a touch stops the coasting, a tap shows the next picture or leaves, and drags and flicks pan
+    /// a picture shown 1:1, vertically by -0.5625 as the original; true once the viewer moved on
+    fn handle_viewer_pointer(
+        &mut self,
+        context: &mut UpdateContext,
+        pointer: Pointer,
+        frames: f32,
+    ) -> bool {
+        let gestures = self
+            .viewer
+            .as_mut()
+            .unwrap()
+            .gestures
+            .update(pointer, frames);
+        for gesture in gestures {
+            let viewer = self.viewer.as_mut().unwrap();
+            let pannable = viewer.picture.is_some() && !viewer.fit;
+            match gesture {
+                Gesture::Down(_) => viewer.velocity = Vec2::ZERO,
+                Gesture::Tap(_) => {
+                    self.sound(context.asset_server, "decide");
+                    if !self.next_picture(context) {
+                        self.exit_viewer(context);
+                    }
+                    return true;
+                }
+                Gesture::Drag(from, to) if pannable => {
+                    viewer.pan.0 += to.x - from.x;
+                    viewer.pan.1 += (to.y - from.y) * -0.5625;
+                    Self::layout(viewer, false);
+                }
+                Gesture::Flick(velocity) if pannable => {
+                    viewer.velocity = Vec2::new(velocity.x, velocity.y * 0.5625);
+                }
+                _ => {}
+            }
+        }
+        false
     }
 
     pub fn render(&self, pass: &mut RenderPass) {

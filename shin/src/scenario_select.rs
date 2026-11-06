@@ -4,8 +4,8 @@
 //! swing open onto white light, which glows through the opening (black doors on white, blurred at four sizes and
 //! added over the screen), then the screen goes from white to black.
 //!
-//! shortcut: the list cannot be dragged or flung with the pointer, and the glow's blur reads black past the edges of
-//! its shrunk picture where the original's small textures repeat their edge.
+//! shortcut: the glow's blur reads black past the edges of its shrunk picture where the original's small textures
+//! repeat their edge.
 
 use std::{f32::consts::FRAC_PI_2, sync::Arc};
 
@@ -41,7 +41,10 @@ use crate::{
         user::minigame::{self, Sprite},
     },
     render::PreRenderContext,
-    ui::{self, MenuInput},
+    ui::{
+        self, MenuInput,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
     update::UpdateContext,
 };
 
@@ -96,6 +99,8 @@ enum State {
     Active,
     /// The entry flashes before it starts or asks
     Deciding,
+    /// The close button's flash plays after a tap
+    Closing,
     Done,
 }
 
@@ -135,15 +140,21 @@ pub struct ScenarioSelect {
     requests: Vec<AdvRequest>,
     exit: Option<SelectExit>,
     target_size: (u32, u32),
-    pointer_held: bool,
-    pressed: Option<Target>,
+    /// The touch input (`GestureRecognizer`, down `0x71000e0210`), what the touch went down on (`+0x190..+0x198`)
+    /// and the list's coasting after a flick (`+0x19c`)
+    gestures: GestureRecognizer,
+    touched: Option<Target>,
+    coast: Coast,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Target {
+    /// Outside the band y 160..980, or the close button once dragged
+    Nothing,
     Close,
     Tab(usize),
-    Row(usize),
+    /// The list: the row under the down point, `None` once the touch scrolls the list
+    List(Option<usize>),
 }
 
 impl ScenarioSelect {
@@ -219,8 +230,9 @@ impl ScenarioSelect {
             requests: Vec::new(),
             exit: None,
             target_size: (1920, 1080),
-            pointer_held: false,
-            pressed: None,
+            gestures: GestureRecognizer::new(false),
+            touched: None,
+            coast: Coast::default(),
         })
     }
 
@@ -280,6 +292,7 @@ impl ScenarioSelect {
         let old = &mut self.tabs[self.tab];
         minigame::tween_now(&mut old.selected, 0.0, 0.25);
         old.scroll = self.scroll.target_value();
+        self.coast.stop();
         self.tab = to;
         let new = &mut self.tabs[to];
         minigame::tween_now(&mut new.selected, 1.0, 0.25);
@@ -392,9 +405,14 @@ impl ScenarioSelect {
         }
     }
 
+    /// The down hit (`0x71000e0210`): the close button, then the band y 160..980 with the other tabs (2+,
+    /// `0x71000e00f0`) and the list x 86..526, y 246..916; `None` is not tracked
     fn target_at(&self, point: Vec2) -> Option<Target> {
         if minigame::contains([1764.0, 32.0, 1848.0, 116.0], point) {
             return Some(Target::Close);
+        }
+        if !(160.0..980.0).contains(&point.y) {
+            return Some(Target::Nothing);
         }
         if self.tabs.len() > 1 {
             for (k, tab) in self.tabs.iter().enumerate() {
@@ -404,56 +422,110 @@ impl ScenarioSelect {
                 }
             }
         }
-        if !minigame::contains([86.0, 241.0, 1872.0, 921.0], point) {
+        if !minigame::contains([86.0, LIST_TOP, 526.0, 916.0], point) {
             return None;
         }
         let y = point.y + self.scroll.value() - LIST_TOP;
-        self.tabs[self.tab]
-            .entries
-            .iter()
-            .position(|entry| entry.y <= y && y < entry.y + ROW_H)
-            .filter(|_| point.x < 526.0)
-            .map(Target::Row)
+        Some(Target::List(
+            self.tabs[self.tab]
+                .entries
+                .iter()
+                .position(|entry| entry.y <= y && y < entry.y + ROW_H),
+        ))
     }
 
-    fn handle_pointer(&mut self, context: &mut UpdateContext, input: &MenuInput) {
-        let pointer = input.pointer;
-        let went_down = pointer.held && !self.pointer_held;
-        let went_up = !pointer.held && self.pointer_held;
-        self.pointer_held = pointer.held;
-        let hit = pointer.position.and_then(|p| self.target_at(p));
-        if went_down {
-            match hit {
-                Some(Target::Close) => minigame::flash(&mut self.close_flash),
-                Some(Target::Tab(k)) => minigame::flash(&mut self.tabs[k].flash),
-                Some(Target::Row(row)) => {
-                    minigame::flash(&mut self.tabs[self.tab].entries[row].flash)
-                }
-                None => {}
-            }
-            self.pressed = hit;
-        } else if went_up {
-            if let Some(pressed) = self.pressed.take() {
-                if hit != Some(pressed) {
-                    return;
-                }
-                match pressed {
-                    Target::Close => {
-                        self.sound(context, "cancel");
-                        self.close();
+    /// The scenario select's gesture listener (down `0x71000e0210`, press `0x71000e0470`, tap `0x71000e0560`, drag
+    /// `0x71000e06d0`, flick `0x71000e08e0`, end `0x71000e0430`): a press brightens what is under it (and moves the
+    /// cursor), a tap acts, and drags and flicks scroll the list
+    fn handle_pointer(&mut self, context: &mut UpdateContext, input: &MenuInput, frames: f32) {
+        for gesture in self.gestures.update(input.pointer, frames) {
+            match gesture {
+                Gesture::Down(at) => {
+                    self.touched = self.target_at(at);
+                    match self.touched {
+                        None => self.gestures.cancel(),
+                        // touching a coasting list stops it, and that touch selects nothing
+                        Some(Target::List(_)) if self.coast.is_moving() => {
+                            self.coast.stop();
+                            self.touched = Some(Target::List(None));
+                        }
+                        _ => {}
                     }
-                    Target::Tab(k) => {
-                        self.sound(context, "move");
+                }
+                Gesture::Press => match self.touched {
+                    Some(Target::Close) => minigame::raise(&mut self.close_flash),
+                    Some(Target::Tab(k)) => minigame::raise(&mut self.tabs[k].flash),
+                    Some(Target::List(Some(row))) => {
+                        minigame::raise(&mut self.tabs[self.tab].entries[row].flash);
+                        if row != self.tabs[self.tab].cursor {
+                            self.set_cursor(row);
+                        }
+                    }
+                    _ => {}
+                },
+                Gesture::Tap(_) => match self.touched.take() {
+                    Some(Target::Close) => {
+                        self.sound(context, "decide");
+                        minigame::flash(&mut self.close_flash);
+                        self.state = State::Closing;
+                    }
+                    Some(Target::Tab(k)) => {
+                        minigame::flash(&mut self.tabs[k].flash);
+                        self.sound(context, "decide");
                         self.change_tab(k);
                     }
-                    Target::Row(row) => {
+                    Some(Target::List(Some(row))) => {
                         if row != self.tabs[self.tab].cursor {
                             self.set_cursor(row);
                         }
                         self.decide(context);
                     }
+                    _ => {}
+                },
+                Gesture::Drag(from, to) => match self.touched {
+                    Some(Target::Nothing | Target::Close) => {
+                        minigame::lower(&mut self.close_flash);
+                        self.touched = Some(Target::Nothing);
+                    }
+                    Some(Target::Tab(k)) => minigame::lower(&mut self.tabs[k].flash),
+                    Some(Target::List(row)) => {
+                        if let Some(row) = row {
+                            minigame::lower(&mut self.tabs[self.tab].entries[row].flash);
+                            self.touched = Some(Target::List(None));
+                        }
+                        let max = self.tabs[self.tab].height - VIEW;
+                        self.scroll_to((self.scroll.value() - (to.y - from.y)).clamp(0.0, max));
+                    }
+                    None => {}
+                },
+                Gesture::Flick(velocity) => {
+                    if let Some(Target::List(_)) = self.touched {
+                        self.coast.start(velocity.y);
+                    }
                 }
+                Gesture::End => self.touched = None,
+                Gesture::LongPress => {}
             }
+        }
+    }
+
+    /// The list scrolled by a drag (`0x71000e06d0`) or coasting (`0x71000ddb70`): at once, the cursor moving to stay
+    /// on a row fully inside the 670 px view (without scrolling to it)
+    fn scroll_to(&mut self, scroll: f32) {
+        self.scroll.fast_forward_to(scroll);
+        let entries = &self.tabs[self.tab].entries;
+        let first = entries
+            .iter()
+            .position(|entry| entry.y >= scroll)
+            .unwrap_or(entries.len() - 1);
+        let last = entries
+            .iter()
+            .rposition(|entry| entry.y + ROW_H <= scroll + VIEW)
+            .unwrap_or(0);
+        let cursor = self.tabs[self.tab].cursor;
+        let row = cursor.clamp(first, last.max(first));
+        if row != cursor {
+            self.set_cursor(row);
         }
     }
 
@@ -520,12 +592,24 @@ impl ScenarioSelect {
         } else {
             match self.state {
                 State::Active => {
-                    self.handle_pointer(context, &input);
-                    if self.pressed.is_none()
+                    self.handle_pointer(context, &input, frames);
+                    if self.coast.is_moving() {
+                        let max = self.tabs[self.tab].height - VIEW;
+                        let scroll = self.coast.update(self.scroll.value(), 0.0, max, frames);
+                        self.scroll_to(scroll);
+                    }
+                    // touches and the list moving hold the buttons off (`0x710006b860`)
+                    if !self.gestures.is_active()
+                        && !self.coast.is_moving()
                         && self.state == State::Active
                         && self.scroll.is_idle()
                     {
                         self.handle_keys(context, &input, state[AppAction::Plus].is_clicked);
+                    }
+                }
+                State::Closing => {
+                    if self.close_flash.is_idle() {
+                        self.close();
                     }
                 }
                 State::Deciding => {

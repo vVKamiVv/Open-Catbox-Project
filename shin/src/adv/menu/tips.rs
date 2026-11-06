@@ -1,13 +1,11 @@
 //! The tips (`shin::TipsMode`, ctor `0x71001072f0`, update `0x7100108070`, render `0x71001081f0`, keys
 //! `0x7100109630`): a list of tip titles on the left and the chosen tip's title and text on the right, in a window
 //! that slides in from the right. From the title it lists every tip of one episode; from the system menu, the tips
-//! this playthrough has collected.
-//!
-//! shortcut: the list and the text cannot be used with the pointer.
+//! this playthrough has collected. The pointer picks tips from the list and drags and flicks the text.
 
 use std::sync::Arc;
 
-use glam::{Mat4, vec3};
+use glam::{Mat4, Vec2, vec3};
 use shin_core::{layout::LayoutParams, primitives::color::FloatColor4, time::Tweener};
 use shin_render::{
     ColorBlendType, RenderRequestBuilder, render_pass::RenderPass, resize::CanvasSize,
@@ -26,7 +24,10 @@ use crate::{
         user::minigame::{self, Sprite},
     },
     render::PreRenderContext,
-    ui,
+    ui::{
+        self,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
 };
 
 /// The text view's height (`0x710015aa50`)
@@ -50,6 +51,14 @@ struct Item {
     title_index: u16,
     highlight: Tweener,
     flash: Tweener,
+}
+
+/// What a touch went down on (`+0x104`..`+0x10c`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Touched {
+    Close,
+    Item(usize),
+    Text,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +89,10 @@ pub struct Tips {
     total_height: f32,
     state: State,
     target_size: (u32, u32),
+    gestures: GestureRecognizer,
+    /// The text's coasting after a flick (`+0x110`)
+    coast: Coast,
+    touched: Option<Touched>,
 }
 
 impl Tips {
@@ -136,6 +149,9 @@ impl Tips {
             total_height: 0.0,
             state: State::Opening,
             target_size: (1920, 1080),
+            gestures: GestureRecognizer::new(false),
+            coast: Coast::default(),
+            touched: None,
         };
         tips.build_texts(cx.pre_render);
         Some(tips)
@@ -177,10 +193,7 @@ impl Tips {
         if input.up || input.down {
             if to != self.cursor {
                 cx.sound("move");
-                minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.1);
-                self.cursor = to;
-                minigame::tween_now(&mut self.items[to].highlight, 1.0, 0.25);
-                self.build_texts(cx.pre_render);
+                self.set_cursor(cx.pre_render, to);
             }
         } else if input.cancel {
             // `0x7100109390`
@@ -191,6 +204,93 @@ impl Tips {
         } else if input.scroll != 0.0 {
             let scroll = (self.scroll.value() + input.scroll * 32.0).clamp(0.0, self.max_scroll());
             self.scroll = Tweener::new(scroll);
+        }
+    }
+
+    /// The highlight moves to `to` and its texts are built
+    fn set_cursor(&mut self, ctx: &PreRenderContext, to: usize) {
+        if to == self.cursor {
+            return;
+        }
+        minigame::tween_now(&mut self.items[self.cursor].highlight, 0.0, 0.1);
+        self.cursor = to;
+        minigame::tween_now(&mut self.items[to].highlight, 1.0, 0.25);
+        self.build_texts(ctx);
+    }
+
+    /// The down listener's hit (`0x7100109b80`, list `0x7100109800`): the close button, then in the band
+    /// 150 <= y < 992 a list row (the cursor's own counts as empty) or the text
+    fn hit(&self, at: Vec2) -> Option<Touched> {
+        if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+            return Some(Touched::Close);
+        }
+        if !(150.0..992.0).contains(&at.y) {
+            return None;
+        }
+        if minigame::contains([86.0, 188.0, 552.0, 918.0], at) {
+            // the rows' rects, 88 px apart from y 193
+            let row = (at.y - 193.0) / 88.0;
+            return (row >= 0.0)
+                .then_some(row as usize)
+                .filter(|&k| k < self.items.len() && k != self.cursor)
+                .map(Touched::Item);
+        }
+        minigame::contains([TEXT_X, TEXT_Y, 1834.0, 918.0], at).then_some(Touched::Text)
+    }
+
+    /// The tips' gesture listener (press `0x7100109df0`, tap `0x7100109f20`, drag `0x710010a0a0`, flick
+    /// `0x710010a1c0`): a press brightens a row and makes it the cursor, a tap decides it, and the text is dragged
+    /// and flicked
+    fn handle_pointer(&mut self, cx: &mut TaskCx) {
+        for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+            match gesture {
+                Gesture::Down(at) => {
+                    self.touched = self.hit(at);
+                    // grabbing the text stops its coasting
+                    if self.touched == Some(Touched::Text) {
+                        self.coast.stop();
+                    }
+                }
+                Gesture::Press => match self.touched {
+                    Some(Touched::Item(k)) => {
+                        minigame::raise(&mut self.items[k].flash);
+                        self.set_cursor(cx.pre_render, k);
+                    }
+                    Some(Touched::Close) => minigame::raise(&mut self.close_flash),
+                    _ => {}
+                },
+                Gesture::Tap(_) => match self.touched {
+                    Some(Touched::Item(k)) => {
+                        cx.sound("decide");
+                        minigame::flash(&mut self.items[k].flash);
+                        self.set_cursor(cx.pre_render, k);
+                    }
+                    Some(Touched::Close) => {
+                        // `0x7100109390` without the cancel sound
+                        cx.sound("decide");
+                        minigame::flash(&mut self.close_flash);
+                        self.state = State::Closing;
+                    }
+                    _ => {}
+                },
+                Gesture::Drag(from, to) => match self.touched {
+                    Some(Touched::Text) => {
+                        let scroll =
+                            (self.scroll.value() - (to.y - from.y)).clamp(0.0, self.max_scroll());
+                        self.scroll = Tweener::new(scroll);
+                    }
+                    Some(Touched::Item(k)) => minigame::lower(&mut self.items[k].flash),
+                    Some(Touched::Close) => {
+                        minigame::lower(&mut self.close_flash);
+                        self.touched = None;
+                    }
+                    None => {}
+                },
+                Gesture::Flick(velocity) if self.touched == Some(Touched::Text) => {
+                    self.coast.start(velocity.y)
+                }
+                _ => {}
+            }
         }
     }
 }
@@ -256,7 +356,14 @@ impl Task for Tips {
             }
             State::Active => {
                 if cx.focused {
-                    self.handle_input(cx);
+                    self.handle_pointer(cx);
+                    // touches and the text coasting hold the buttons off (`0x710006b860`)
+                    if self.state == State::Active
+                        && !self.gestures.is_active()
+                        && !self.coast.is_moving()
+                    {
+                        self.handle_input(cx);
+                    }
                 }
             }
             State::Closing => {
@@ -270,6 +377,12 @@ impl Task for Tips {
                     return false;
                 }
             }
+        }
+        if self.coast.is_moving() {
+            let scroll = self
+                .coast
+                .update(self.scroll.value(), 0.0, self.max_scroll(), cx.frames);
+            self.scroll = Tweener::new(scroll);
         }
         ui::advance(&mut self.scroll, cx.frames);
         ui::advance(&mut self.close_flash, cx.frames);

@@ -2,12 +2,15 @@
 //! dragged and flicked through this, each screen doing its own scrolling. The port feeds it the mouse's left button
 //! as a single finger, in canvas pixels (the original scales the 1280x720 panel by 1.5 to the same space).
 //!
-//! The flick speed is the last frame's move, as in the original, but taken from the last frame the pointer moved
-//! (if under two frames before the release): a mouse does not report every frame as the touch panel does, and the
-//! release often lands in a frame without a move.
+//! The flick speed is the last frame's move, as in the original, but measured over the latest span of at least one
+//! 60 Hz frame of the pointer's history: the touch panel reports once a frame at 60 fps, while a mouse reports at
+//! its own rate and the port's frames vary in length (and run faster on high refresh rate displays), so one short
+//! frame's move would read as a flick.
 //!
 //! shortcut: one finger only; the original averages several fingers into one point and a second finger cancels the
 //! tap. Upgrade if the port ever takes touch input.
+
+use std::collections::VecDeque;
 
 use glam::Vec2;
 use shin_input::Pointer;
@@ -53,11 +56,8 @@ struct Touch {
     down: Vec2,
     /// Where the last drag ended
     last: Vec2,
-    /// The pointer's position a frame ago, for the flick speed
-    previous: Vec2,
-    velocity: Vec2,
-    /// Frames since the pointer last moved
-    still_frames: f32,
+    /// The pointer's recent positions with the time (in frames since the down) they were seen, for the flick speed
+    history: VecDeque<(f32, Vec2)>,
     held_frames: f32,
     dragging: bool,
     pressed: bool,
@@ -66,13 +66,35 @@ struct Touch {
 
 impl Touch {
     fn track(&mut self, at: Vec2, frames: f32) {
-        if at == self.previous {
-            self.still_frames += frames;
-        } else {
-            self.velocity = (at - self.previous) / frames.max(1e-3);
-            self.still_frames = 0.0;
-            self.previous = at;
+        self.held_frames += frames;
+        let now = self.held_frames;
+        self.history.push_back((now, at));
+        // a few frames are enough to find a sample a frame old
+        while self.history.len() > 2 && self.history[1].0 <= now - 4.0 {
+            self.history.pop_front();
         }
+    }
+
+    /// In px per frame: the last move (as the original's last move event), measured back over at least a frame;
+    /// zero if the pointer has been still for two frames before the release
+    fn velocity(&self) -> Vec2 {
+        let now = self.held_frames;
+        let h = &self.history;
+        let Some(last) = (1..h.len()).rev().find(|&i| h[i].1 != h[i - 1].1) else {
+            return Vec2::ZERO;
+        };
+        let (moved, at) = h[last];
+        if now - moved >= 2.0 {
+            return Vec2::ZERO;
+        }
+        let (then, from) = h
+            .iter()
+            .take(last)
+            .rev()
+            .find(|(t, _)| moved - t >= 1.0)
+            .copied()
+            .unwrap_or(h[0]);
+        (at - from) / (moved - then).max(1.0)
     }
 }
 
@@ -109,9 +131,7 @@ impl GestureRecognizer {
                 self.touch = Some(Touch {
                     down: at,
                     last: at,
-                    previous: at,
-                    velocity: Vec2::ZERO,
-                    still_frames: 0.0,
+                    history: VecDeque::from([(0.0, at)]),
                     held_frames: 0.0,
                     dragging: false,
                     pressed: false,
@@ -121,7 +141,6 @@ impl GestureRecognizer {
             }
             (Some(touch), true, Some(at)) => {
                 touch.track(at, frames);
-                touch.held_frames += frames;
                 if !touch.dragging && at.distance(touch.down) > DRAG_START {
                     touch.dragging = true;
                 }
@@ -151,8 +170,9 @@ impl GestureRecognizer {
                     touch.track(at, frames);
                 }
                 if touch.dragging {
-                    if touch.still_frames < 2.0 && touch.velocity.length() > FLICK_SPEED {
-                        out.push(Gesture::Flick(touch.velocity));
+                    let velocity = touch.velocity();
+                    if velocity.length() > FLICK_SPEED {
+                        out.push(Gesture::Flick(velocity));
                     }
                 } else if !touch.long_pressed {
                     out.push(Gesture::Tap(touch.down));
@@ -233,6 +253,20 @@ mod tests {
             g.update(at(100.0, 130.0, false), 1.0),
             [Gesture::Flick(Vec2::new(0.0, 30.0)), Gesture::End]
         );
+    }
+
+    #[test]
+    fn short_frames_do_not_make_a_slow_drag_a_flick() {
+        let mut g = GestureRecognizer::new(false);
+        g.update(at(0.0, 0.0, true), 1.0);
+        // 6 px a frame, then 6 px steps in 0.2-frame frames (one of them alone would read as 30 px a frame)
+        let mut y = 0.0;
+        for frames in [1.0, 1.0, 1.0, 1.0, 0.2, 0.2] {
+            y += 6.0;
+            g.update(at(0.0, y, true), frames);
+        }
+        let out = g.update(at(0.0, y, false), 0.2);
+        assert!(!out.iter().any(|g| matches!(g, Gesture::Flick(_))), "{out:?}");
     }
 
     #[test]

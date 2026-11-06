@@ -1,6 +1,7 @@
 //! `shin::ConfigMenu` (ctor `0x71000586b0`, update `0x710005b270`, render `0x710005b520`, keys `0x710005cc20`): the
 //! settings screen, three tabs of sliders and On/Off buttons over `/config.txa`. Settings change live (every player
-//! reads them each frame); closing writes the save file when anything changed.
+//! reads them each frame); closing writes the save file when anything changed. The pointer works as the original's
+//! touch listener: tapping an option or a tab, grabbing a slider's knob, dragging and flicking the list.
 //!
 //! shortcut: the visual touch feedback setting has no effect, the port having no touch screen.
 
@@ -15,7 +16,10 @@ use super::{MenuAssets, Task, TaskCx, dialog::Dialog, save_notice::SaveNotice};
 use crate::{
     asset::texture_archive::NamedTextures,
     layer::user::minigame::{self, Sprite},
-    ui::{self, NineSlice},
+    ui::{
+        self, NineSlice,
+        gesture::{Coast, Gesture, GestureRecognizer},
+    },
 };
 use shin_core::primitives::color::FloatColor4;
 
@@ -31,6 +35,8 @@ const LIST_Y: f32 = 252.0;
 const LIST_W: f32 = 1648.0;
 const ITEM_H: f32 = 88.0;
 const ITEM_STEP: f32 = 102.0;
+/// The list's view height (`0x29a`); each page is at least this tall
+const VIEW: f32 = 666.0;
 
 /// The focused item's frame (`0x7100057690`): 512 px ends from the texture's outer fifths, 12 px top and bottom
 const FOCUS: NineSlice = NineSlice {
@@ -258,6 +264,21 @@ impl Item {
     fn option_x(&self, k: usize) -> f32 {
         1384.0 - 252.0 * (self.options.len() - 1 - k) as f32
     }
+
+    /// The option under `x` in the list's space (`0x7100056fd0`): 240 wide, 12 apart, right-aligned to 1624
+    fn option_at(&self, x: f32) -> Option<usize> {
+        (0..self.options.len()).find(|&k| self.option_x(k) <= x && x <= self.option_x(k) + 240.0)
+    }
+
+    /// A slider's knob is under `at` in the list's space (`0x71000580e0`): within 48 of `value * 6 + 1000` in the row
+    fn knob_at(&self, settings: &Settings, at: Vec2) -> bool {
+        let knob = (self.def.get)(settings) as f32 * 6.0 + 1000.0;
+        matches!(self.def.kind, Kind::Slider(_))
+            && self.y <= at.y
+            && at.y <= self.y + ITEM_H
+            && knob - 48.0 <= at.x
+            && at.x < knob + 48.0
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -275,6 +296,18 @@ enum State {
 enum Child {
     Reset(Dialog),
     Notice(Dialog),
+}
+
+/// What the current touch went down on (`+0x41c..+0x428`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Touched {
+    /// Outside the band y 150..992, or the close or Reset button once dragged
+    Nothing,
+    Close,
+    Reset,
+    Tab(usize),
+    /// The list: the item under the down point, `None` once the touch scrolls the list
+    List(Option<usize>),
 }
 
 pub struct ConfigMenu {
@@ -299,10 +332,16 @@ pub struct ConfigMenu {
     child: Option<Child>,
     /// The save notice while closing writes the changed settings
     saving: Option<SaveNotice>,
-    pointer_held: bool,
-    /// The slider being dragged, with the pointer's x at the last frame
-    drag: Option<(usize, f32)>,
-    drag_value: f32,
+    /// The touch input (`GestureRecognizer`, down `0x710005d4b0`)
+    gestures: GestureRecognizer,
+    touched: Option<Touched>,
+    /// The touched button item's option (`+0x74`)
+    option: Option<usize>,
+    /// The grabbed slider's value at the grab and the drag's summed dx (`+0x60..+0x68`)
+    grab: Option<(u8, f32)>,
+    /// The list's scroll (`+0x4b8`) and its coasting after a flick (`+0x424`)
+    scroll: f32,
+    coast: Coast,
 }
 
 fn build_pages() -> [Vec<Item>; 3] {
@@ -345,9 +384,12 @@ impl ConfigMenu {
             reset_pending: false,
             child: None,
             saving: None,
-            pointer_held: false,
-            drag: None,
-            drag_value: 0.0,
+            gestures: GestureRecognizer::new(false),
+            touched: None,
+            option: None,
+            grab: None,
+            scroll: 0.0,
+            coast: Coast::default(),
         };
         menu.pages[0][0].set_focus(&settings, true, false);
         Some(menu)
@@ -373,6 +415,9 @@ impl ConfigMenu {
     fn select_item(&mut self, settings: &Settings, index: usize) {
         let page = self.page;
         let old = self.cursors[page];
+        if old == index {
+            return;
+        }
         self.pages[page][old].set_focus(settings, false, true);
         self.cursors[page] = index;
         self.pages[page][index].set_focus(settings, true, true);
@@ -389,15 +434,21 @@ impl ConfigMenu {
             minigame::tween_now(&mut item.options[old as usize].0, 0.0, 0.2);
             minigame::tween_now(&mut item.options[value as usize].0, 1.0, 0.25);
         }
-        (item.def.set)(&mut cx.global.settings, value);
-        if item.def.label == STANDBY_LABEL && value == 1 {
+        self.write(cx, index, value);
+        cx.sound("move");
+    }
+
+    /// The item's setter; the standby item set to On shows its notice, even when it already was (`0x710005fdd0`)
+    fn write(&mut self, cx: &mut TaskCx, index: usize, value: u8) {
+        let def = self.pages[self.page][index].def;
+        (def.set)(&mut cx.global.settings, value);
+        if def.label == STANDBY_LABEL && value == 1 {
             self.child = Some(Child::Notice(Dialog::ok(
                 cx.pre_render,
                 &self.assets,
                 STANDBY_NOTICE,
             )));
         }
-        cx.sound("move");
     }
 
     /// The item's left and right (vfunc 6): a slider by 5 within 0-100, buttons by one option without wrapping
@@ -459,89 +510,204 @@ impl ConfigMenu {
         }
     }
 
-    fn item_at(&self, point: Vec2) -> Option<usize> {
-        self.pages[self.page].iter().position(|item| {
-            minigame::contains(
-                [
-                    LIST_X,
-                    LIST_Y + item.y,
-                    LIST_X + LIST_W,
-                    LIST_Y + item.y + ITEM_H,
-                ],
-                point,
-            )
-        })
+    /// `point` in the list's space: x - 136, y - 252 + scroll
+    fn list_point(&self, point: Vec2) -> Vec2 {
+        Vec2::new(point.x - LIST_X, point.y - LIST_Y + self.scroll)
     }
 
-    /// The pointer: tabs, the close and Reset buttons, an item's option, or a slider dragged sideways (value += dx / 6)
-    fn handle_pointer(&mut self, cx: &mut TaskCx) {
-        let pointer = cx.input.pointer;
-        let went_down = pointer.held && !self.pointer_held;
-        let went_up = !pointer.held && self.pointer_held;
-        self.pointer_held = pointer.held;
-        let Some(point) = pointer.position else {
-            return;
-        };
+    /// The page is at least the 666 px view tall
+    fn max_scroll(&self) -> f32 {
+        self.pages[self.page]
+            .last()
+            .map_or(0.0, |item| item.y + ITEM_H - VIEW)
+            .max(0.0)
+    }
 
-        if let Some((index, last_x)) = self.drag {
-            if went_up {
-                self.drag = None;
-                return;
+    /// The down hit (`0x710005d4b0`): the close and Reset buttons, then the band y 150..992 with the other tabs
+    /// (`0x710005d280`) and the list x 136..1784, y 252..918; `None` is not tracked
+    fn touched_at(&self, point: Vec2) -> Option<Touched> {
+        if (32.0..116.0).contains(&point.y) {
+            if (1764.0..1848.0).contains(&point.x) {
+                return Some(Touched::Close);
             }
-            self.drag_value = (self.drag_value + (point.x - last_x) / 6.0).clamp(0.0, 100.0);
-            self.drag = Some((index, point.x));
-            self.set_value(cx, index, self.drag_value.round() as u8);
-            return;
+            if (1446.0..1752.0).contains(&point.x) {
+                return Some(Touched::Reset);
+            }
         }
-        if !went_down {
-            return;
+        if !(150.0..992.0).contains(&point.y) {
+            return Some(Touched::Nothing);
         }
-
-        let settings = cx.global.settings;
-        if minigame::contains([1764.0, 32.0, 1848.0, 116.0], point) {
-            cx.sound("cancel");
-            self.close();
-            return;
-        }
-        if minigame::contains([1446.0, 32.0, 1752.0, 116.0], point) {
-            cx.sound("decide");
-            self.reset();
-            return;
-        }
-        for page in 0..3 {
+        let tab = (0..3).find(|&page| {
             let x = 510.0 + 300.0 * page as f32;
-            if minigame::contains([x, 144.0, x + 300.0, 211.5], point) {
-                if page != self.page {
-                    minigame::flash(&mut self.tabs[page].1);
-                    self.select_page(&settings, page);
-                    cx.sound("decide");
+            page != self.page && minigame::contains([x, 144.0, x + 300.0, 211.5], point)
+        });
+        if let Some(page) = tab {
+            return Some(Touched::Tab(page));
+        }
+        if !minigame::contains([LIST_X, LIST_Y, LIST_X + LIST_W, 918.0], point) {
+            return None;
+        }
+        let y = self.list_point(point).y;
+        Some(Touched::List(
+            self.pages[self.page]
+                .iter()
+                .position(|item| item.y <= y && y < item.y + ITEM_H),
+        ))
+    }
+
+    /// The config's gesture listener (down `0x710005d4b0`, press `0x710005d7d0`, tap `0x710005d8e0`, drag
+    /// `0x710005da90`, flick `0x710005dd30`, end `0x710005d710`): a press moves the cursor and brightens what is under
+    /// it, a tap acts, a drag on a slider's knob sets its value, and other drags and flicks scroll the list
+    fn handle_pointer(&mut self, cx: &mut TaskCx) {
+        for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+            let settings = cx.global.settings;
+            match gesture {
+                Gesture::Down(at) => {
+                    self.touched = self.touched_at(at);
+                    self.option = None;
+                    self.grab = None;
+                    match self.touched {
+                        None => self.gestures.cancel(),
+                        // touching a coasting list stops it, and that touch selects nothing
+                        Some(Touched::List(_)) if self.coast.is_moving() => {
+                            self.coast.stop();
+                            self.touched = Some(Touched::List(None));
+                        }
+                        Some(Touched::List(Some(index))) => {
+                            self.option = self.pages[self.page][index].option_at(at.x - LIST_X);
+                        }
+                        _ => {}
+                    }
                 }
-                return;
+                Gesture::Press => match self.touched {
+                    Some(Touched::Close) => minigame::raise(&mut self.close_flash),
+                    Some(Touched::Reset) => minigame::raise(&mut self.default_flash),
+                    Some(Touched::Tab(page)) => minigame::raise(&mut self.tabs[page].1),
+                    Some(Touched::List(Some(index))) => {
+                        self.select_item(&settings, index);
+                        let at = self.list_point(cx.input.pointer.position.unwrap_or_default());
+                        let item = &mut self.pages[self.page][index];
+                        if let Some(k) = self.option {
+                            minigame::raise(&mut item.options[k].1);
+                        } else if item.knob_at(&settings, at) {
+                            self.grab = Some(((item.def.get)(&settings), 0.0));
+                        }
+                    }
+                    _ => {}
+                },
+                Gesture::Tap(_) => match self.touched.take() {
+                    Some(Touched::Close) => {
+                        cx.sound("decide");
+                        self.close();
+                    }
+                    Some(Touched::Reset) => {
+                        cx.sound("decide");
+                        self.reset();
+                    }
+                    Some(Touched::Tab(page)) => {
+                        minigame::flash(&mut self.tabs[page].1);
+                        cx.sound("decide");
+                        self.select_page(&settings, page);
+                    }
+                    Some(Touched::List(Some(index))) => {
+                        self.select_item(&settings, index);
+                        if let Some(k) = self.option.take() {
+                            // `0x7100057110`: the option is selected, flashes and is written, with the decide sound
+                            let item = &mut self.pages[self.page][index];
+                            let old = (item.def.get)(&settings) as usize;
+                            if old != k {
+                                minigame::tween_now(&mut item.options[old].0, 0.0, 0.2);
+                                minigame::tween_now(&mut item.options[k].0, 1.0, 0.25);
+                            }
+                            minigame::flash(&mut item.options[k].1);
+                            self.write(cx, index, k as u8);
+                            cx.sound("decide");
+                        }
+                    }
+                    _ => {}
+                },
+                Gesture::Drag(from, to) => match self.touched {
+                    Some(Touched::Nothing | Touched::Close | Touched::Reset) => {
+                        minigame::lower(&mut self.close_flash);
+                        minigame::lower(&mut self.default_flash);
+                        self.touched = Some(Touched::Nothing);
+                    }
+                    Some(Touched::Tab(page)) => minigame::lower(&mut self.tabs[page].1),
+                    Some(Touched::List(item)) => {
+                        if let Some(index) = item {
+                            if self.drag_item(cx, index, from, to) {
+                                self.select_item(&settings, index);
+                                continue;
+                            }
+                            self.touched = Some(Touched::List(None));
+                        }
+                        let scroll = (self.scroll - (to.y - from.y)).clamp(0.0, self.max_scroll());
+                        self.scroll_to(&settings, scroll);
+                    }
+                    None => {}
+                },
+                Gesture::Flick(velocity) => {
+                    if self.touched == Some(Touched::List(None)) {
+                        self.coast.start(velocity.y);
+                    }
+                }
+                Gesture::End => {
+                    if let (Some(Touched::List(Some(index))), Some(k)) = (self.touched, self.option)
+                    {
+                        minigame::lower(&mut self.pages[self.page][index].options[k].1);
+                    }
+                    self.touched = None;
+                    self.option = None;
+                    self.grab = None;
+                }
+                Gesture::LongPress => {}
             }
         }
-        let Some(index) = self.item_at(point) else {
-            return;
-        };
-        if index != self.cursor() {
-            self.select_item(&settings, index);
-        }
+    }
+
+    /// An item's drag (button `0x7100057240`, slider `0x7100058160`); false lets the list scroll instead. A button
+    /// drops its option's highlight; a slider grabbed by the press, or dragged from its knob within 40 degrees of the
+    /// horizontal, takes value = start + trunc(sum dx / 6), 0..100, written without a sound
+    fn drag_item(&mut self, cx: &mut TaskCx, index: usize, from: Vec2, to: Vec2) -> bool {
+        let settings = cx.global.settings;
+        let start = self.list_point(from);
         let item = &mut self.pages[self.page][index];
-        match item.def.kind {
-            Kind::Slider(_) => {
-                self.drag_value = (item.def.get)(&settings) as f32;
-                self.drag = Some((index, point.x));
-            }
-            Kind::Buttons(options) => {
-                let x = point.x - LIST_X;
-                if let Some(k) = (0..options.len()).find(|&k| {
-                    let left = item.option_x(k);
-                    left <= x && x < left + 240.0
-                }) {
-                    minigame::flash(&mut item.options[k].1);
-                    self.set_value(cx, index, k as u8);
-                }
-            }
+        if let Some(k) = self.option.take() {
+            minigame::lower(&mut item.options[k].1);
         }
+        if self.grab.is_none() {
+            let angle = (to.y - from.y).atan2(to.x - from.x).to_degrees().abs();
+            if !item.knob_at(&settings, start) || (40.0..=140.0).contains(&angle) {
+                return false;
+            }
+            self.grab = Some(((item.def.get)(&settings), 0.0));
+        }
+        let Some((value, sum)) = &mut self.grab else {
+            return false;
+        };
+        *sum += to.x - from.x;
+        let new = (*value as i32 + (*sum / 6.0) as i32).clamp(0, 100) as u8;
+        if new != (item.def.get)(&settings) {
+            self.write(cx, index, new);
+        }
+        true
+    }
+
+    /// The list scrolled by a drag (`0x710005da90`) or coasting (`0x710005b270`): the cursor moves to stay on an item
+    /// fully inside the 666 px view
+    fn scroll_to(&mut self, settings: &Settings, scroll: f32) {
+        let items = &self.pages[self.page];
+        let first = items
+            .iter()
+            .position(|item| item.y >= scroll)
+            .unwrap_or(items.len() - 1);
+        let last = items
+            .iter()
+            .rposition(|item| item.y + ITEM_H <= scroll + VIEW)
+            .unwrap_or(0);
+        let cursor = self.cursor().clamp(first, last.max(first));
+        self.select_item(settings, cursor);
+        self.scroll = scroll;
     }
 
     fn update_child(&mut self, cx: &mut TaskCx) {
@@ -662,7 +828,18 @@ impl Task for ConfigMenu {
                     }
                 } else if cx.focused {
                     self.handle_pointer(cx);
-                    if self.drag.is_none() && self.state == State::Active {
+                    if self.coast.is_moving() {
+                        let scroll =
+                            self.coast
+                                .update(self.scroll, 0.0, self.max_scroll(), cx.frames);
+                        let settings = cx.global.settings;
+                        self.scroll_to(&settings, scroll);
+                    }
+                    // touches and the list moving hold the buttons off (`0x710006b860`)
+                    if !self.gestures.is_active()
+                        && !self.coast.is_moving()
+                        && self.state == State::Active
+                    {
                         self.handle_keys(cx);
                     }
                 }
@@ -734,9 +911,9 @@ impl Task for ConfigMenu {
         Sprite::new(t("window"), [48.0, 176.0, 48.0 + 1824.0, 176.0 + 834.0])
             .draw(pass, builder, slid);
 
-        // shortcut: no page holds more items than the 666 px list shows, so the list is neither clipped nor scrolled
+        // shortcut: no page holds more items than the 666 px list shows, so the scroll stays 0, the list is not clipped
         // and its scroll bar is left out
-        let list = slid * Mat4::from_translation(vec3(LIST_X, LIST_Y, 0.0));
+        let list = slid * Mat4::from_translation(vec3(LIST_X, LIST_Y - self.scroll, 0.0));
         for item in &self.pages[self.page] {
             self.draw_item(pass, list, item);
         }
