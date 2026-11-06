@@ -1,8 +1,9 @@
 //! The manual (`shin::ManualViewer`, ctor `0x7100085530`, update `0x7100085930`, render `0x7100085980`, keys
 //! `0x71000865d0`): the pages `001`, `002`, ... of `/manual.txa` side by side, 1500 px apart, turned with left/right
 //! or L/R. The English patch has no `manual.txa`, so the English game shows the Japanese pages, as here.
-//!
-//! shortcut: the pages cannot be dragged or flicked with the pointer.
+//! With the pointer (`0x7100086710`..`0x7100086d30`) a drag between y 162 and 980 moves the pages 1:1; a flick
+//! turns to the next or previous page from the one the drag started on, and a release without one snaps to the
+//! nearest page.
 
 use std::sync::Arc;
 
@@ -19,7 +20,10 @@ use super::{Task, TaskCx};
 use crate::{
     asset::texture_archive::NamedTextures,
     layer::user::minigame::{self, Sprite},
-    ui,
+    ui::{
+        self,
+        gesture::{Gesture, GestureRecognizer},
+    },
 };
 
 const PAGE_STEP: f32 = 1500.0;
@@ -45,6 +49,9 @@ pub struct Manual {
     close_flash: Tweener,
     state: State,
     target_size: (u32, u32),
+    gestures: GestureRecognizer,
+    /// The page a drag started from
+    drag_page: Option<usize>,
 }
 
 impl Manual {
@@ -69,7 +76,70 @@ impl Manual {
             close_flash: Tweener::new(0.0),
             state: State::Opening,
             target_size: (1920, 1080),
+            gestures: GestureRecognizer::new(false),
+            drag_page: None,
         })
+    }
+
+    /// The pages slide to `page` at 100 px a frame, sine-out (`0x71000bb960` with a speed)
+    fn slide_to(&mut self, page: usize) {
+        self.page = page;
+        let target = PAGE_STEP * page as f32;
+        let frames = (target - self.scroll.value()).abs() / 100.0;
+        self.scroll = Tweener::new(self.scroll.value());
+        ui::tween(&mut self.scroll, target, frames, Easing::SineOut);
+    }
+
+    /// The manual's gesture listener
+    fn handle_pointer(&mut self, cx: &TaskCx) {
+        let last = self.pages.saturating_sub(1);
+        // within 30 degrees of the horizontal (`tan 30`)
+        let flat = |v: glam::Vec2| v.y.abs() <= v.x.abs() * 0.577_350_3;
+        for gesture in self.gestures.update(cx.input.pointer, cx.frames) {
+            match gesture {
+                Gesture::Down(at) if !(162.0..980.0).contains(&at.y) => {
+                    if !minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) {
+                        self.gestures.cancel();
+                    }
+                }
+                Gesture::Down(_) => self.drag_page = Some(self.page),
+                Gesture::Tap(at) if minigame::contains([1764.0, 32.0, 1848.0, 116.0], at) => {
+                    cx.sound("decide");
+                    self.close_flash = Tweener::new(0.0);
+                    minigame::flash(&mut self.close_flash);
+                    self.state = State::Closing;
+                }
+                Gesture::Drag(from, to) => {
+                    let max = PAGE_STEP * last as f32;
+                    let scroll = (self.scroll.value() - (to.x - from.x)).clamp(0.0, max);
+                    self.scroll = Tweener::new(scroll);
+                }
+                Gesture::Flick(v) if flat(v) => {
+                    // leftward turns forward, rightward back, from the page the drag started on
+                    let from = self.drag_page.take().unwrap_or(self.page);
+                    let to = if v.x < 0.0 {
+                        (from + 1).min(last)
+                    } else {
+                        from.saturating_sub(1)
+                    };
+                    if to != self.page {
+                        cx.sound("move");
+                    }
+                    self.slide_to(to);
+                }
+                Gesture::End => {
+                    // released without a flick: the nearest page
+                    if self.drag_page.take().is_some() {
+                        let page = ((self.scroll.value() / PAGE_STEP).round() as usize).min(last);
+                        if page != self.page {
+                            cx.sound("move");
+                        }
+                        self.slide_to(page);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 
     /// `0x71000865d0`
@@ -112,8 +182,14 @@ impl Task for Manual {
                 }
             }
             State::Active => {
-                if cx.focused && self.scroll.is_idle() {
-                    self.handle_input(cx);
+                if cx.focused {
+                    self.handle_pointer(cx);
+                    if self.state == State::Active
+                        && !self.gestures.is_active()
+                        && self.scroll.is_idle()
+                    {
+                        self.handle_input(cx);
+                    }
                 }
             }
             State::Closing => {
