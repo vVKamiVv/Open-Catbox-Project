@@ -128,6 +128,11 @@ impl MovieLayer {
         })
     }
 
+    /// The movie's own volume (the layer's, before the setting): the opening movie fades it out when skipped
+    pub fn set_local_volume(&self, volume: f32) {
+        self.inner_ref().shared.lock().local_volume = Volume(volume);
+    }
+
     pub fn is_finished(&self) -> bool {
         self.inner_ref().video_player.is_finished()
     }

@@ -27,6 +27,7 @@ use crate::{
     adv::{Adv, assets::AdvAssets, menu::MenuAssets},
     scenario_select::{Bridge, ScenarioSelect, SelectExit},
     title::{Title, TitleExit},
+    title_demo::TitleDemo,
     ui,
     asset::system::{AssetLoadContext, AssetServer, cache::AssetCache, locate_assets},
     capture::{self, CaptureTargets, PendingCapture},
@@ -190,21 +191,34 @@ impl ShinApp for App {
             || cli.unsafe_entry_point.is_some()
             || !cli.capture_messages.is_empty();
         if !straight_to_story {
-            let title = Title::new(
+            // the opening movie, then the title (`FirstBoot` -> `TitleDemo` -> `Title(-1)`)
+            let (scene, fade) = match TitleDemo::new(
+                &context.wgpu.device,
                 &asset_server,
                 audio_manager.clone(),
-                MenuAssets::new(&adv_assets),
+                &adv_assets,
                 save,
-                -1,
-            )?;
+            ) {
+                Ok(demo) => (Scene::TitleDemo(demo), None),
+                Err(save) => {
+                    let title = Title::new(
+                        &asset_server,
+                        audio_manager.clone(),
+                        MenuAssets::new(&adv_assets),
+                        save,
+                        -1,
+                    )?;
+                    // the title fades in from the black of the boot over 90 frames (`Title::First`)
+                    (Scene::Title(title), Some(SceneFade::new(None, 90.0)))
+                }
+            };
             return Ok(Self {
                 frame_id: FrameId::default(),
                 audio_manager,
                 asset_server,
                 effect_textures,
-                scene: Scene::Title(title),
-                // the title fades in from the black of the boot over 90 frames (`Title::First`)
-                fade: Some(SceneFade::new(None, 90.0)),
+                scene,
+                fade,
                 bridge_global: None,
                 adv_assets,
                 capture_dir: cli.capture_dir,
@@ -444,6 +458,11 @@ impl ShinApp for App {
                     None => {}
                 }
             }
+            Scene::TitleDemo(demo) => {
+                if demo.update(&mut update_context, &input, pointer) {
+                    next = Some(Next::Title);
+                }
+            }
             Scene::Bridge(bridge) => {
                 if let Some(scenario) = bridge.update(update_context.delta_ticks.as_f32()) {
                     // `0x71000e4630`: the new game's first entry
@@ -541,6 +560,7 @@ impl App {
     /// The save data, wherever the current scene keeps it
     fn save_data(&self) -> &SaveData {
         match &self.scene {
+            Scene::TitleDemo(demo) => &demo.global,
             Scene::Title(title) => &title.global,
             Scene::ScenarioSelect(select) => &select.global,
             Scene::Adv(adv) => adv.save_data(),
@@ -561,7 +581,7 @@ impl App {
             Scene::Adv(adv) => adv.shutdown(),
             Scene::Title(title) => title.shutdown(music_fade),
             Scene::ScenarioSelect(select) => select.shutdown(music_fade),
-            Scene::Bridge(_) => {}
+            Scene::Bridge(_) | Scene::TitleDemo(_) => {}
         }
         let mut snapshot = || {
             let mut old = ctx.new_render_texture("scene_fade".to_string());
@@ -650,6 +670,8 @@ impl App {
 
 /// What the app shows
 enum Scene {
+    /// The opening movie
+    TitleDemo(TitleDemo),
     Title(Title),
     ScenarioSelect(ScenarioSelect),
     Bridge(Bridge),
@@ -659,6 +681,7 @@ enum Scene {
 impl Scene {
     fn render(&self, pass: &mut RenderPass) {
         match self {
+            Scene::TitleDemo(demo) => demo.render(pass),
             Scene::Title(title) => title.render(pass),
             Scene::ScenarioSelect(select) => select.render(pass),
             Scene::Bridge(bridge) => bridge.render(pass),

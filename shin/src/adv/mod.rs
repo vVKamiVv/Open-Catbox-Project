@@ -3,7 +3,7 @@ mod command;
 pub mod hud;
 pub mod menu;
 mod restore;
-mod unlocks;
+pub(crate) mod unlocks;
 mod vm_state;
 
 use std::{borrow::Cow, sync::Arc};

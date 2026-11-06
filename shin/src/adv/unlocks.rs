@@ -29,14 +29,19 @@ pub fn layer_loaded(
         }
         LayerType::Movie => {
             let (movie, ..): TypedNumberArray<MovieId> = lower_number_array(params);
-            vectors.unlocked_movies.add(movie.into_i32() as usize);
-            let info = tables.movie_info(movie);
-            unlock_picture(vectors, scenario, info.linked_picture_id);
-            if let Some(bgm) = info.linked_bgm_id.repr() {
-                bgm_started(vectors, scenario, bgm);
-            }
+            movie_played(vectors, scenario, movie);
         }
         _ => {}
+    }
+}
+
+/// A movie, and the picture and music linked to it (also the opening movie, `TitleDemo::First`)
+pub fn movie_played(vectors: &mut SaveVectors, scenario: &Scenario, movie: MovieId) {
+    vectors.unlocked_movies.add(movie.into_i32() as usize);
+    let info = scenario.info_tables().movie_info(movie);
+    unlock_picture(vectors, scenario, info.linked_picture_id);
+    if let Some(bgm) = info.linked_bgm_id.repr() {
+        bgm_started(vectors, scenario, bgm);
     }
 }
 

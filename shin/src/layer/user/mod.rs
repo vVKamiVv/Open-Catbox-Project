@@ -39,7 +39,7 @@ mod last_layer;
 pub mod minigame;
 mod murderer;
 #[expect(unused)]
-mod movie_layer;
+pub mod movie_layer;
 mod null_layer;
 mod picture_layer;
 mod quiz_layer;

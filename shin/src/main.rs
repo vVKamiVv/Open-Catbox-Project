@@ -22,6 +22,7 @@ mod scenario_select;
 mod savedata;
 mod time;
 mod title;
+mod title_demo;
 mod ui;
 mod update;
 mod wiper;
