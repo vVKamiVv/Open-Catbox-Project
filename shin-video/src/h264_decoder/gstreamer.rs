@@ -24,6 +24,23 @@ fn init() {
     Lazy::force(&INIT_ONCE);
 }
 
+/// The H.264 the movies hand GStreamer: Annex B, one access unit per buffer
+fn h264_caps() -> gst::Caps {
+    gst::caps::Caps::builder("video/x-h264")
+        .field("stream-format", "byte-stream")
+        .field("alignment", "au")
+        .build()
+}
+
+/// Whether GStreamer has a decoder for the movies' H.264 (most distributions install it apart from GStreamer itself)
+pub fn can_decode_h264() -> bool {
+    init();
+    let caps = h264_caps();
+    gst::ElementFactory::factories_with_type(gst::ElementFactoryType::DECODER, gst::Rank::MARGINAL)
+        .iter()
+        .any(|factory| factory.can_sink_any_caps(&caps))
+}
+
 pub struct GStreamerH264Decoder {
     #[allow(dead_code)] // it's required to keep the pipeline alive
     pipeline: gst::Pipeline,
@@ -44,10 +61,7 @@ impl super::H264DecoderTrait for GStreamerH264Decoder {
             major, minor, micro, nano
         );
 
-        let in_video_caps = gst::caps::Caps::builder("video/x-h264")
-            .field("stream-format", "byte-stream")
-            .field("alignment", "au")
-            .build();
+        let in_video_caps = h264_caps();
 
         let app_src = gst_app::AppSrc::builder()
             .caps(&in_video_caps)

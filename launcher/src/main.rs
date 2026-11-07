@@ -106,12 +106,14 @@ pub fn exe_dir() -> PathBuf {
 }
 
 fn find_shin() -> Option<PathBuf> {
-    // a debug launcher sits in target/debug next to a debug shin.exe, which overflows its stack at startup
-    let beside = (!cfg!(debug_assertions)).then(|| exe_dir().join("shin.exe"));
+    let name = format!("shin{}", std::env::consts::EXE_SUFFIX);
+    // a debug launcher sits in target/debug next to a debug shin, which overflows its stack at startup; a package
+    // (AppImage, .deb, .rpm, the macOS app) puts shin next to the launcher
+    let beside = (!cfg!(debug_assertions)).then(|| exe_dir().join(&name));
     #[cfg(not(feature = "installer"))]
     let beside = beside
         .into_iter()
-        .chain([repo_root().join("target").join("release").join("shin.exe")]);
+        .chain([repo_root().join("target").join("release").join(&name)]);
     beside.into_iter().find(|p| p.is_file())
 }
 
@@ -287,7 +289,7 @@ fn launch(lang: String) -> Result<u32, String> {
     if langs::installed(&data, &lang).is_none() {
         return Err("This language is not installed yet.".into());
     }
-    let shin = find_shin().ok_or("shin.exe was not found next to the launcher.")?;
+    let shin = find_shin().ok_or("The game (shin) was not found next to the launcher.")?;
     // shin.exe is a console app: it runs hidden, so its output goes to a log for diagnosing problems
     let logs = data.join("logs");
     fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
@@ -429,8 +431,9 @@ async fn uninstall_program(app: AppHandle, delete_data: bool) -> Result<(), Stri
         .map_err(|e| e.to_string())?
 }
 
-/// Downloads the new version through the updater, which checks its signature, and starts it to replace this one:
-/// the download is the new Setup, run with `--update <folder>`. It waits for this launcher to exit.
+/// Downloads the new version through the updater, which checks its signature, and puts it in place. On Windows the
+/// download is the new Setup, run with `--update <folder>`, which waits for this launcher to exit; on Linux and macOS
+/// the updater replaces the AppImage, package or app itself, and the launcher restarts.
 #[tauri::command]
 async fn install_update(app: AppHandle) -> Result<(), String> {
     use tauri_plugin_updater::UpdaterExt;
@@ -442,24 +445,36 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .ok_or("You have the latest version.")?;
     let mut done = 0;
-    let bytes = update
-        .download(
-            |chunk, total| {
-                done += chunk;
-                if let Some(total) = total {
-                    emit(
-                        &app,
-                        "app-update",
-                        "Downloading",
-                        done as f64 / total.max(1) as f64,
-                    );
-                }
-            },
-            || {},
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-    let dir = std::env::temp_dir().join(format!("OpenCatbox-update-{}", update.version));
+    let progress = |chunk: usize, total: Option<u64>| {
+        done += chunk;
+        if let Some(total) = total {
+            let fraction = done as f64 / total.max(1) as f64;
+            emit(&app, "app-update", "Downloading", fraction);
+        }
+    };
+    #[cfg(not(windows))]
+    {
+        update
+            .download_and_install(progress, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        app.restart();
+    }
+    #[cfg(windows)]
+    {
+        let bytes = update
+            .download(progress, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        run_setup_update(&app, &update.version, bytes)
+    }
+}
+
+/// Windows: saves the downloaded Setup and starts it to replace this launcher
+#[cfg(windows)]
+fn run_setup_update(app: &AppHandle, version: &str, bytes: Vec<u8>) -> Result<(), String> {
+    let update_version = version;
+    let dir = std::env::temp_dir().join(format!("OpenCatbox-update-{update_version}"));
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let setup = dir.join("OpenCatbox-Setup.exe");
     fs::write(&setup, bytes).map_err(|e| format!("Cannot save the update: {e}"))?;

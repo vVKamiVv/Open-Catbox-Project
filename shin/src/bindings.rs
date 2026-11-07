@@ -358,6 +358,8 @@ pub const ACTIONS: &[ActionDef] = &[
         false,
         &[K(C::F10)],
     ),
+    // set by macOS's own shortcut in `lower`, not by a binding
+    def(AppAction::Quit, "quit", 0, false, &[]),
 ];
 
 pub fn def_of(action: AppAction) -> &'static ActionDef {
@@ -459,7 +461,25 @@ pub fn generation() -> u32 {
 /// Every action's state from the raw input (`AppAction::lower`)
 pub fn lower(raw: &RawInputState) -> EnumMap<AppAction, bool> {
     let table = TABLE.read().unwrap();
-    EnumMap::from_fn(|action| table[action].iter().any(|input| input.held(raw)))
+    let mut actions =
+        EnumMap::from_fn(|action| table[action].iter().any(|input: &Input| input.held(raw)));
+    if cfg!(target_os = "macos") {
+        mac_shortcuts(raw, &mut actions);
+    }
+    actions
+}
+
+/// macOS's own shortcuts on top of the bindings: Cmd+Q quits, Cmd+Ctrl+F toggles fullscreen (Macs mostly lack F11)
+fn mac_shortcuts(raw: &RawInputState, actions: &mut EnumMap<AppAction, bool>) {
+    let held = |keys: [C; 2]| keys.iter().any(|key| raw.keyboard.contains(key));
+    let command = held([C::SuperLeft, C::SuperRight]);
+    let control = held([C::ControlLeft, C::ControlRight]);
+    if command && raw.keyboard.contains(&C::KeyQ) {
+        actions[AppAction::Quit] = true;
+    }
+    if command && control && raw.keyboard.contains(&C::KeyF) {
+        actions[AppAction::ToggleFullscreen] = true;
+    }
 }
 
 /// Remembers what is held this frame (from `App::filter_input`)
@@ -535,6 +555,23 @@ pub fn reset() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mac_shortcuts_quit_and_toggle_fullscreen() {
+        let with = |keys: &[C]| {
+            let mut raw = RawInputState::new();
+            for &key in keys {
+                raw.keyboard.insert(key);
+            }
+            let mut actions = EnumMap::default();
+            mac_shortcuts(&raw, &mut actions);
+            actions
+        };
+        assert!(with(&[C::SuperLeft, C::KeyQ])[AppAction::Quit]);
+        assert!(!with(&[C::KeyQ])[AppAction::Quit], "Q alone is a game key");
+        assert!(with(&[C::SuperRight, C::ControlLeft, C::KeyF])[AppAction::ToggleFullscreen]);
+        assert!(!with(&[C::SuperLeft, C::KeyF])[AppAction::ToggleFullscreen]);
+    }
 
     #[test]
     fn names_round_trip() {

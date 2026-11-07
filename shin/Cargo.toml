@@ -85,7 +85,6 @@ replace_with = { workspace = true }
 
 [features]
 default = []
-gstreamer-video = ["shin-video/gstreamer"]
 tracy = ["shin-window/tracy"]
 
 [lints]

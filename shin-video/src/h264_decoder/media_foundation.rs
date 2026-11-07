@@ -32,7 +32,9 @@ use windows::Win32::{
 
 use crate::{
     h264_decoder::{
-        FrameTiming, H264DecoderTrait, Nv12Frame, spawn_ffmpeg::SpawnFfmpegH264Decoder,
+        FrameTiming, H264DecoderTrait, Nv12Frame,
+        none::NoH264Decoder,
+        spawn_ffmpeg::{SpawnFfmpegH264Decoder, ffmpeg_available},
     },
     mp4::Mp4TrackReader,
     mp4_bitstream_converter::Mp4BitstreamConverter,
@@ -41,20 +43,27 @@ use crate::{
 /// Pictures decoded ahead of the game (about 3 MB each at 1920x1080)
 const FRAMES_AHEAD: usize = 8;
 
-/// Media Foundation, or ffmpeg when it is not available
+/// Media Foundation, or ffmpeg when it is not available (Windows N editions), or none
 pub enum AutoH264Decoder {
     MediaFoundation(MediaFoundationH264Decoder),
     Ffmpeg(SpawnFfmpegH264Decoder),
+    None(NoH264Decoder),
 }
 
 impl H264DecoderTrait for AutoH264Decoder {
     fn new<S: Read + Seek + Send + 'static>(track: Mp4TrackReader<S>) -> Result<Self> {
         match MediaFoundationH264Decoder::start(track) {
             Ok(decoder) => Ok(Self::MediaFoundation(decoder)),
-            Err((e, track)) => {
+            Err((e, track)) if ffmpeg_available() => {
                 warn!("Media Foundation cannot decode the movie ({e:?}); trying ffmpeg");
                 Ok(Self::Ffmpeg(SpawnFfmpegH264Decoder::new(track)?))
             }
+            Err((e, track)) => Ok(Self::None(NoH264Decoder::with_reason(
+                track,
+                &format!(
+                    "Media Foundation cannot decode H.264 ({e:?}); on Windows N, install the Media Feature Pack"
+                ),
+            ))),
         }
     }
 
@@ -62,6 +71,7 @@ impl H264DecoderTrait for AutoH264Decoder {
         match self {
             Self::MediaFoundation(decoder) => decoder.read_frame(),
             Self::Ffmpeg(decoder) => decoder.read_frame(),
+            Self::None(decoder) => decoder.read_frame(),
         }
     }
 
@@ -69,6 +79,7 @@ impl H264DecoderTrait for AutoH264Decoder {
         match self {
             Self::MediaFoundation(decoder) => decoder.frame_size(),
             Self::Ffmpeg(decoder) => decoder.frame_size(),
+            Self::None(decoder) => decoder.frame_size(),
         }
     }
 }

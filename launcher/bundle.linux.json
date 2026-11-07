@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": ["appimage", "deb", "rpm"],
+    "createUpdaterArtifacts": true,
+    "externalBin": ["binaries/shin"],
+    "category": "Game",
+    "shortDescription": "Launcher for the Open Catbox Project",
+    "longDescription": "Plays Umineko: The Symphony of Catbox and Dreams natively, from your own Switch copy of the game.",
+    "linux": {
+      "deb": {
+        "depends": ["libgstreamer1.0-0", "gstreamer1.0-plugins-base"],
+        "recommends": ["gstreamer1.0-libav"]
+      },
+      "rpm": {
+        "depends": ["gstreamer1", "gstreamer1-plugins-base"],
+        "recommends": ["gstreamer1-plugin-openh264"]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    }
+  }
+}

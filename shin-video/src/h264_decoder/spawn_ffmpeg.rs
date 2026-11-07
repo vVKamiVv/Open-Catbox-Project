@@ -43,6 +43,12 @@ pub struct SpawnFfmpegH264Decoder {
 // const FFMPEG_LOG_LEVEL: &str = "debug";
 const FFMPEG_LOG_LEVEL: &str = "info";
 
+/// Whether an `ffmpeg` is on the PATH
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+pub fn ffmpeg_available() -> bool {
+    which::which("ffmpeg").is_ok()
+}
+
 impl super::H264DecoderTrait for SpawnFfmpegH264Decoder {
     fn new<S: Read + Seek + Send + 'static>(track: Mp4TrackReader<S>) -> Result<Self> {
         // TODO: use a more robust way to find the ffmpeg binary

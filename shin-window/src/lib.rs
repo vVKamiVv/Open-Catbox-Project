@@ -608,6 +608,13 @@ impl<A: ShinApp> WinitAppState<A> {
 }
 
 impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitAppState<A> {
+    /// The app (and with it the window's surface) goes while the event loop still holds its connection to the display:
+    /// `run_app` drops the event loop before returning, and on Wayland a swapchain destroyed after that crashes in
+    /// libwayland
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        drop(std::mem::take(self));
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         match std::mem::take(self) {
             WinitAppState::WaitingForInitialResume {

@@ -202,12 +202,57 @@ impl DirAssetIo {
     }
 
     fn read_file(&self, path: &str) -> Result<AssetDataAccessor> {
-        // 1. check if the file exists
-        let full_path = self.root_path.join(path.trim_start_matches('/'));
-        if !full_path.exists() {
-            bail!("Asset {:?} not found", path);
+        let relative = path.trim_start_matches('/');
+        let full_path = self.root_path.join(relative);
+        if full_path.exists() {
+            return Ok(AssetDataAccessor::from_file(full_path));
         }
-        Ok(AssetDataAccessor::from_file(full_path))
+        // the game's paths are matched without regard to case, as inside its archives; on case-sensitive file
+        // systems (Linux) an unpacked folder may spell them differently
+        match find_ignoring_case(&self.root_path, relative) {
+            Some(found) => Ok(AssetDataAccessor::from_file(found)),
+            None => bail!("Asset {:?} not found", path),
+        }
+    }
+}
+
+/// `relative` under `root`, each part matched without regard to case
+fn find_ignoring_case(root: &Path, relative: &str) -> Option<PathBuf> {
+    let mut current = root.to_path_buf();
+    for part in relative.split('/').filter(|part| !part.is_empty()) {
+        let exact = current.join(part);
+        current = if exact.exists() {
+            exact
+        } else {
+            std::fs::read_dir(&current)
+                .ok()?
+                .filter_map(|entry| entry.ok())
+                .find(|entry| {
+                    entry
+                        .file_name()
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case(part)
+                })?
+                .path()
+        };
+    }
+    current.is_file().then_some(current)
+}
+
+#[cfg(test)]
+mod case_tests {
+    use super::find_ignoring_case;
+
+    #[test]
+    fn finds_files_whatever_their_case() {
+        let root = std::env::temp_dir().join(format!("shin-case-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("BGM")).unwrap();
+        std::fs::write(root.join("BGM").join("Umib_001.NXA"), b"x").unwrap();
+        // (on case-insensitive file systems the plain path is found already)
+        let found = find_ignoring_case(&root, "bgm/umib_001.nxa").unwrap();
+        assert_eq!(std::fs::read(&found).unwrap(), b"x");
+        assert!(find_ignoring_case(&root, "bgm/missing.nxa").is_none());
+        std::fs::remove_dir_all(&root).unwrap();
     }
 }
 

@@ -86,6 +86,8 @@ impl PortSettings {
             mode: match self.window_mode {
                 WindowMode::Windowed => shin_window::WindowMode::Windowed,
                 WindowMode::Borderless => shin_window::WindowMode::Borderless,
+                // exclusive fullscreen exists only on Windows: Wayland has none, and macOS's breaks Spaces
+                WindowMode::Exclusive if cfg!(not(windows)) => shin_window::WindowMode::Borderless,
                 WindowMode::Exclusive => shin_window::WindowMode::Exclusive,
             },
             size: (self.window_size[0], self.window_size[1]),

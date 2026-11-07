@@ -1,6 +1,7 @@
 # Linux and macOS: the plan
 
-Where the port stands on Linux and macOS, what is in the way, and the order to do it in. Nothing here is done yet.
+Where the port stands on Linux and macOS, what is in the way, and the order to do it in. The decisions are at the end;
+work started on 2026-11-07.
 File references are as of v0.2.7.
 
 ## Where it stands
@@ -98,8 +99,9 @@ it anyway. Linux needs nothing like this.
 - **Testing:** CI can build and run the unit tests on both, but playing them through needs real Linux and macOS
   machines.
 
-## Open decisions
+## Decisions (2026-11-07)
 
-1. Movies: GStreamer on Linux and VideoToolbox on macOS (recommended), or ffmpeg required everywhere.
-2. Pay for an Apple Developer ID, or ship macOS unsigned with instructions.
-3. Linux packages: AppImage only, or also `.deb` (and `.rpm`).
+1. **Movies:** each system's own decoder: GStreamer on Linux (falling back to ffmpeg when no H.264 plugin is
+   installed, as Windows falls back from Media Foundation), VideoToolbox on macOS.
+2. **macOS ships unsigned**, with instructions for opening it (System Settings → Privacy & Security → Open Anyway).
+3. **Linux packages:** AppImage, `.deb` and `.rpm`.

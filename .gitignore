@@ -5,3 +5,6 @@ heaptrack.*.zst
 *.cap
 __pycache__/
 /launcher/gen/
+
+# the bundler's copy of shin (launcher/bundle.linux.json, bundle.macos.json)
+launcher/binaries/

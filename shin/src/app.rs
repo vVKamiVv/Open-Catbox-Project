@@ -97,6 +97,8 @@ pub enum AppAction {
     DevSlower,
     DevFaster,
     DevSpeedReset,
+    /// macOS's Cmd+Q: quits as closing the window does (not remappable; see `bindings::lower`)
+    Quit,
 }
 
 impl Action for AppAction {
@@ -496,7 +498,7 @@ impl ShinApp for App {
 
         let mut write = false;
         let mut next = None;
-        let mut quit = false;
+        let mut quit = input[AppAction::Quit].is_clicked;
         match &mut self.scene {
             Scene::Adv(adv) => {
                 adv.update(&mut update_context, input, pointer);

@@ -75,11 +75,29 @@ pub fn get() -> &'static Home {
     static HOME: OnceLock<Home> = OnceLock::new();
     HOME.get_or_init(|| {
         let appdata = std::env::var_os("OPEN_CATBOX_APPDATA")
-            .or_else(|| std::env::var_os("APPDATA"))
             .map(PathBuf::from)
-            .unwrap_or_default();
+            .unwrap_or_else(user_data_dir);
         Home::choose(&crate::exe_dir(), crate::install::is_installed(), appdata)
     })
+}
+
+/// Where programs keep the user's data: `%APPDATA%` on Windows, `~/Library/Application Support` on macOS, and
+/// `$XDG_DATA_HOME` (`~/.local/share`) elsewhere; the same folders shin's own default save location uses
+fn user_data_dir() -> PathBuf {
+    let var = |name| {
+        std::env::var_os(name)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    };
+    if cfg!(windows) {
+        return var("APPDATA").unwrap_or_default();
+    }
+    let home = var("HOME").unwrap_or_default();
+    if cfg!(target_os = "macos") {
+        home.join("Library").join("Application Support")
+    } else {
+        var("XDG_DATA_HOME").unwrap_or_else(|| home.join(".local").join("share"))
+    }
 }
 
 /// Whether a file can be created in `dir`.
@@ -417,8 +435,8 @@ mod tests {
         let home = portable(&root);
         assert!(home.portable);
         assert_eq!(home.dir, root.join("Open Catbox"));
-        assert_eq!(home.savedata(), root.join(r"Open Catbox\saves\SAVEDATA"));
-        assert_eq!(home.webview(), Some(root.join(r"Open Catbox\webview")));
+        assert_eq!(home.savedata(), root.join("Open Catbox/saves/SAVEDATA"));
+        assert_eq!(home.webview(), Some(root.join("Open Catbox/webview")));
         assert_eq!(
             fs::read_dir(&home.dir).unwrap().count(),
             0,
@@ -431,8 +449,8 @@ mod tests {
         for (dir, installed) in [(home.dir.clone(), false), (file.join("sub"), true)] {
             let fallback = Home::choose(&dir, installed, root.join("AppData"));
             assert!(!fallback.portable);
-            assert_eq!(fallback.dir, root.join(r"AppData\OpenCatbox"));
-            assert_eq!(fallback.savedata(), root.join(r"AppData\shin\SAVEDATA"));
+            assert_eq!(fallback.dir, root.join("AppData/OpenCatbox"));
+            assert_eq!(fallback.savedata(), root.join("AppData/shin/SAVEDATA"));
             assert_eq!(fallback.webview(), None);
         }
         let mut s = Settings::default();
@@ -453,19 +471,19 @@ mod tests {
         let root = temp("default");
         let home = portable(&root);
         assert_eq!(plan(&home), None, "nothing in AppData");
-        let old = root.join(r"AppData\OpenCatbox");
+        let old = root.join("AppData/OpenCatbox");
         put(
             &old.join("launcher.json"),
             r#"{"language":"enx","fullscreen":true}"#,
         );
-        put(&old.join(r"data\data.rom"), "rom");
-        put(&old.join(r"data\languages\enx\version.txt"), "v1");
-        put(&root.join(r"AppData\shin\SAVEDATA"), "save");
-        put(&root.join(r"AppData\shin\settings.json"), "{}");
+        put(&old.join("data/data.rom"), "rom");
+        put(&old.join("data/languages/enx/version.txt"), "v1");
+        put(&root.join("AppData/shin/SAVEDATA"), "save");
+        put(&root.join("AppData/shin/settings.json"), "{}");
 
         let p = plan(&home).unwrap();
         assert_eq!(p.move_data, Some(old.join("data")));
-        assert_eq!(p.copy_saves, Some(root.join(r"AppData\shin")));
+        assert_eq!(p.copy_saves, Some(root.join("AppData/shin")));
         assert_eq!(p.settings.language.as_deref(), Some("enx"));
         assert!(p.settings.fullscreen);
         assert_eq!(p.settings.data_dir, None);
@@ -473,18 +491,18 @@ mod tests {
         let said = migrate(&home, p, &|_, _| {}).unwrap();
         assert_eq!(said.len(), 2);
         assert_eq!(
-            fs::read_to_string(home.dir.join(r"data\data.rom")).unwrap(),
+            fs::read_to_string(home.dir.join("data/data.rom")).unwrap(),
             "rom"
         );
         assert_eq!(
-            fs::read_to_string(home.dir.join(r"data\languages\enx\version.txt")).unwrap(),
+            fs::read_to_string(home.dir.join("data/languages/enx/version.txt")).unwrap(),
             "v1"
         );
         assert!(!old.join("data").exists(), "moved, not copied");
         assert_eq!(fs::read_to_string(home.savedata()).unwrap(), "save");
-        assert!(home.dir.join(r"saves\settings.json").is_file());
+        assert!(home.dir.join("saves/settings.json").is_file());
         assert!(
-            root.join(r"AppData\shin\SAVEDATA").is_file(),
+            root.join("AppData/shin/SAVEDATA").is_file(),
             "the original save is kept"
         );
         let written: Settings =
@@ -502,7 +520,7 @@ mod tests {
         let mine = root.join("My data");
         put(&mine.join("data.rom"), "rom");
         let json = serde_json::json!({ "data_dir": mine }).to_string();
-        put(&root.join(r"AppData\OpenCatbox\launcher.json"), &json);
+        put(&root.join("AppData/OpenCatbox/launcher.json"), &json);
         let p = plan(&home).unwrap();
         assert_eq!(p.move_data, None);
         assert_eq!(p.copy_saves, None);
@@ -517,10 +535,10 @@ mod tests {
     fn data_already_in_the_home_and_saves_already_there_are_kept() {
         let root = temp("kept");
         let home = portable(&root);
-        put(&home.dir.join(r"data\data.rom"), "mine");
+        put(&home.dir.join("data/data.rom"), "mine");
         put(&home.savedata(), "newer");
-        put(&root.join(r"AppData\OpenCatbox\data\data.rom"), "old");
-        put(&root.join(r"AppData\shin\SAVEDATA"), "old");
+        put(&root.join("AppData/OpenCatbox/data/data.rom"), "old");
+        put(&root.join("AppData/shin/SAVEDATA"), "old");
         assert_eq!(plan(&home), None);
         fs::remove_dir_all(root).unwrap();
     }
@@ -530,7 +548,7 @@ mod tests {
         let root = temp("copy");
         let from = root.join("from");
         put(&from.join("a.bin"), &"x".repeat(3 << 20));
-        put(&from.join(r"sub\b.txt"), "b");
+        put(&from.join("sub/b.txt"), "b");
         let last = std::cell::Cell::new(0.0);
         copy_checked(
             &from,
@@ -542,10 +560,10 @@ mod tests {
         .unwrap();
         assert_eq!(last.get(), 1.0);
         assert_eq!(tree_size(&root.join("to")), tree_size(&from));
-        move_dir(&from, &root.join(r"moved\here"), &|_, _| {}).unwrap();
+        move_dir(&from, &root.join("moved/here"), &|_, _| {}).unwrap();
         assert!(!from.exists());
         assert_eq!(
-            fs::read_to_string(root.join(r"moved\here\sub\b.txt")).unwrap(),
+            fs::read_to_string(root.join("moved/here/sub/b.txt")).unwrap(),
             "b"
         );
         fs::remove_dir_all(root).unwrap();
@@ -557,8 +575,8 @@ mod tests {
         let game = root.join("game");
         assert!(check_game_folder(&game, &|_, _| {}).is_err());
         put(&game.join("data.rom"), "not the real one");
-        put(&game.join(r"languages\en\exefs\main"), "m");
-        put(&game.join(r"languages\en\patch.rom"), "p");
+        put(&game.join("languages/en/exefs/main"), "m");
+        put(&game.join("languages/en/patch.rom"), "p");
         put(&game.join("other.nsp"), "not ours");
         assert!(
             !check_game_folder(&game, &|_, _| {}).unwrap(),
@@ -571,7 +589,7 @@ mod tests {
         );
         let to = root.join("home data");
         copy_game_folder(&game, &to, &|_, _| {}).unwrap();
-        assert!(to.join(r"languages\en\patch.rom").is_file());
+        assert!(to.join("languages/en/patch.rom").is_file());
         assert!(to.join("data.rom").is_file());
         assert!(!to.join("other.nsp").exists());
         fs::remove_dir_all(root).unwrap();
@@ -583,7 +601,7 @@ mod tests {
         let home = portable(&root);
         let data = root.join("My data");
         put(&data.join("data.rom"), "rom");
-        put(&data.join(r"languages\en\patch.rom"), "p");
+        put(&data.join("languages/en/patch.rom"), "p");
         put(&data.join("my notes.txt"), "keep");
         put(&home.savedata(), "save");
         put(&home.settings(), "{}");

@@ -1,0 +1,44 @@
+# Linux and macOS: builds the game and the launcher, runs the tests, and decodes a test movie with each system's own
+# decoder (GStreamer on Linux, VideoToolbox on macOS). The packages themselves are made by release-unix.yml.
+
+name: Linux and macOS
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libudev-dev libxkbcommon-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-libav libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev ffmpeg
+      - name: ffmpeg, for the test movie
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - uses: Swatinem/rust-cache@v2
+      - name: Build the game
+        run: cargo build --release -p shin
+      - name: Build the launcher
+        run: cargo build --release -p open-catbox-launcher
+      - name: Tests
+        run: cargo test --release -p shin -p shin-core -p shin-video -p open-catbox-launcher
+      - name: Decode a movie with the system's own decoder
+        run: |
+          # 2 s at 30 fps, with B-frames, so the pictures must come back in display order
+          ffmpeg -loglevel error -f lavfi -i testsrc=size=640x360:rate=30 -t 2 -c:v libx264 -profile:v high \
+            -pix_fmt yuv420p test.mp4
+          SHIN_TEST_MOVIE="$PWD/test.mp4" SHIN_TEST_MOVIE_FRAMES=60 \
+            cargo test --release -p shin-video --lib this_systems -- --ignored --nocapture
