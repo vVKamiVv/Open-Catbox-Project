@@ -296,7 +296,8 @@ impl ChapterList {
                 } else if input.y {
                     event = ListEvent::Jump;
                 } else if input.scroll != 0.0 {
-                    let scroll = self.scroll.value() + input.scroll * 32.0;
+                    // 32 px per 60 Hz frame, whatever the frame rate
+                    let scroll = self.scroll.value() + input.scroll * 32.0 * cx.frames;
                     event = self.scroll_by_pointer(scroll).unwrap_or(event);
                     stick = true;
                 }

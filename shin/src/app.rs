@@ -17,7 +17,7 @@ use shin_input::{
     inputs::{GamepadButton, MouseButton, VirtualGamepadButton},
 };
 use shin_render::{RenderRequestBuilder, render_pass::RenderPass};
-use shin_window::{AppContext, RenderContext, ShinApp};
+use shin_window::{AppContext, DisplaySettings, RenderContext, ShinApp};
 use tracing::{debug, error, info, warn};
 use winit::{dpi::PhysicalSize, keyboard::KeyCode};
 
@@ -47,7 +47,7 @@ use crate::{
         PreRenderContext,
         overlay::{OverlayManager, OverlayVisitable},
     },
-    savedata,
+    port_settings, savedata,
     update::UpdateContext,
     wiper::{mask::MaskWiperImpl, timed::TimedWiper},
 };
@@ -218,9 +218,6 @@ impl ShinApp for App {
             .dev
             .then(|| DevTools::new(&context.wgpu.device, context.render.surface_texture_format));
         // the game boots to the title; debugging options and --new-game/--load go straight to the story
-        if cli.fullscreen {
-            context.winit.toggle_fullscreen();
-        }
         let straight_to_story = cli.new_game
             || cli.load.is_some()
             || cli.fast_forward_to.is_some()
@@ -391,6 +388,22 @@ impl ShinApp for App {
         })
     }
 
+    /// Loads the PC settings (`settings.json` next to the save file), which the window is created with
+    fn initial_display(cli: &Cli) -> DisplaySettings {
+        let savedata = cli.savedata.clone().or_else(savedata::default_path);
+        port_settings::load(savedata.as_deref().map(port_settings::path_next_to));
+        if cli.fullscreen {
+            port_settings::override_for_run(|s| {
+                s.window_mode = port_settings::WindowMode::Borderless
+            });
+        }
+        port_settings::get().display()
+    }
+
+    fn display(&self) -> Option<DisplaySettings> {
+        Some(port_settings::get().display())
+    }
+
     fn custom_event(&mut self, _context: AppContext<Self>, _event: Self::EventType) {
         todo!()
     }
@@ -404,7 +417,13 @@ impl ShinApp for App {
         command_encoder: &mut wgpu::CommandEncoder,
     ) {
         if input[AppAction::ToggleFullscreen].is_clicked {
-            context.winit.toggle_fullscreen();
+            // F11 flips between the window and borderless fullscreen, as the PC tab's window mode
+            port_settings::update(|s| {
+                s.window_mode = match s.window_mode {
+                    port_settings::WindowMode::Windowed => port_settings::WindowMode::Borderless,
+                    _ => port_settings::WindowMode::Windowed,
+                }
+            });
         }
         // the one place the frame's time enters the game
         let elapsed_time = match &mut self.dev {
@@ -474,7 +493,14 @@ impl ShinApp for App {
 
         if let Some(fade) = &mut self.fade {
             fade.elapsed += update_context.delta_ticks.as_f32();
+            fade.updates += 1;
             if fade.elapsed >= fade.duration {
+                debug!(
+                    "A {}-frame scene fade took {} ms over {} updates",
+                    fade.duration,
+                    fade.started.elapsed().as_millis(),
+                    fade.updates
+                );
                 self.fade = None;
             }
         }
@@ -1065,6 +1091,9 @@ struct SceneFade {
     duration: f32,
     /// A mask wipe instead of the crossfade (program 0x20), with the new screen rendered each frame
     mask: Option<(MaskWiperImpl, RenderTexture)>,
+    /// For the debug log of its timing at the frame rate in use
+    started: std::time::Instant,
+    updates: u32,
 }
 
 impl SceneFade {
@@ -1074,6 +1103,8 @@ impl SceneFade {
             elapsed: 0.0,
             duration,
             mask: None,
+            started: std::time::Instant::now(),
+            updates: 0,
         }
     }
 

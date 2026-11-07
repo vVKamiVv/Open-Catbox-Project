@@ -90,10 +90,12 @@ impl TouchEffect {
             ripple.t <= 1.0
         });
         self.stars.retain_mut(|star| {
-            // the move and the spin are per update, not scaled by the frame time, as in the original
-            star.position += star.velocity;
-            star.velocity *= 0.8f32.powf(frames);
-            star.rotation += star.spin;
+            // the original moves by the velocity, then slows it by 0.8, once per 60 Hz frame; over `frames` that
+            // sums to the velocity times (1 - 0.8^frames) / 0.2, so other frame rates trace the same path
+            let decay = 0.8f32.powf(frames);
+            star.position += star.velocity * ((1.0 - decay) / (1.0 - 0.8));
+            star.velocity *= decay;
+            star.rotation += star.spin * frames;
             star.t += frames / 60.0;
             star.t <= 1.0
         });
@@ -103,13 +105,16 @@ impl TouchEffect {
             match gesture {
                 // `0x7100116490`
                 Gesture::Tap(at) if enabled => self.ripples.push(Ripple { at, t: 0.0 }),
-                // `0x7100116600`: thrown from where the move started
+                // `0x7100116600`: thrown from where the move started, when the pointer moves 10 px per 60 Hz frame
+                // (at most once a frame, on average) or 9 frames have passed
                 Gesture::Drag(from, to)
                     if enabled
-                        && (from.distance(to) >= SPAWN_DISTANCE
+                        && ((from.distance(to) >= SPAWN_DISTANCE * frames
+                            && self.since_spawn >= 0.75)
                             || self.since_spawn > SPAWN_FRAMES) =>
                 {
-                    self.since_spawn = 0.0;
+                    // the remainder carries over, so faster frame rates throw as many stars a second
+                    self.since_spawn = (self.since_spawn - 1.0).min(0.0);
                     for _ in 0..STARS_PER_SPAWN {
                         let star = Star {
                             index: ((self.random.next() * 4.0) as u32).min(3),
@@ -306,5 +311,49 @@ mod tests {
         assert_eq!(effect.stars.len(), 1);
         effect.update(at(0.0, 0.0, false), 2.0, true);
         assert!(effect.stars.is_empty());
+    }
+
+    #[test]
+    fn stars_and_spawns_do_not_depend_on_the_frame_rate() {
+        let star = Star {
+            index: 0,
+            position: Vec2::ZERO,
+            velocity: Vec2::new(10.0, 0.0),
+            rotation: 0.0,
+            spin: 0.05,
+            scale: 0.5,
+            t: 0.0,
+        };
+        let mut at_60 = TouchEffect::new(1);
+        let mut at_240 = TouchEffect::new(1);
+        at_60.stars.push(star);
+        at_240.stars.push(star);
+        for _ in 0..10 {
+            at_60.update(at(0.0, 0.0, false), 1.0, true);
+        }
+        for _ in 0..40 {
+            at_240.update(at(0.0, 0.0, false), 0.25, true);
+        }
+        let (a, b) = (at_60.stars[0], at_240.stars[0]);
+        assert!(a.position.distance(b.position) < 1e-3, "{a:?} {b:?}");
+        assert!((a.rotation - b.rotation).abs() < 1e-5);
+
+        // a fast drag throws stars as often a second at 60 and 240 Hz: once a 60 Hz frame
+        // (over half a second, before any fades out)
+        let count = |frames: f32| {
+            let mut effect = TouchEffect::new(1);
+            effect.update(at(0.0, 0.0, true), frames, true);
+            let mut y = 0.0;
+            for _ in 0..(30.0 / frames) as usize {
+                y += 20.0 * frames;
+                effect.update(at(0.0, y, true), frames, true);
+            }
+            effect.stars.len()
+        };
+        let (slow, fast) = (count(1.0), count(0.25));
+        assert!(
+            slow.abs_diff(fast) <= 4,
+            "{slow} stars at 60 Hz, {fast} at 240 Hz"
+        );
     }
 }

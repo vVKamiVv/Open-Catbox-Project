@@ -353,7 +353,8 @@ impl SaveMenu {
             self.close(cx);
         } else if input.scroll != 0.0 {
             // the right stick scrolls at once, the cursor following into view
-            let scroll = (self.scroll.value() + input.scroll * 32.0).clamp(0.0, MAX_SCROLL);
+            let scroll =
+                (self.scroll.value() + input.scroll * 32.0 * cx.frames).clamp(0.0, MAX_SCROLL);
             self.scroll = Tweener::new(scroll);
             while PITCH * (self.cursor as f32) < scroll && self.cursor + 1 < SLOTS {
                 self.cursor += 1;

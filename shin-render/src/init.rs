@@ -35,9 +35,11 @@ impl ResizeableSurface<'_> {
         let texture = match self.surface.get_current_texture() {
             Ok(texture) => texture,
             Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+                // once: while the window changes size or mode the surface can stay outdated until the resize
+                // arrives, and retrying until then would overflow the stack
                 debug!("Surface error, recreating surface");
                 self.surface.configure(&self.device, &self.surface_config);
-                return self.get_current_texture();
+                self.surface.get_current_texture()?
             }
             Err(e) => return Err(e),
         };
@@ -46,6 +48,16 @@ impl ResizeableSurface<'_> {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         Ok((viewport, SurfaceTextureWithView { texture, view }))
+    }
+
+    /// Waits for the display's refresh (or not) when presenting
+    pub fn set_vsync(&mut self, vsync: bool) {
+        self.surface_config.present_mode = if vsync {
+            wgpu::PresentMode::AutoVsync
+        } else {
+            wgpu::PresentMode::AutoNoVsync
+        };
+        self.surface.configure(&self.device, &self.surface_config);
     }
 }
 
@@ -181,9 +193,12 @@ pub async fn init_wgpu<'window>(
                 // this enables SPIRV_SHADER_PASSTHROUGH if available
                 required_features: adapter.features() & wgpu::Features::SPIRV_SHADER_PASSTHROUGH,
                 required_limits: wgpu::Limits {
-                    // This is required in order to support higher resolutions
-                    // TODO: make it configurable for lower-end devices
-                    max_texture_dimension_2d: 4096,
+                    // This is required in order to support higher resolutions (and supersampling them); what the
+                    // adapter allows, at least 4096 as before
+                    max_texture_dimension_2d: adapter
+                        .limits()
+                        .max_texture_dimension_2d
+                        .clamp(4096, 8192),
                     ..wgpu::Limits::downlevel_webgl2_defaults()
                 },
                 memory_hints: Default::default(),

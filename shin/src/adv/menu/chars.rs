@@ -615,8 +615,8 @@ impl Chars {
         } else if input.cancel {
             self.close(cx);
         } else if input.scroll != 0.0 {
-            self.profile_scroll =
-                (self.profile_scroll + input.scroll * 16.0).clamp(0.0, self.max_scroll());
+            self.profile_scroll = (self.profile_scroll + input.scroll * 16.0 * cx.frames)
+                .clamp(0.0, self.max_scroll());
         }
     }
 

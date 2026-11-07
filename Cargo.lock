@@ -4744,6 +4744,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "ureq",
+ "windows-registry",
  "xts-mode",
  "zip 2.6.1",
 ]
@@ -6161,6 +6162,8 @@ dependencies = [
  "parking_lot",
  "rayon",
  "replace_with",
+ "serde",
+ "serde_json",
  "shin-audio",
  "shin-core",
  "shin-derive",

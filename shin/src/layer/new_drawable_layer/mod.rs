@@ -121,6 +121,8 @@ pub struct NewDrawableLayerState {
     ripple_phase: f32,
     /// Running phases of the horizontal and vertical raster waves (the original's `+0x4c` and `+0x50`)
     raster_phase: Vec2,
+    /// Ticks towards the next ghosting feedback, which the original does once a 60 Hz frame
+    ghosting_ticks: f32,
 }
 
 impl NewDrawableLayerState {
@@ -137,6 +139,7 @@ impl NewDrawableLayerState {
                 .map_or(1, |d| d.subsec_nanos()),
             ripple_phase: 0.0,
             raster_phase: Vec2::ZERO,
+            ghosting_ticks: 0.0,
         }
     }
 
@@ -160,6 +163,7 @@ impl NewDrawableLayerState {
         advance(&mut self.ripple_phase, LayerProperty::RippleTPeriod);
         advance(&mut self.raster_phase.x, LayerProperty::RasterHorizontalTPeriod);
         advance(&mut self.raster_phase.y, LayerProperty::RasterVerticalTPeriod);
+        self.ghosting_ticks += context.delta_ticks.as_f32();
     }
 
     pub fn is_rendered_opaquely<T: NewDrawableLayerNeedsSeparatePass>(
@@ -217,7 +221,10 @@ impl NewDrawableLayerState {
 
         if ghosting_alpha <= 0.0 {
             self.render_texture_prev_frame = None;
-        } else {
+        } else if self.ghosting_ticks >= 0.75 {
+            // the trail feeds back the last composite once a 60 Hz frame (on average, the remainder carrying over),
+            // so its fading and its streaks look the same at any frame rate; between, the same one is blended again
+            self.ghosting_ticks = (self.ghosting_ticks - 1.0).min(0.0);
             std::mem::swap(
                 &mut self.render_texture_prev_frame,
                 self.render_texture_src.as_inner_mut(),

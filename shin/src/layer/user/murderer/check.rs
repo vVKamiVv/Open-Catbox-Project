@@ -272,9 +272,10 @@ impl Check {
             }
         }
         if !input.cancel && input.text_scroll != 0.0 {
-            // the right stick scrolls the text, 32 px per frame at full tilt
+            // the right stick scrolls the text, 32 px per (60 Hz) frame at full tilt
             let limit = (shared.text_height - VIEW).max(0.0);
-            self.text_scroll = (self.text_scroll + input.text_scroll * 32.0).clamp(0.0, limit);
+            self.text_scroll =
+                (self.text_scroll + input.text_scroll * 32.0 * input.frames).clamp(0.0, limit);
             return;
         }
         if input.cancel {

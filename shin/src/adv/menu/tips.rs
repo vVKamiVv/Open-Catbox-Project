@@ -202,7 +202,8 @@ impl Tips {
             minigame::flash(&mut self.close_flash);
             self.state = State::Closing;
         } else if input.scroll != 0.0 {
-            let scroll = (self.scroll.value() + input.scroll * 32.0).clamp(0.0, self.max_scroll());
+            let scroll = (self.scroll.value() + input.scroll * 32.0 * cx.frames)
+                .clamp(0.0, self.max_scroll());
             self.scroll = Tweener::new(scroll);
         }
     }

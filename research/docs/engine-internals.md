@@ -1128,3 +1128,46 @@ The choice menu's press moves the cursor without a sound (old bar's highlight to
 0.7 at 0.2 per frame and moves the glow (old to 0 at 0.05, new to 1 at 0.25) without a sound; its tap plays
 `decide` and picks. The port adds a hover (the Switch has none): moving the mouse with no button held over another
 option moves the cursor as a press does, without the flash.
+
+---
+
+## 18. Port-only: the PC settings and frame-rate independence (**not in the original**)
+
+Nothing in this section exists in the Switch release; it records what the port adds on top.
+
+**The settings file.** `settings.json` next to the save file (`%APPDATA%\shin\settings.json` on Windows, or beside
+the file given by `--savedata`), JSON, read at startup and rewritten whenever a value changes; `SAVEDATA` keeps the
+original's format untouched. Fields: `window_mode` (`windowed`, `borderless`, `exclusive`), `window_size` (logical
+pixels while windowed: 1280x720, 1600x900, 1920x1080, 2560x1440 or 3840x2160 from the menu), `vsync`, `frame_cap`
+(0 = none, 30/60/120/144/240), `supersampling` (1, 1.5, 2) and `bindings` (an empty map, reserved for remappable
+controls). Missing fields take their defaults. `--fullscreen` forces borderless fullscreen for the run without
+writing it; F11 toggles windowed/borderless and is saved. The touch effects stay the save's own setting (v17, the
+Miscellaneous tab). Code: `shin/src/port_settings.rs`, applied by `shin-window` (`DisplaySettings`).
+
+**The PC tab.** A fourth Config tab (`shin/src/adv/menu/config_menu.rs`): the tabs are recentred (left edges at
+`960 - 150 * 4 + 300 * page`), the PC tab is the first tab's art with its plain middle stretched and its label in
+the system font, and the items' labels are drawn in the system font (English, or Japanese when the executable's
+texts are Japanese). Window mode and supersampling are rows of the existing buttons with font labels, V-Sync uses the
+art's Off/On, window size and frame cap are one wide button stepped by left/right or by tapping its halves, and
+"Controls…" is a dimmed placeholder. Sounds, keys, pad and touch behave as on the other tabs; Reset also resets
+these (not `bindings`).
+
+**Rendering.** The canvas is the largest 16:9 area of the window at its native resolution. With supersampling the
+canvas (and every render texture, which follow its size) is rendered at the factor times that size, capped by the
+device's largest texture, then filtered into its area of the window by four bilinear taps a quarter of a window
+pixel from each pixel's centre (an exact 2x2 box at 2x). The frame cap sleeps until the next frame is due (the last
+millisecond spun), independent of V-Sync.
+
+**Frame-rate independence.** Every update takes the frame time as 60 Hz frames (`delta_ticks`). Places that stepped
+once per update were changed so 144 or 240 Hz look like 60 Hz:
+
+| Where | Was | Now |
+|---|---|---|
+| Held Page Up/Down / right-stick scrolling (backlog, chapter list, save menu, Tips, Characters, culprit game) | 32 (16) px per update | 32 (16) px per 60 Hz frame |
+| Touch-effect stars (`ui/touch_effect.rs`) | move by the velocity and spin once per update | the 60 Hz sum `v (1 - 0.8^dt) / 0.2`, spin times dt |
+| Star spawning | a drag segment of 10 px per update | 10 px per 60 Hz frame, at most once a frame on average |
+| Ghosting trails (`layer/new_drawable_layer`) | fed back every update | fed back once a 60 Hz frame |
+| Skip mode (`adv/mod.rs`) | a fast-forward per update | once a 60 Hz frame (debug seeking still every update) |
+
+Measured: the title's 90-frame fade took 1489 ms over 359 updates with V-Sync off and a 240 cap, 1501 ms over 91
+updates with a 60 cap (debug log `A 90-frame scene fade took ...`).

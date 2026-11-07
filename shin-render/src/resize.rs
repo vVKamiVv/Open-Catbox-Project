@@ -67,11 +67,17 @@ impl SizeAspect for CanvasSize {
 /// The surface size is the size of the OS-provided surface, corresponding to the screen size of the device or window.
 ///
 /// The canvas size is the size of the contents the application wants to render. This can often be different from the surface size to keep the aspect ratio of the content.
+///
+/// With supersampling the canvas is rendered larger than the area it is shown in (`canvas_display_size`) and filtered
+/// down to it.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ViewportParams {
     pub surface_size: SurfaceSize,
     pub canvas_offset: PhysicalPosition<u32>,
+    /// The size the canvas is rendered at
     pub canvas_size: CanvasSize,
+    /// The size of the canvas's area on the surface
+    pub canvas_display_size: CanvasSize,
 }
 
 impl ViewportParams {
@@ -80,7 +86,18 @@ impl ViewportParams {
             surface_size: size.into(),
             canvas_offset: PhysicalPosition::default(),
             canvas_size: size.into(),
+            canvas_display_size: size.into(),
         }
+    }
+
+    /// The canvas rendered `scale` times larger than it is shown (supersampling)
+    pub fn with_render_scale(mut self, scale: f32) -> Self {
+        let CanvasSize { width, height } = self.canvas_display_size;
+        self.canvas_size = CanvasSize {
+            width: (width as f32 * scale).round() as u32,
+            height: (height as f32 * scale).round() as u32,
+        };
+        self
     }
 
     pub fn with_aspect_ratio(size: PhysicalSize<u32>, aspect_ratio: f64) -> Self {
@@ -99,6 +116,7 @@ impl ViewportParams {
             surface_size: size.into(),
             canvas_offset,
             canvas_size: canvas_size.into(),
+            canvas_display_size: canvas_size.into(),
         }
     }
 
@@ -171,7 +189,7 @@ impl ResizeHandle<SurfaceSize> {
     pub fn get_viewport(&self) -> (f32, f32, f32, f32) {
         let params = self.inner.read().unwrap();
         let canvas_offset = params.canvas_offset;
-        let canvas_size = params.canvas_size;
+        let canvas_size = params.canvas_display_size;
 
         let x = canvas_offset.x as f32;
         let y = canvas_offset.y as f32;

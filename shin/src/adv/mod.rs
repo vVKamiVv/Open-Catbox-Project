@@ -126,6 +126,8 @@ pub struct Adv {
     load: Option<LoadState>,
     /// The play time in 60 Hz frames (`*0x71002267d0`), counted into the save's play seconds
     play_frames: f64,
+    /// Ticks towards the next skip step
+    skip_ticks: f32,
     /// The save file should be written (the original writes it when leaving the adventure screen)
     write_requested: bool,
     /// L and R as last frame, as the original toggles auto and skip on release
@@ -190,6 +192,7 @@ impl Adv {
             capture: None,
             load: load.map(LoadState::Replayed),
             play_frames,
+            skip_ticks: 0.0,
             write_requested: false,
             toggles_held: (false, false),
             tasks: Vec::new(),
@@ -827,9 +830,21 @@ impl Adv {
         }
 
         if self.is_fast_forwarding(fast_forward_button_held) {
-            self.adv_state.root_layer_group_mut().fast_forward();
-            if let Some(back_layer_group) = &mut self.adv_state.back_layer_group {
-                back_layer_group.fast_forward();
+            // the original skips once a frame at 60 Hz: the player's skip moves on once a 60 Hz frame (on average,
+            // the remainder carrying over) at any frame rate; debug seeking (`--fast-forward-to`, captures) every
+            // update
+            self.skip_ticks += context.delta_ticks.as_f32();
+            let seeking = self.fast_forward_to_bp.is_some()
+                || self
+                    .capture
+                    .as_ref()
+                    .is_some_and(CaptureTargets::is_seeking);
+            if seeking || self.skip_ticks >= 0.75 {
+                self.skip_ticks = (self.skip_ticks - 1.0).min(0.0);
+                self.adv_state.root_layer_group_mut().fast_forward();
+                if let Some(back_layer_group) = &mut self.adv_state.back_layer_group {
+                    back_layer_group.fast_forward();
+                }
             }
         }
 

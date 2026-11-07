@@ -118,10 +118,11 @@ Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the 
 | Drag and flick | Touch | Scroll lists, turn pages, pan pictures |
 | Page Up / Page Down | Right stick | Scroll long texts (Tips, Characters, the culprit game) |
 | F5 | | Save to the last used bookmark |
-| F11 | | Fullscreen |
+| F11 | | Fullscreen (borderless) on/off |
 
 A tap leaves a ripple and a drag a trail of stars, as on the Switch's touch screen (setting "visual touch
-feedback"). For working on the port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its
+feedback"). Config has a PC tab for the window mode and size, V-Sync, a frame-rate cap and supersampling, saved in
+`settings.json` next to the save file. For working on the port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its
 animations) and time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 normal speed).
 
 ## 🗝️ Inside the mansion

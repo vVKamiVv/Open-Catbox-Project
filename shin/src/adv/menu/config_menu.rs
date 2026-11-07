@@ -7,15 +7,20 @@
 
 use std::sync::Arc;
 
-use glam::{Mat4, Vec2, vec3};
+use glam::{Mat4, Vec2, vec2, vec3};
 use shin_core::{format::save::Settings, time::Tweener};
 use shin_render::{ColorBlendType, RenderRequestBuilder, render_pass::RenderPass};
 use tracing::warn;
 
 use super::{MenuAssets, Task, TaskCx, dialog::Dialog, save_notice::SaveNotice};
 use crate::{
+    adv::hud::{OUTLINE, text_layout},
     asset::{executable::EngineText, texture_archive::NamedTextures},
-    layer::user::minigame::{self, Sprite},
+    layer::{
+        text_block::TextBlock,
+        user::minigame::{self, Sprite},
+    },
+    port_settings,
     ui::{
         self, NineSlice,
         gesture::{Coast, Gesture, GestureRecognizer},
@@ -86,123 +91,281 @@ enum Kind {
     /// Buttons for the options, each showing a row of `right` (0 On, 1 Off, 4 Show, 5 Hide); the setting is the
     /// selected option's index
     Buttons(&'static [u8]),
+    /// PC tab: buttons as [`Kind::Buttons`] with their texts drawn in the game's font
+    Texts(&'static [Text]),
+    /// PC tab: one wide button showing the selected option, stepped through by left and right (or tapping its
+    /// halves); for lists too long for a row of buttons
+    Cycle(&'static [Text]),
+    /// PC tab: an entry not available yet, its label dimmed
+    Disabled,
+}
+
+impl Kind {
+    /// How many values the item takes
+    fn count(self) -> usize {
+        match self {
+            Kind::Slider(_) => 101,
+            Kind::Buttons(options) => options.len(),
+            Kind::Texts(options) | Kind::Cycle(options) => options.len(),
+            Kind::Disabled => 1,
+        }
+    }
 }
 
 const OFF_ON: &[u8] = &[1, 0];
 const HIDE_SHOW: &[u8] = &[5, 4];
 
+/// A port text in English and Japanese (the PC tab has no art: the original has no such settings)
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Text(&'static str, &'static str);
+
+impl Text {
+    const fn same(text: &'static str) -> Self {
+        Self(text, text)
+    }
+
+    fn get(self, japanese: bool) -> &'static str {
+        if japanese { self.1 } else { self.0 }
+    }
+}
+
+/// An item's label: a row of `left`, or a text drawn in the game's font
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Label {
+    Art(u8),
+    Text(Text),
+}
+
 /// One row of InitMenu (`0x7100058e90`): its tab, its label's row in `left`, and the setting it edits
 struct ItemDef {
     page: usize,
-    label: u8,
+    label: Label,
     kind: Kind,
     get: fn(&Settings) -> u8,
     set: fn(&mut Settings, u8),
 }
 
+/// The tabs: the original's three and the port's PC tab
+const PAGES: usize = 4;
+/// The PC tab, which edits [`port_settings`] rather than the save's settings
+const PC_PAGE: usize = 3;
+const PC_TAB: Text = Text::same("PC");
+
+/// The left edge of tab `page`: 300 wide, centred on the screen together (the original's three start at 510)
+fn tab_x(page: usize) -> f32 {
+    960.0 - 150.0 * PAGES as f32 + 300.0 * page as f32
+}
+
+const WINDOW_MODES: &[Text] = &[
+    Text("Windowed", "ウィンドウ"),
+    Text("Borderless", "ボーダーレス"),
+    Text("Fullscreen", "全画面"),
+];
+const WINDOW_SIZES: &[Text] = &[
+    Text::same("1280 x 720"),
+    Text::same("1600 x 900"),
+    Text::same("1920 x 1080"),
+    Text::same("2560 x 1440"),
+    Text::same("3840 x 2160"),
+];
+const FRAME_CAPS: &[Text] = &[
+    Text("Off", "なし"),
+    Text::same("30"),
+    Text::same("60"),
+    Text::same("120"),
+    Text::same("144"),
+    Text::same("240"),
+];
+const SUPERSAMPLING: &[Text] = &[Text::same("1x"), Text::same("1.5x"), Text::same("2x")];
+
+/// The index of `value` in `list`, or `default`
+fn index_of<T: PartialEq>(list: &[T], value: T, default: usize) -> u8 {
+    list.iter().position(|v| *v == value).unwrap_or(default) as u8
+}
+
 const ITEMS: &[ItemDef] = &[
     ItemDef {
         page: 0,
-        label: 0,
+        label: Label::Art(0),
         kind: Kind::Slider(0),
         get: |s| s.v3_sysvol,
         set: |s, v| s.v3_sysvol = v,
     },
     ItemDef {
         page: 0,
-        label: 1,
+        label: Label::Art(1),
         kind: Kind::Slider(0),
         get: |s| s.v0_bgmvol,
         set: |s, v| s.v0_bgmvol = v,
     },
     ItemDef {
         page: 0,
-        label: 2,
+        label: Label::Art(2),
         kind: Kind::Slider(0),
         get: |s| s.v1_sfxvol,
         set: |s, v| s.v1_sfxvol = v,
     },
     ItemDef {
         page: 0,
-        label: 3,
+        label: Label::Art(3),
         kind: Kind::Slider(0),
         get: |s| s.v2_voicevol,
         set: |s, v| s.v2_voicevol = v,
     },
     ItemDef {
         page: 0,
-        label: 4,
+        label: Label::Art(4),
         kind: Kind::Buttons(OFF_ON),
         get: |s| s.v4_voicefocus as u8,
         set: |s, v| s.v4_voicefocus = v != 0,
     },
     ItemDef {
         page: 0,
-        label: 18,
+        label: Label::Art(18),
         kind: Kind::Buttons(OFF_ON),
         get: |s| s.v5_voicepanapot as u8,
         set: |s, v| s.v5_voicepanapot = v != 0,
     },
     ItemDef {
         page: 1,
-        label: 8,
+        label: Label::Art(8),
         kind: Kind::Slider(2),
         get: |s| s.v9_msgspeed,
         set: |s, v| s.v9_msgspeed = v,
     },
     ItemDef {
         page: 1,
-        label: 11,
+        label: Label::Art(11),
         kind: Kind::Buttons(OFF_ON),
         get: |s| s.v11_disallowskipunread as u8,
         set: |s, v| s.v11_disallowskipunread = v != 0,
     },
     ItemDef {
         page: 1,
-        label: 15,
+        label: Label::Art(15),
         kind: Kind::Slider(1),
         get: |s| s.v13_msgwinalpha,
         set: |s, v| s.v13_msgwinalpha = v,
     },
     ItemDef {
         page: 2,
-        label: 10,
+        label: Label::Art(10),
         kind: Kind::Slider(2),
         get: |s| s.v10_skipspeed,
         set: |s, v| s.v10_skipspeed = v,
     },
     ItemDef {
         page: 2,
-        label: 16,
+        label: Label::Art(16),
         kind: Kind::Buttons(HIDE_SHOW),
         get: |s| s.v15_showsongtitle as u8,
         set: |s, v| s.v15_showsongtitle = v != 0,
     },
     ItemDef {
         page: 2,
-        label: 19,
+        label: Label::Art(19),
         kind: Kind::Buttons(HIDE_SHOW),
         get: |s| s.v14_showscenetitle as u8,
         set: |s, v| s.v14_showscenetitle = v != 0,
     },
     ItemDef {
         page: 2,
-        label: 17,
+        label: Label::Art(17),
         kind: Kind::Buttons(HIDE_SHOW),
         get: |s| s.v17_showtoucheffect as u8,
         set: |s, v| s.v17_showtoucheffect = v != 0,
     },
     ItemDef {
         page: 2,
-        label: 12,
+        label: Label::Art(12),
         kind: Kind::Buttons(OFF_ON),
         get: |s| s.v18 as u8,
         set: |s, v| s.v18 = v != 0,
     },
+    // the port's PC tab: these read and write the port's settings file, not the save's settings
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("Window mode", "ウィンドウ")),
+        kind: Kind::Texts(WINDOW_MODES),
+        get: |_| port_settings::get().window_mode as u8,
+        set: |_, v| {
+            use port_settings::WindowMode::*;
+            port_settings::update(|s| s.window_mode = [Windowed, Borderless, Exclusive][v as usize])
+        },
+    },
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("Window size", "画面サイズ")),
+        kind: Kind::Cycle(WINDOW_SIZES),
+        get: |_| {
+            index_of(
+                &port_settings::WINDOW_SIZES,
+                port_settings::get().window_size,
+                2,
+            )
+        },
+        set: |_, v| {
+            port_settings::update(|s| s.window_size = port_settings::WINDOW_SIZES[v as usize])
+        },
+    },
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("V-Sync", "垂直同期")),
+        kind: Kind::Buttons(OFF_ON),
+        get: |_| port_settings::get().vsync as u8,
+        set: |_, v| port_settings::update(|s| s.vsync = v != 0),
+    },
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("Frame-rate cap", "フレームレート上限")),
+        kind: Kind::Cycle(FRAME_CAPS),
+        get: |_| {
+            index_of(
+                &port_settings::FRAME_CAPS,
+                port_settings::get().frame_cap,
+                0,
+            )
+        },
+        set: |_, v| port_settings::update(|s| s.frame_cap = port_settings::FRAME_CAPS[v as usize]),
+    },
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("Supersampling", "スーパーサンプリング")),
+        kind: Kind::Texts(SUPERSAMPLING),
+        get: |_| {
+            index_of(
+                &port_settings::SUPERSAMPLING,
+                port_settings::get().supersampling,
+                0,
+            )
+        },
+        set: |_, v| {
+            port_settings::update(|s| s.supersampling = port_settings::SUPERSAMPLING[v as usize])
+        },
+    },
+    // the controls screen comes next
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("Controls…", "操作設定")),
+        kind: Kind::Disabled,
+        get: |_| 0,
+        set: |_, _| {},
+    },
 ];
 
 /// The standby item: turning it on shows a notice (`$_14` `0x710005fdd0`)
-const STANDBY_LABEL: u8 = 12;
+const STANDBY_LABEL: Label = Label::Art(12);
+/// The sizes of the PC tab's labels and options, near the art's lettering
+const LABEL_SIZE: f32 = 36.0;
+const OPTION_SIZE: f32 = 32.0;
+/// The labels' white and shadow, as the art's
+const TEXT_BORDER: FloatColor4 = FloatColor4::from_rgba(0.1, 0.07, 0.07, 1.0);
+/// The tabs' dark brown lettering and its light edge, as the art's
+const TAB_TEXT: FloatColor4 = FloatColor4::from_rgba(0.22, 0.13, 0.06, 1.0);
+const TAB_BORDER: FloatColor4 = FloatColor4::from_rgba(1.0, 0.92, 0.7, 1.0);
+/// A cycle's button in the list's space: where the last two option buttons would be
+const CYCLE_X0: f32 = 1132.0;
+const CYCLE_X1: f32 = 1624.0;
 
 struct Item {
     def: &'static ItemDef,
@@ -211,34 +374,56 @@ struct Item {
     focused: bool,
     /// A slider's focus glow (`+0x70`)
     focus: Tweener,
-    /// A button item's per-option highlight and press flash
+    /// A button item's per-option highlight and press flash (a cycle's one button: its press flash)
     options: Vec<(Tweener, Tweener)>,
+    /// PC tab: the label and the options' texts in the game's font
+    label: Option<TextBlock>,
+    texts: Vec<TextBlock>,
 }
 
 impl Item {
-    fn new(def: &'static ItemDef, y: f32) -> Self {
-        let options = match def.kind {
-            Kind::Slider(_) => Vec::new(),
-            Kind::Buttons(options) => options
-                .iter()
-                .map(|_| (Tweener::new(0.0), Tweener::new(0.0)))
-                .collect(),
+    fn new(def: &'static ItemDef, y: f32, text: &impl Fn(Text, f32) -> TextBlock) -> Self {
+        let buttons = match def.kind {
+            Kind::Slider(_) | Kind::Disabled => 0,
+            Kind::Buttons(options) => options.len(),
+            Kind::Texts(options) => options.len(),
+            Kind::Cycle(_) => 1,
+        };
+        let texts = match def.kind {
+            Kind::Texts(options) | Kind::Cycle(options) => {
+                options.iter().map(|&t| text(t, OPTION_SIZE)).collect()
+            }
+            _ => Vec::new(),
         };
         Self {
             def,
             y,
             focused: false,
             focus: Tweener::new(0.0),
-            options,
+            options: (0..buttons)
+                .map(|_| (Tweener::new(0.0), Tweener::new(0.0)))
+                .collect(),
+            label: match def.label {
+                Label::Art(_) => None,
+                Label::Text(label) => Some(text(label, LABEL_SIZE)),
+            },
+            texts,
         }
     }
 
-    /// The tweener focusing moves: a slider's glow, or the selected option's highlight
+    /// The tweener focusing moves: a slider's glow, or the selected option's highlight (a cycle glows whole)
     fn focus_tweener(&mut self, settings: &Settings) -> &mut Tweener {
         match self.def.kind {
-            Kind::Slider(_) => &mut self.focus,
-            Kind::Buttons(_) => &mut self.options[(self.def.get)(settings) as usize].0,
+            Kind::Slider(_) | Kind::Cycle(_) | Kind::Disabled => &mut self.focus,
+            Kind::Buttons(_) | Kind::Texts(_) => {
+                &mut self.options[(self.def.get)(settings) as usize].0
+            }
         }
+    }
+
+    /// A row of option buttons, whose highlights follow the selected option
+    fn has_buttons(&self) -> bool {
+        matches!(self.def.kind, Kind::Buttons(_) | Kind::Texts(_))
     }
 
     /// vfuncs 3 and 4: to 1 at 0.25 per frame, back at 0.2, or at once
@@ -266,8 +451,12 @@ impl Item {
         1384.0 - 252.0 * (self.options.len() - 1 - k) as f32
     }
 
-    /// The option under `x` in the list's space (`0x7100056fd0`): 240 wide, 12 apart, right-aligned to 1624
+    /// The option under `x` in the list's space (`0x7100056fd0`): 240 wide, 12 apart, right-aligned to 1624; a
+    /// cycle's one button spans the last two
     fn option_at(&self, x: f32) -> Option<usize> {
+        if let Kind::Cycle(_) = self.def.kind {
+            return (CYCLE_X0..=CYCLE_X1).contains(&x).then_some(0);
+        }
         (0..self.options.len()).find(|&k| self.option_x(k) <= x && x <= self.option_x(k) + 240.0)
     }
 
@@ -318,10 +507,14 @@ pub struct ConfigMenu {
     fade: f32,
     page: usize,
     /// The cursor of each page, remembered across tab changes
-    cursors: [usize; 3],
-    pages: [Vec<Item>; 3],
+    cursors: [usize; PAGES],
+    pages: [Vec<Item>; PAGES],
     /// Per tab: selected (cross-fades `tab_off` to `tab_on`) and the press flash (scales it up)
-    tabs: [(Tweener, Tweener); 3],
+    tabs: [(Tweener, Tweener); PAGES],
+    /// The PC tab's label, in the game's font as the tab art has none
+    pc_tab: TextBlock,
+    /// The arrows of the PC tab's cycles
+    arrows: [TextBlock; 2],
     close_flash: Tweener,
     default_flash: Tweener,
     /// The settings when the screen opened (`+0x534`)
@@ -345,11 +538,11 @@ pub struct ConfigMenu {
     coast: Coast,
 }
 
-fn build_pages() -> [Vec<Item>; 3] {
-    let mut pages: [Vec<Item>; 3] = Default::default();
+fn build_pages(text: &impl Fn(Text, f32) -> TextBlock) -> [Vec<Item>; PAGES] {
+    let mut pages: [Vec<Item>; PAGES] = Default::default();
     for def in ITEMS {
         let y = ITEM_STEP * pages[def.page].len() as f32;
-        pages[def.page].push(Item::new(def, y));
+        pages[def.page].push(Item::new(def, y, text));
     }
     pages
 }
@@ -365,18 +558,32 @@ impl ConfigMenu {
             }
         };
         let settings = cx.global.settings;
+        // the executable's texts tell the language; the PC tab's texts follow it
+        let japanese = !RESET_QUESTION.get().is_ascii();
+        let text = |t: Text, size: f32| {
+            TextBlock::new(
+                cx.pre_render,
+                &assets.system_font,
+                t.get(japanese),
+                text_layout(1000.0, size),
+                OUTLINE,
+            )
+        };
         let mut menu = Self {
             assets: assets.clone(),
             textures,
             state: State::Opening,
             fade: 0.0,
             page: 0,
-            cursors: [0; 3],
-            pages: build_pages(),
-            tabs: [
-                (Tweener::new(1.0), Tweener::new(0.0)),
-                (Tweener::new(0.0), Tweener::new(0.0)),
-                (Tweener::new(0.0), Tweener::new(0.0)),
+            cursors: [0; PAGES],
+            pages: build_pages(&text),
+            tabs: std::array::from_fn(|page| {
+                (Tweener::new((page == 0) as u8 as f32), Tweener::new(0.0))
+            }),
+            pc_tab: text(PC_TAB, LABEL_SIZE),
+            arrows: [
+                text(Text::same("<"), OPTION_SIZE),
+                text(Text::same(">"), OPTION_SIZE),
             ],
             close_flash: Tweener::new(0.0),
             default_flash: Tweener::new(0.0),
@@ -431,7 +638,7 @@ impl ConfigMenu {
         if old == value {
             return;
         }
-        if let Kind::Buttons(_) = item.def.kind {
+        if item.has_buttons() {
             minigame::tween_now(&mut item.options[old as usize].0, 0.0, 0.2);
             minigame::tween_now(&mut item.options[value as usize].0, 1.0, 0.25);
         }
@@ -452,14 +659,15 @@ impl ConfigMenu {
         }
     }
 
-    /// The item's left and right (vfunc 6): a slider by 5 within 0-100, buttons by one option without wrapping
+    /// The item's left and right (vfunc 6): a slider by 5 within 0-100, buttons (and the PC tab's cycles) by one option
+    /// without wrapping
     fn adjust(&mut self, cx: &mut TaskCx, step: i32) {
         let index = self.cursor();
         let item = &self.pages[self.page][index];
         let value = (item.def.get)(&cx.global.settings) as i32;
         let value = match item.def.kind {
             Kind::Slider(_) => (value + 5 * step).clamp(0, 100),
-            Kind::Buttons(options) => (value + step).clamp(0, options.len() as i32 - 1),
+            kind => (value + step).clamp(0, kind.count() as i32 - 1),
         };
         self.set_value(cx, index, value as u8);
     }
@@ -483,10 +691,10 @@ impl ConfigMenu {
         let settings = cx.global.settings;
         let n = self.pages[self.page].len();
         if input.l {
-            self.select_page(&settings, (self.page + 2) % 3);
+            self.select_page(&settings, (self.page + PAGES - 1) % PAGES);
             cx.sound("move");
         } else if input.r {
-            self.select_page(&settings, (self.page + 1) % 3);
+            self.select_page(&settings, (self.page + 1) % PAGES);
             cx.sound("move");
         } else if input.up {
             if self.cursor() > 0 {
@@ -538,8 +746,8 @@ impl ConfigMenu {
         if !(150.0..992.0).contains(&point.y) {
             return Some(Touched::Nothing);
         }
-        let tab = (0..3).find(|&page| {
-            let x = 510.0 + 300.0 * page as f32;
+        let tab = (0..PAGES).find(|&page| {
+            let x = tab_x(page);
             page != self.page && minigame::contains([x, 144.0, x + 300.0, 211.5], point)
         });
         if let Some(page) = tab {
@@ -596,7 +804,7 @@ impl ConfigMenu {
                     }
                     _ => {}
                 },
-                Gesture::Tap(_) => match self.touched.take() {
+                Gesture::Tap(at) => match self.touched.take() {
                     Some(Touched::Close) => {
                         cx.sound("decide");
                         self.close();
@@ -612,9 +820,20 @@ impl ConfigMenu {
                     }
                     Some(Touched::List(Some(index))) => {
                         self.select_item(&settings, index);
-                        if let Some(k) = self.option.take() {
+                        let item = &mut self.pages[self.page][index];
+                        if let Kind::Cycle(options) = item.def.kind {
+                            // PC tab: the button's left half steps back, its right half on
+                            if self.option.take().is_some() {
+                                let middle = (CYCLE_X0 + CYCLE_X1) / 2.0;
+                                let step = if at.x - LIST_X < middle { -1 } else { 1 };
+                                let value = (item.def.get)(&settings) as i32 + step;
+                                minigame::flash(&mut item.options[0].1);
+                                let last = options.len() as i32 - 1;
+                                self.write(cx, index, value.clamp(0, last) as u8);
+                                cx.sound("decide");
+                            }
+                        } else if let Some(k) = self.option.take() {
                             // `0x7100057110`: the option is selected, flashes and is written, with the decide sound
-                            let item = &mut self.pages[self.page][index];
                             let old = (item.def.get)(&settings) as usize;
                             if old != k {
                                 minigame::tween_now(&mut item.options[old].0, 0.0, 0.2);
@@ -726,13 +945,28 @@ impl ConfigMenu {
         }
         // `0x71000604c0`: Yes, as the dialog starts closing: every setting back to its default
         if reset && events.contains(&(0, 0)) {
+            // the items are rebuilt with the new values; the focused one keeps its highlight. The PC tab's items
+            // read the port's settings themselves, so the highlights drop before anything resets
             let old = cx.global.settings;
-            cx.global.settings = Settings::default();
-            let new = cx.global.settings;
-            // the items are rebuilt with the new values; the focused one keeps its highlight
+            let focused: Vec<bool> = self
+                .pages
+                .iter()
+                .flatten()
+                .map(|item| item.focused)
+                .collect();
             for item in self.pages.iter_mut().flatten() {
-                let focused = item.focused;
                 item.set_focus(&old, false, false);
+            }
+            cx.global.settings = Settings::default();
+            // the port's settings are among "ALL settings"; the reserved bindings are not settings of this screen
+            port_settings::update(|s| {
+                *s = port_settings::PortSettings {
+                    bindings: std::mem::take(&mut s.bindings),
+                    ..Default::default()
+                }
+            });
+            let new = cx.global.settings;
+            for (item, focused) in self.pages.iter_mut().flatten().zip(focused) {
                 if focused {
                     item.set_focus(&new, true, false);
                 }
@@ -753,10 +987,25 @@ impl ConfigMenu {
                 FloatColor4::WHITE.with_alpha(0.75),
             );
         }
-        let v = item.def.label as f32 * 72.0 / 1440.0;
-        Sprite::new(t("left"), [24.0, y + 8.0, 776.0, y + 80.0])
-            .uv([0.0, v, 1.0, v + 0.05])
-            .draw(pass, builder, list);
+        match (item.def.label, &item.label) {
+            (Label::Art(row), _) => {
+                let v = row as f32 * 72.0 / 1440.0;
+                Sprite::new(t("left"), [24.0, y + 8.0, 776.0, y + 80.0])
+                    .uv([0.0, v, 1.0, v + 0.05])
+                    .draw(pass, builder, list);
+            }
+            (Label::Text(_), Some(label)) => {
+                // where the art's labels start, centred on the row
+                let alpha = if let Kind::Disabled = item.def.kind {
+                    0.45
+                } else {
+                    1.0
+                };
+                let at = vec2(44.0, y + (ITEM_H - label.size().y) / 2.0);
+                draw_text_at(pass, label, list, at, alpha);
+            }
+            (Label::Text(_), None) => {}
+        }
 
         let value = (item.def.get)(&self.live);
         match item.def.kind {
@@ -800,8 +1049,68 @@ impl ConfigMenu {
                         .draw(pass, builder, list);
                 }
             }
+            Kind::Texts(_) => {
+                // as the buttons above, with the option's text in place of a row of `right`
+                for (k, text) in item.texts.iter().enumerate() {
+                    let x = item.option_x(k);
+                    let selected = value as usize == k;
+                    let (highlight, flash) = &item.options[k];
+                    let background = if selected { "button_on" } else { "button_off" };
+                    Sprite::new(t(background), [x, y, x + 240.0, y + ITEM_H])
+                        .glow(highlight.value() * 0.5)
+                        .flash(flash.value())
+                        .draw(pass, builder, list);
+                    let center = vec2(x + 120.0, y + ITEM_H / 2.0);
+                    draw_text_at(pass, text, list, center - text.size() / 2.0, 1.0);
+                }
+            }
+            Kind::Cycle(options) => {
+                // one selected-looking button over the last two buttons' place: the art's rounded ends, its middle
+                // stretched between them
+                let (x0, x1) = (CYCLE_X0, CYCLE_X1);
+                let (glow, flash) = (item.focus.value() * 0.5, item.options[0].1.value());
+                for (left, right, u0, u1) in [
+                    (x0, x0 + 60.0, 0.0, 0.25),
+                    (x0 + 60.0, x1 - 60.0, 0.25, 0.75),
+                    (x1 - 60.0, x1, 0.75, 1.0),
+                ] {
+                    Sprite::new(t("button_on"), [left, y, right, y + ITEM_H])
+                        .uv([u0, 0.0, u1, 1.0])
+                        .glow(glow)
+                        .flash(flash)
+                        .draw(pass, builder, list);
+                }
+                let middle = y + ITEM_H / 2.0;
+                let text = &item.texts[(value as usize).min(options.len() - 1)];
+                let center = vec2((x0 + x1) / 2.0, middle);
+                draw_text_at(pass, text, list, center - text.size() / 2.0, 1.0);
+                // the arrows dim at the ends, which the steps do not wrap past
+                let [back, on] = &self.arrows;
+                let back_alpha = if value == 0 { 0.35 } else { 1.0 };
+                let on_alpha = if value as usize + 1 >= options.len() {
+                    0.35
+                } else {
+                    1.0
+                };
+                let at = vec2(x0 + 40.0, middle) - back.size() / 2.0;
+                draw_text_at(pass, back, list, at, back_alpha);
+                let at = vec2(x1 - 40.0, middle) - on.size() / 2.0;
+                draw_text_at(pass, on, list, at, on_alpha);
+            }
+            Kind::Disabled => {}
         }
     }
+}
+
+/// A PC-tab text in the art's white with its dark outline, its padded top-left corner at `at`
+fn draw_text_at(pass: &mut RenderPass, text: &TextBlock, transform: Mat4, at: Vec2, alpha: f32) {
+    ui::draw_text(
+        pass,
+        text,
+        transform * Mat4::from_translation(at.extend(0.0)),
+        FloatColor4::WHITE.with_alpha(alpha),
+        TEXT_BORDER.with_alpha(alpha),
+    );
 }
 
 impl Task for ConfigMenu {
@@ -941,24 +1250,50 @@ impl Task for ConfigMenu {
 
         for (page, (selected, flash)) in self.tabs.iter().enumerate() {
             let s = 1.0 + 0.15 * flash.value();
-            let transform =
-                slid * Mat4::from_translation(vec3(
-                    510.0 + 300.0 * page as f32 + 150.0,
-                    144.0 + 33.75,
-                    0.0,
-                )) * Mat4::from_scale(vec3(s, s, 1.0))
-                    * Mat4::from_translation(vec3(-150.0, -33.75, 0.0));
-            let v = page as f32 / 3.0;
+            let transform = slid
+                * Mat4::from_translation(vec3(tab_x(page) + 150.0, 144.0 + 33.75, 0.0))
+                * Mat4::from_scale(vec3(s, s, 1.0))
+                * Mat4::from_translation(vec3(-150.0, -33.75, 0.0));
             let selected = selected.value();
-            // shortcut: the original mixes the two textures in one draw (`0x71000c70d0`); drawing the selected one
-            // over the other differs only where both are see-through
-            Sprite::new(t("tab_off"), [0.0, 0.0, 300.0, 67.5])
-                .uv([0.0, v, 1.0, v + 1.0 / 3.0])
-                .draw(pass, builder, transform);
-            Sprite::new(t("tab_on"), [0.0, 0.0, 300.0, 67.5])
-                .uv([0.0, v, 1.0, v + 1.0 / 3.0])
-                .alpha(selected)
-                .draw(pass, builder, transform);
+            // the art has the original three tabs, labels included; the PC tab is the first one's ends with its
+            // plain middle stretched between them, and its label in the game's font
+            let pieces: &[([f32; 2], [f32; 2])] = if page == PC_PAGE {
+                &[
+                    ([0.0, 60.0], [0.0, 0.2]),
+                    ([60.0, 240.0], [0.19, 0.2]),
+                    ([240.0, 300.0], [0.8, 1.0]),
+                ]
+            } else {
+                &[([0.0, 300.0], [0.0, 1.0])]
+            };
+            let v = if page == PC_PAGE {
+                0.0
+            } else {
+                page as f32 / 3.0
+            };
+            for &([x0, x1], [u0, u1]) in pieces {
+                // shortcut: the original mixes the two textures in one draw (`0x71000c70d0`); drawing the selected
+                // one over the other differs only where both are see-through
+                Sprite::new(t("tab_off"), [x0, 0.0, x1, 67.5])
+                    .uv([u0, v, u1, v + 1.0 / 3.0])
+                    .draw(pass, builder, transform);
+                Sprite::new(t("tab_on"), [x0, 0.0, x1, 67.5])
+                    .uv([u0, v, u1, v + 1.0 / 3.0])
+                    .alpha(selected)
+                    .draw(pass, builder, transform);
+            }
+            if page == PC_PAGE {
+                // the art's dark lettering, brighter when selected
+                // a little high, as the art's capitals sit
+                let at = vec2(150.0, 30.0) - self.pc_tab.size() / 2.0;
+                ui::draw_text(
+                    pass,
+                    &self.pc_tab,
+                    transform * Mat4::from_translation(at.extend(0.0)),
+                    TAB_TEXT.with_alpha(0.6 + 0.4 * selected),
+                    TAB_BORDER.with_alpha(0.5 * (0.6 + 0.4 * selected)),
+                );
+            }
         }
 
         Sprite::new(t("caption"), [480.0, top, 1440.0, top + 128.0])

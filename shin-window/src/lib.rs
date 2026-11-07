@@ -11,6 +11,7 @@ use shin_input::{Action, ActionState, ActionsState, Pointer, RawInputAccumulator
 use shin_render::{
     init::{RenderResources, WgpuInitResult, WgpuResources},
     render_pass::RenderPass,
+    render_texture::RenderTexture,
     resize::{CanvasSize, ResizeHandle, SurfaceResizeSource, SurfaceSize, ViewportParams},
     shaders::types::texture::{DepthStencilTarget, TextureTarget, TextureTargetKind},
 };
@@ -45,12 +46,57 @@ pub struct AppContextOwned<A: ShinApp> {
     pub render: RenderResources,
 }
 
+/// How the window is shown
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowMode {
+    Windowed,
+    /// A borderless window covering the monitor
+    Borderless,
+    /// Exclusive fullscreen at the monitor's resolution and highest refresh rate
+    Exclusive,
+}
+
+/// The window and frame settings the app asks for (the port's PC settings)
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DisplaySettings {
+    pub mode: WindowMode,
+    /// The inner size in logical pixels while windowed
+    pub size: (u32, u32),
+    pub vsync: bool,
+    /// Frames per second at most; `None` for no cap
+    pub frame_cap: Option<u32>,
+    /// Supersampling: the canvas is rendered this many times larger and filtered down to the window
+    pub render_scale: f32,
+}
+
+impl Default for DisplaySettings {
+    fn default() -> Self {
+        Self {
+            mode: WindowMode::Windowed,
+            size: (1920, 1080),
+            vsync: true,
+            frame_cap: None,
+            render_scale: 1.0,
+        }
+    }
+}
+
 pub trait ShinApp: Sized {
     type Parameters;
     type EventType: Send + Debug + 'static;
     type ActionType: Action;
 
     fn init(context: AppContext<Self>, parameters: Self::Parameters) -> anyhow::Result<Self>;
+
+    /// The display settings the window is created with
+    fn initial_display(_parameters: &Self::Parameters) -> DisplaySettings {
+        DisplaySettings::default()
+    }
+
+    /// The display settings wanted now, applied whenever they change; `None` keeps the current ones
+    fn display(&self) -> Option<DisplaySettings> {
+        None
+    }
 
     fn map_canvas_size(window_size: PhysicalSize<u32>) -> ViewportParams {
         ViewportParams::with_aspect_ratio(window_size, 16.0 / 9.0)
@@ -107,10 +153,14 @@ impl<E: Send + Debug + 'static> ShinEventLoopProxy<E> {
 pub struct WindowState {
     pub window: Arc<Window>,
     pub resize_source: SurfaceResizeSource,
+    /// The display settings in effect
+    display: DisplaySettings,
+    /// The largest texture the device takes, which bounds the supersampled canvas
+    max_texture_size: u32,
 }
 
 impl WindowState {
-    pub fn new<A: ShinApp>(event_loop: &ActiveEventLoop) -> Self {
+    pub fn new<A: ShinApp>(event_loop: &ActiveEventLoop, display: DisplaySettings) -> Self {
         #[allow(unused_mut)]
         let mut attributes = Window::default_attributes();
 
@@ -118,7 +168,7 @@ impl WindowState {
         {
             use winit::dpi::{LogicalPosition, LogicalSize};
             attributes = attributes
-                .with_inner_size(LogicalSize::new(1920, 1080))
+                .with_inner_size(LogicalSize::new(display.size.0, display.size.1))
                 .with_maximized(false)
                 .with_position(LogicalPosition::new(1080, 0));
         }
@@ -151,15 +201,89 @@ impl WindowState {
 
         let window = Arc::new(event_loop.create_window(attributes).unwrap());
 
-        let size = A::map_canvas_size(window.inner_size());
-
-        info!("Created a window with size: {:?}", size);
-
-        let window_resize_source = SurfaceResizeSource::new(size);
-
-        Self {
+        let state = Self {
+            resize_source: SurfaceResizeSource::new(ViewportParams::default()),
             window,
-            resize_source: window_resize_source,
+            display,
+            max_texture_size: 4096,
+        };
+        if display.mode != WindowMode::Windowed {
+            state.apply_mode();
+        }
+        let size = state.viewport::<A>(state.window.inner_size());
+        info!("Created a window with size: {:?}", size);
+        state.resize_source.resize(size);
+        state
+    }
+
+    /// The display settings in effect
+    pub fn display(&self) -> DisplaySettings {
+        self.display
+    }
+
+    /// The canvas for a window of `size`, rendered at the supersampling scale as far as the device allows
+    fn viewport<A: ShinApp>(&self, size: PhysicalSize<u32>) -> ViewportParams {
+        let params = A::map_canvas_size(size);
+        let max = self.max_texture_size as f32;
+        let shown = params.canvas_display_size;
+        let scale = self
+            .display
+            .render_scale
+            .min(max / shown.width.max(1) as f32)
+            .min(max / shown.height.max(1) as f32)
+            .max(1.0);
+        params.with_render_scale(scale)
+    }
+
+    /// Switches to new display settings; the caller applies the vsync to the surface
+    fn apply_display<A: ShinApp>(&mut self, display: DisplaySettings) {
+        let old = std::mem::replace(&mut self.display, display);
+        info!("Display settings: {:?}", self.display);
+        if old.mode != display.mode
+            || (display.mode == WindowMode::Windowed && old.size != display.size)
+        {
+            self.apply_mode();
+        }
+        if old.render_scale != display.render_scale {
+            self.resize_source
+                .resize(self.viewport::<A>(self.window.inner_size()));
+        }
+    }
+
+    /// Puts the window in the mode (and the size when windowed) of the display settings
+    fn apply_mode(&self) {
+        use winit::{dpi::LogicalSize, window::Fullscreen};
+        let window = &self.window;
+        match self.display.mode {
+            WindowMode::Windowed => {
+                window.set_fullscreen(None);
+                let (width, height) = self.display.size;
+                let _ = window.request_inner_size(LogicalSize::new(width, height));
+            }
+            WindowMode::Borderless => {
+                window.set_fullscreen(Some(Fullscreen::Borderless(window.current_monitor())));
+            }
+            WindowMode::Exclusive => {
+                // the monitor's own resolution at its highest refresh rate
+                let mode = window.current_monitor().and_then(|monitor| {
+                    let size = monitor.size();
+                    monitor
+                        .video_modes()
+                        .filter(|mode| mode.size() == size)
+                        .max_by_key(|mode| (mode.refresh_rate_millihertz(), mode.bit_depth()))
+                });
+                match mode {
+                    Some(mode) => {
+                        info!("Entering exclusive fullscreen mode {}", mode);
+                        window.set_fullscreen(Some(Fullscreen::Exclusive(mode)));
+                    }
+                    None => {
+                        warn!("No video mode for exclusive fullscreen; using a borderless window");
+                        window
+                            .set_fullscreen(Some(Fullscreen::Borderless(window.current_monitor())));
+                    }
+                }
+            }
         }
     }
 
@@ -261,6 +385,14 @@ fn finish_wgpu_init<A: ShinApp>(
         winit.resize_source.handle::<SurfaceSize>(),
         winit.resize_source.handle::<CanvasSize>(),
     );
+    // the supersampled canvas is bounded by the device's texture size, known only now
+    winit.max_texture_size = wgpu.device.limits().max_texture_dimension_2d;
+    winit
+        .resize_source
+        .resize(winit.viewport::<A>(winit.window.inner_size()));
+    if !winit.display.vsync {
+        render.surface.set_vsync(false);
+    }
 
     let shin_proxy = ShinEventLoopProxy {
         proxy: proxy.clone(),
@@ -288,11 +420,66 @@ fn finish_wgpu_init<A: ShinApp>(
     WinitAppState::Operational {
         proxy,
         last_update: Instant::now(),
+        next_frame: Instant::now(),
+        supersample: None,
         raw_input_state,
         input_state: ActionsState::new(),
         context,
         app,
     }
+}
+
+/// Waits until the frame cap's next frame is due, sleeping most of the way and spinning the rest for accuracy
+fn wait_for_frame(next_frame: &mut Instant, fps: u32) {
+    let period = Duration::from_secs_f64(1.0 / fps.max(1) as f64);
+    let margin = Duration::from_millis(1);
+    let left = next_frame.saturating_duration_since(Instant::now());
+    if left > margin {
+        std::thread::sleep(left - margin);
+    }
+    while Instant::now() < *next_frame {
+        std::thread::yield_now();
+    }
+    // on schedule, the next frame is one period on; a late frame does not make the following ones hurry
+    *next_frame = (*next_frame + period).max(Instant::now());
+}
+
+/// Filters the supersampled canvas down to the window: four bilinear taps a quarter of a window pixel from its
+/// centre, which average the canvas texels the pixel covers (exactly at 2x)
+fn downsample(pass: &mut RenderPass, source: &RenderTexture, shown: CanvasSize) {
+    use shin_render::{
+        ColorBlendType, DrawPrimitive, RenderProgramWithArguments, RenderRequestBuilder,
+        shaders::types::{buffer::VertexSource, vertices::PosTexVertex},
+    };
+    // in uv units, where a window pixel is 1 / the shown size
+    let (dx, dy) = (0.25 / shown.width as f32, 0.25 / shown.height as f32);
+    let vertex = |x: f32, y: f32| PosTexVertex {
+        position: glam::vec2(x * 2.0 - 1.0, 1.0 - y * 2.0),
+        // render textures hold the canvas bottom row first
+        texture_position: glam::vec2(x, 1.0 - y),
+    };
+    let vertices = [
+        vertex(0.0, 0.0),
+        vertex(1.0, 0.0),
+        vertex(0.0, 1.0),
+        vertex(1.0, 1.0),
+    ];
+    pass.run(
+        RenderRequestBuilder::new()
+            .color_blend_type(ColorBlendType::Opaque)
+            .build(
+                RenderProgramWithArguments::Blur {
+                    vertices: VertexSource::VertexData {
+                        vertices: &vertices,
+                    },
+                    texture: source.as_texture_source(),
+                    transform: glam::Mat4::IDENTITY,
+                    offsets: [glam::vec4(dx, dy, dx, -dy), glam::Vec4::ZERO],
+                    weights: glam::vec4(0.5, 0.5, 0.0, 0.0),
+                },
+                DrawPrimitive::TrianglesStrip,
+            ),
+    );
 }
 
 #[derive(Default)]
@@ -323,6 +510,10 @@ enum WinitAppState<A: ShinApp> {
     Operational {
         proxy: EventLoopProxy<ShinAppEventImpl<A::EventType>>,
         last_update: Instant,
+        /// When the frame cap lets the next frame start
+        next_frame: Instant,
+        /// The canvas rendered larger, while supersampling
+        supersample: Option<RenderTexture>,
         raw_input_state: RawInputAccumulator,
         input_state: ActionsState<A::ActionType>,
         context: AppContextOwned<A>,
@@ -386,7 +577,7 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                 raw_input_state: input_state,
                 params,
             } => {
-                let winit = WindowState::new::<A>(event_loop);
+                let winit = WindowState::new::<A>(event_loop, A::initial_display(&params));
 
                 let mut surface_resize_handle = winit.resize_source.surface_handle();
                 let current_size = surface_resize_handle.get();
@@ -415,6 +606,8 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
             WinitAppState::Operational {
                 proxy,
                 last_update,
+                next_frame,
+                supersample,
                 raw_input_state,
                 input_state,
                 mut context,
@@ -428,10 +621,15 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                     context.render.surface_texture_format,
                 )
                 .expect("surface reinit failed");
+                if !context.winit.display.vsync {
+                    context.render.surface.set_vsync(false);
+                }
 
                 *self = WinitAppState::Operational {
                     proxy,
                     last_update,
+                    next_frame,
+                    supersample,
                     raw_input_state,
                     input_state,
                     context,
@@ -468,6 +666,8 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                 let WinitAppState::Operational {
                     proxy: _,
                     last_update: _,
+                    next_frame: _,
+                    supersample: _,
                     raw_input_state: _,
                     input_state: _,
                     context:
@@ -524,7 +724,7 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
             WindowEvent::Resized(physical_size) => {
                 winit
                     .resize_source
-                    .resize(A::map_canvas_size(physical_size));
+                    .resize(winit.viewport::<A>(physical_size));
                 winit.window.request_redraw();
 
                 // this is a mouthful...
@@ -558,6 +758,8 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                 let WinitAppState::Operational {
                     proxy: _,
                     last_update,
+                    next_frame,
+                    supersample,
                     raw_input_state,
                     input_state,
                     context:
@@ -573,6 +775,9 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                     return;
                 };
 
+                if let Some(fps) = winit.display.frame_cap {
+                    info_span!("frame_cap").in_scope(|| wait_for_frame(next_frame, fps));
+                }
                 let now_update = Instant::now();
                 let elapsed = now_update.duration_since(*last_update);
                 *last_update = now_update;
@@ -636,36 +841,96 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                 });
                 raw_input_state.finish_frame();
 
+                if let Some(display) = app.display().filter(|display| *display != winit.display) {
+                    if display.vsync != winit.display.vsync {
+                        render.surface.set_vsync(display.vsync);
+                    }
+                    winit.apply_display::<A>(display);
+                }
+                let viewport_params = winit.viewport::<A>(winit.window.inner_size());
+                if viewport_params.canvas_size == viewport_params.canvas_display_size {
+                    *supersample = None;
+                } else if supersample.is_none() {
+                    *supersample = Some(RenderTexture::new(
+                        wgpu.device.clone(),
+                        winit.resize_source.handle::<CanvasSize>(),
+                        "supersample".to_string(),
+                    ));
+                }
+
                 let mut render_encoder =
                     wgpu.device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                             label: Some("Render"),
                         });
 
-                let (viewport, surface_texture) = render.surface.get_current_texture().unwrap();
+                // the frame's updates are still submitted when the surface has no texture to draw on (it is being
+                // resized or switched in or out of fullscreen); the next frame draws
+                let surface = match render.surface.get_current_texture() {
+                    Ok(surface) => Some(surface),
+                    Err(e) => {
+                        warn!("Skipping a frame's drawing: {e}");
+                        None
+                    }
+                };
 
                 info_span!("render").in_scope(|| {
-                    let mut pass = RenderPass::new(
-                        &mut render.pipelines,
-                        &mut render.dynamic_buffer,
-                        &render.sampler_store,
-                        &wgpu.device,
-                        &mut render_encoder,
-                        TextureTarget {
-                            kind: TextureTargetKind::Screen,
-                            view: &surface_texture.view,
-                        },
-                        Some(DepthStencilTarget {
-                            view: render.surface_depth_stencil_buffer.resize_and_get_view(),
-                        }),
-                        Some(viewport),
-                        "app",
-                    );
+                    let Some((viewport, surface_texture)) = &surface else {
+                        return;
+                    };
+                    let viewport = *viewport;
+                    if let Some(canvas) = supersample {
+                        // the canvas at its rendered size, then filtered down into its area of the window
+                        let mut pass = RenderPass::new(
+                            &mut render.pipelines,
+                            &mut render.dynamic_buffer,
+                            &render.sampler_store,
+                            &wgpu.device,
+                            &mut render_encoder,
+                            canvas.as_texture_target(),
+                            Some(render.canvas_depth_stencil_buffer.get_target_view()),
+                            None,
+                            "app",
+                        );
+                        app.render(RenderContext { winit, wgpu }, &mut pass);
+                        drop(pass);
 
-                    let context = RenderContext { winit, wgpu };
-
-                    app.render(context, &mut pass);
-                    drop(pass);
+                        let mut pass = RenderPass::new(
+                            &mut render.pipelines,
+                            &mut render.dynamic_buffer,
+                            &render.sampler_store,
+                            &wgpu.device,
+                            &mut render_encoder,
+                            TextureTarget {
+                                kind: TextureTargetKind::Screen,
+                                view: &surface_texture.view,
+                            },
+                            None,
+                            Some(viewport),
+                            "supersample",
+                        );
+                        downsample(&mut pass, canvas, viewport_params.canvas_display_size);
+                        drop(pass);
+                    } else {
+                        let mut pass = RenderPass::new(
+                            &mut render.pipelines,
+                            &mut render.dynamic_buffer,
+                            &render.sampler_store,
+                            &wgpu.device,
+                            &mut render_encoder,
+                            TextureTarget {
+                                kind: TextureTargetKind::Screen,
+                                view: &surface_texture.view,
+                            },
+                            Some(DepthStencilTarget {
+                                view: render.surface_depth_stencil_buffer.resize_and_get_view(),
+                            }),
+                            Some(viewport),
+                            "app",
+                        );
+                        app.render(RenderContext { winit, wgpu }, &mut pass);
+                        drop(pass);
+                    }
                     app.render_overlay(
                         RenderContext { winit, wgpu },
                         &mut render_encoder,
@@ -689,10 +954,12 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                     render.dynamic_buffer.recall();
                 });
 
-                info_span!("present").in_scope(|| {
-                    winit.window.pre_present_notify();
-                    surface_texture.texture.present();
-                });
+                if let Some((_, surface_texture)) = surface {
+                    info_span!("present").in_scope(|| {
+                        winit.window.pre_present_notify();
+                        surface_texture.texture.present();
+                    });
+                }
 
                 tracy_client::frame_mark();
 
