@@ -181,6 +181,9 @@ pub struct SaveMenu {
     building: Option<(usize, ComputeTask<Bookmark>)>,
     /// The thumbnail being rendered (one at a time, as the original's renderer)
     drawing: Option<(usize, ThumbnailBuild)>,
+    /// A slot just saved to and its bookmark's old time: the game writes the bookmark after this task's frame, so
+    /// the slot is rebuilt again once its time changes
+    rewritten: Option<(usize, Option<chrono::NaiveDateTime>)>,
     asking: Option<Ask>,
     dialog: Option<(Ask, Dialog)>,
     /// The save notice after a save or a removal
@@ -239,6 +242,7 @@ impl SaveMenu {
             saves: cx.global.manual_save_slots.to_vec(),
             building: None,
             drawing: None,
+            rewritten: None,
             saving: None,
             asking: None,
             dialog: None,
@@ -494,6 +498,8 @@ impl SaveMenu {
                 // `0x71000da920`: the bookmark takes the current page, and the file is written
                 (Ask::Save, (0, 0)) => {
                     cx.requests.push(AdvRequest::SaveToSlot(self.cursor));
+                    let old = self.saves[self.cursor].as_ref().map(|data| data.date_time);
+                    self.rewritten = Some((self.cursor, old));
                     self.forget(self.cursor);
                     self.saving = Some(SaveNotice::new(cx.pre_render, &self.assets, None));
                 }
@@ -772,6 +778,12 @@ impl Task for SaveMenu {
         }
 
         self.saves = cx.global.manual_save_slots.to_vec();
+        if let Some((index, old)) = self.rewritten {
+            if self.saves[index].as_ref().map(|data| data.date_time) != old {
+                self.rewritten = None;
+                self.forget(index);
+            }
+        }
         self.update_slots(cx);
         ui::advance(&mut self.scroll, frames);
         ui::advance(&mut self.close_flash, frames);
