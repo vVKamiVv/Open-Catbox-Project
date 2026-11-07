@@ -140,18 +140,23 @@
     // the files a player downloads, not the updater's signatures, archives and lists
     const playable = (name) => /\.(exe|dmg|AppImage|deb|rpm)$/.test(name);
 
-    fetch("https://api.github.com/repos/vVKamiVv/Open-Catbox-Project/releases")
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((releases) => {
-        const [latest, ...older] = releases.filter((r) => !r.draft && !r.prerelease);
-        if (!latest) return;
+    const api = (path) =>
+      fetch(`https://api.github.com/repos/vVKamiVv/Open-Catbox-Project/${path}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
+
+    // two requests: the latest release answers fast, while GitHub's full list is sometimes slow or times out
+    api("releases/latest")
+      .then((latest) => {
         document.getElementById("latest").textContent =
           `${latest.tag_name}, released ${day(latest.published_at)}. Free and open source.`;
         for (const button of document.querySelectorAll("[data-file]")) {
           const asset = latest.assets.find((a) => a.name === button.dataset.file);
           if (asset) button.querySelector(".size").textContent = ` · ${mb(asset.size)}`;
         }
-
+        return api("releases?per_page=100").then((releases) => [latest, releases]);
+      })
+      .then(([latest, releases]) => {
+        const older = releases.filter((r) => !r.draft && !r.prerelease && r.id !== latest.id);
         const list = document.getElementById("versions");
         const all = list.lastElementChild;
         for (const release of older) {
