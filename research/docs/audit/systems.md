@@ -1,19 +1,17 @@
 # Alignment audit: systems (menus, modes, audio/video, assets, main loop, input, settings)
 
-> **Snapshot.** This report describes shin as it stood at the November 2026 audit; its Status and shin columns
-> are kept as written so the evidence stays readable. Since then: the scene and task framework, every menu and mode (title, scenario select, save/load, config, backlog,
-> system menu, the galleries, Characters, Tips, the manual), voices, the settings, transparent and looping movies,
-> the touch gestures on every screen and the touch effect are in, input goes through a binding table for keyboard,
-mouse and gamepad (rebindable since v0.2.0, engine-internals §18), and the menus were compared with the original. Current status of every finding:
-> [alignment-plan.md](../alignment-plan.md), which also lists what was compared with the original and the port's
-> measured accuracy.
+Status checked against the code on 2026-11-07.
+
+> The audit was written in November 2026, before the scenes, menus, voices and settings were in. The tables below
+> now give the current state of each row; the reverse-engineering notes are kept as found. The port's measured
+> accuracy and what was compared with the original: [alignment-plan.md](../alignment-plan.md).
 
 Scope: everything outside the adventure screen's commands, layers and text. Original = Switch v1.0.3 `main`
-(Ghidra base 0x7100000000). shin = `H:\Umineko PC Port\shin` as of this audit. Logs and decompiles:
+(Ghidra base 0x7100000000). shin = `H:\Umineko PC Port\shin`. Logs and decompiles:
 `$S\audit\systems\` (a1.c .. a8.c, d1.txt, lambdas.txt, py\xref.py and py\calls.py: ADRP+ADD and BL scanners over
 the NSO, used where Ghidra had no references).
 
-New evidence found in this audit (not in the docs before):
+Evidence found in this audit:
 - **Method names** of almost every menu come from `std::function` lambda typeinfo strings in the executable
   (`$S\audit\systems\lambdas.txt`), e.g. `shin::CreateTitle(int)`, `shin::ADV::JumpPrev()`, `shin::SaveMenu::Delete()`,
   `shin::MessageBrowser::QuickLoad(...)`, `shin::ConfigMenu::ResetDefault()`. They give the scene factories, too:
@@ -49,23 +47,25 @@ New evidence found in this audit (not in the docs before):
   (`0x71000f2b30`) always fade over at least 4 frames (`max(fade, 4)`).
 - **SE status bit 1** (`0x71000f2fd0`): set while the channel's `+0xc` state is 0 = "stream not started yet" (the
   update `0x71000f3210` sets it to 1 when the stream is ready). The doc's guess "not looping" is wrong; shin's
-  `AudioWaitStatus::FADING` should be named `LOADING`. Behaviour matches anyway: shin starts sounds synchronously.
+  `AudioWaitStatus::FADING` (still so named) should be `LOADING`. Behaviour matches: shin starts sounds synchronously.
 - **VoicePlayer** (`0x710011ab70` update, `0x710011a6b0` stop, `0x710011a980` status): a list of voices with state 0
   loading / 1 playing / 2 stopping. All loading voices start together once all are ready; stop moves them to state 2,
   a fade of 0.2 per frame (5 frames, `0x710015a954`); state 2 at 0 or a finished stream is removed.
 - **Controller** `0x71000c4300` -> engine bit mask (held +0, pressed +4, repeat +8 / +0xc): bit 0-3 d-pad U/D/L/R,
-  4 A, 5 B, 6 X, 7 Y, 8 ZL, 9 ZR, 10 L, 11 R, 12/13 ZL/ZR analog, 14/15 stick clicks, 16-19 left stick, 20-23 right
-  stick, 24-27 "any up/down/left/right" (d-pad or left stick, opposite directions cancel), **28 confirm, 29 cancel**
-  (A/B, swapped when `0x71000fc1f0` is true). Repeat: first press, then every 4 frames from frame 24, every 2 from 64.
+  4 A, 5 B, 6 X, 7 Y, 8 +, 9 - (first read here as ZL/ZR; + and - per engine-internals §15 and the title demo's
+  skip), 10 L, 11 R, 12/13 ZL/ZR (unverified), 14/15 stick clicks, 16-19 left stick, 20-23 right stick, 24-27 "any
+  up/down/left/right" (d-pad or left stick, opposite directions cancel), **28 confirm, 29 cancel** (A/B, swapped
+  when `0x71000fc1f0` is true). Repeat: first press, then every 4 frames from frame 24, every 2 from 64.
 - **ADV buttons** `0x7100011f08` (confirmed): L toggles auto (ADV+0x47c bit 0; sounds "son"/off), R toggles skip
-  (bit 1), cancel/X/Y while auto or skip is on turns both off; ZL `0x7100012c80` (JumpPrev, confirmation, setting
-  v11 changes its text), ZR `0x7100012f80` (JumpNext); inside an event: confirm shows a hint overlay (+0x4a0: in 32,
-  hold 120, out 32), cancel skips the event (`0x710000f600`); otherwise **Y opens the SystemMenu** (`0x7100013320`,
-  task 0x298 bytes, ctor `0x710001c100`, sound "page"), **X opens the backlog** (`0x7100013400`, MessageBrowser
-  built from the Context's GameData via `0x71000aaf90`; "error" if not possible), **B hides the window**
-  (`0x7100013720`, HiddenWindow task 0x88, ctor `0x710001bd80`), **Up (repeat) rolls back to the previous save
-  point** (`0x71000137f0`: checkpoint `0x710000f220`, loads it with mode 1, "decide"; "error" if none), confirm or
-  Down advances the message (`0x71000b1b10`) and also ends an interruptible WAIT.
+  (bit 1), cancel/X/Y while auto or skip is on turns both off; bit 8 (+) `0x7100012c80` (JumpNext, "Skip this
+  chapter?", confirmation; setting v11 changes its text), bit 9 (-) `0x7100012f80` (JumpPrev); inside an event:
+  confirm shows a hint overlay (+0x4a0: in 32, hold 120, out 32), cancel skips the event (`0x710000f600`); otherwise
+  **Y opens the SystemMenu** (`0x7100013320`, task 0x298 bytes, ctor `0x710001c100`, sound "page"), **X opens the
+  backlog** (`0x7100013400`, MessageBrowser built from the Context's GameData via `0x71000aaf90`; "error" if not
+  possible), **B hides the window** (`0x7100013720`, HiddenWindow task 0x88, ctor `0x710001bd80`), **Up (repeat)
+  rolls back to the previous save point** (`0x71000137f0`: checkpoint `0x710000f220`, loads it with mode 1,
+  "decide"; "error" if none), confirm or Down (mask `0x12000000`, bits 25 and 28) advances the message
+  (`0x71000b1b10`) and also ends an interruptible WAIT.
 - **isSkipping** `0x7100012430` = skip bit on, not in an event, message state allows it, and (v11 == 0 or the
   current message is read, Context+0x2dd9). Auto mode test `0x71000122f0` is the same with bit 0 and no read test.
 - **Text speed** (`0x71000b04a0`): the layouter's default draw speed is 100 for message box type 5, else **v9**.
@@ -82,17 +82,17 @@ low / none. Fix: S < 1 h, M < 1 day, L more.
 
 | Original (address) | shin counterpart | Status | What differs / evidence | Impact | Fix |
 |---|---|---|---|---|---|
-| Main loop `0x7100026d50` | `shin/src/app.rs` `App::update` | diverges | No current-scene/pending-factory switch (App owns one `Adv`); BGM player is updated inside the ADV, not globally; no TouchEffect. Play time counting matches (`adv/mod.rs:314`, same /60 and clamp). | medium (no way to leave the ADV) | M |
-| `shin::Scene` (typeinfo `0x71001d3e20`) + factories `Create*` (lambda names, `lambdas.txt`); switch `0x7100027370` (31 call sites) | none | structural / missing | shin has no scene abstraction; see Structural 1 | high (blocks every menu) | M |
-| `shin::Task`, `TaskPool` (vtable `0x7100223378`: add `0x7100100930`, isEmpty `vfunc_2`, update `vfunc_3`, render `vfunc_4`), `UITask`, `UpdateTask` | none | structural / missing | Menus are Tasks pushed on the current scene's pool; an open task takes input and freezes voice-focus updates (ADV `0x7100010fb0`) | high | M |
+| Main loop `0x7100026d50` | `shin/src/app.rs` `App::update` | diverges | Scene switch, one shared BGM player and the TouchEffect over every scene are in. Play time counts only while the ADV runs (`shin/src/adv/mod.rs`, same /60 and clamp), not in every scene | low | S |
+| `shin::Scene` (typeinfo `0x71001d3e20`) + factories `Create*` (lambda names, `lambdas.txt`); switch `0x7100027370` (31 call sites) | `shin/src/app.rs` `Scene`, `App::switch_scene` | matches | One scene at a time; a change crossfades from a snapshot of the old screen | none | - |
+| `shin::Task`, `TaskPool` (vtable `0x7100223378`: add `0x7100100930`, isEmpty `vfunc_2`, update `vfunc_3`, render `vfunc_4`), `UITask`, `UpdateTask` | `shin/src/adv/menu/mod.rs` | matches | The top task takes the input; the ADV's buttons work only while the pool is empty | none | - |
 | `AsyncQueue` / `AsyncQueue::Task`, `X::First` loader tasks | `shin-tasks`, `AssetServer::load` | matches (functionally) | Each `First` loads `/x.txa` asynchronously then builds the menu; shin's async asset loads do the same job | none | - |
-| Pad input `0x71000c4300`, copy `0x71000c4900` | `shin-input` (gilrs + keyboard + mouse), `app.rs` `AppAction` | diverges | Repeat timings match (`ActionData60Fps` is tick-exact; the dynamic variant approximates). But `AppAction::lower` reads keyboard and mouse only: the gamepad state gilrs collects is never mapped; no confirm/cancel swap; no L/R/ZL/ZR/X/Y equivalents | high for controller players | S |
-| ADV button handling `0x7100011f08` (see above) | `adv/mod.rs` `handle_input` | diverges | shin: Enter/Space/click advance, Ctrl **held** = fast-forward of everything (read or not), F5 save. Missing: auto mode, skip toggle, v11 read-only skip, rollback (Up), backlog (X), system menu (Y), hide window (B), JumpPrev/Next (ZL/ZR), event skip, Down = advance | high | M |
-| `GestureRecognizer::Listener`, `ADV::OnTap` | `PointerTracker` (`layer/user/minigame.rs`), click = advance | diverges | Touch gestures (swipes for backlog/menus) not modelled; click-to-advance roughly matches a tap | low on PC | M |
-| `TouchEffect` (vtable `0x7100224e58`, update `0x7100115d70`, v17) | none | missing | Particle ring at touch points (FirstBoot `0x7100027300` creates it) | low | S |
+| Pad input `0x71000c4300`, copy `0x71000c4900` | `shin-input` (gilrs + keyboard + mouse), `shin/src/bindings.rs`, `app.rs` `AppAction` | diverges | Keyboard, mouse and gamepad go through a binding table (rebindable); repeat timings match. No confirm/cancel swap flag (`0x71000fc1f0`); the player can rebind instead | low | S |
+| ADV button handling `0x7100011f08` (see above) | `shin/src/adv/mod.rs` | diverges | Auto, skip, v11, rollback, backlog, system menu, hide window, +/- chapter jumps and event skip are in. Down does not advance the message (default binding: menus only). Port extra: holding Ctrl skips under the same rules | low | S |
+| `GestureRecognizer::Listener`, `ADV::OnTap` | `shin/src/ui/gesture.rs`, `shin/src/adv/mod.rs`, `shin/src/adv/touch_buttons.rs` | matches | Taps, drags and flicks with the mouse as one finger; the ADV's flicks and touch buttons are in | none | - |
+| `TouchEffect` (vtable `0x7100224e58`, update `0x7100115d70`, v17) | `shin/src/ui/touch_effect.rs` | matches | Ripples and drag stars over every scene, gated by v17 | none | - |
 | `SystemEventDelegate` | `shin-window` focus handling | n/a | Suspend/resume on Switch | none | - |
-| `Trophy::Installer`, TROPHY | `adv/command/trophy.rs` (stub) | stub | Nothing to install on PC; could map to achievements | none | - |
-| `ScenarioSelectBridge` + `CreateScenarioSelectBridge(int)` | none | missing | Transitional scene that starts an ADV for a scenario id | high (part of game flow) | S |
+| `Trophy::Installer`, TROPHY | `shin/src/adv/command/trophy.rs` (stub) | stub | Nothing to install on PC; could map to achievements | none | - |
+| `ScenarioSelectBridge` + `CreateScenarioSelectBridge(int)` | `shin/src/scenario_select.rs` `Bridge` | matches | The door-opening transition that starts an ADV for a scenario id | none | - |
 
 ### 1b. Menus and modes (60 RTTI classes; grouped with their `First`/`Viewer` helpers)
 
@@ -101,44 +101,43 @@ other assets, then replaces itself with `X`; `X` is a 13-slot Task (overlay insi
 Scene; lambda names give its methods (`Start` = open animation, `Close`/`Exit` = close animation, `Decide`, `Main`).
 Sounds go through `SysSePlayer::play` with names from pointers: "decide" `*0x7100226740`, "move" `*0x71002267e0`,
 "error" `*0x7100226748`, "cancel" `*0x71002267d8`, "page" `*0x7100226750`, "son" `*0x7100226738`, "notify1/2"
-`*0x7100226718/20`. shin has none of these menus; status is **missing** for every row unless noted.
+`*0x7100226718/20`. Each row ends with its shin counterpart and status. Impact and Fix give what is left.
 
 | Original (address) | What it is / does | Entered from | Depends on | Impact | Fix |
 |---|---|---|---|---|---|
-| `FirstBoot` (Scene; vtable `0x71001d90b0`; update `0x7100065300`, render `0x7100065720`; `CreateFirstBoot`) | Boot: system assets (`/systex.txa` load `0x7100065d24`, `/system.fnt` `0x7100065ae8`), logo sequence from a table at `*0x7100226cb8` (0x18-byte entries, frame count at +8; 60-frame fades, `0x710015a778`), then the `LoadGame` task (`0x71000d5290`); its callback `0x71000664d0` sets the play-time clock; then `CreateTitle` (`0x7100066530`) | process start | LoadGame | medium | S |
-| `LoadGame` (Task `0x7100220860`; read job `0x71000d4890`; `SubErrorAlert`, `InheritAlert` lambdas) | Reads SAVEDATA; corrupt / newer-version dialogs | FirstBoot | dialogs | low | S |
-| `SaveGame` (Task `0x7100220828`; job `0x71000d3ce0`; create `0x71000d52f0`) | Writes SAVEDATA (>= 1 s, with an indicator, `SaveGame::Update` lambdas) | EXIT `0x71000147e0`, title return, config close if changed `0x71000609b0`, manual save `0x71000daafc`, delete `0x71000db6c0` | - | low | S |
-| shin: `savedata.rs` | **diverges**: writes on F5, EXIT, window close; unreadable file moved aside instead of an alert | | | low | - |
-| `Title` (no RTTI for the class itself; `Title::First` `0x7100223fe0` vfunc_3 `0x71001112d0`; `CreateTitle(int)`; methods `StartMenu`, `MenuItemOut`, `Start`, `Decide` (3 lambdas), `Continue`, `DebugMenu`) | Title screen: `/title.txa` (load `0x7100113be4`), background `/title/bg%02d.pic` (`0x7100113df0`, number chosen at runtime); fade-in 60 frames, or 90 frames with property 66 (blur) tweened to 0 when `+0x22c < 0`. Continue = new ADV from `Global.auto` (`0x7100112670`). DebugMenu writes persist slots ("unlock all", `0x7100112890..`). Scene switches from title decisions at `0x710010e368..0x710010e588` | FirstBoot, EXIT, system menu "return to title", TitleDemo exit | SaveMenu, ConfigMenu, ScenarioSelect, extras, ManualViewer | high | M |
-| `Title::SubMenu` (Task `0x7100223f08`; `MenuItemIn/Out`, `Decide` x3) | Second-level title menu (inferred: the extras list) | Title | modes below | medium | S |
-| `TitleDemo` (Scene `0x7100224a80`; `CreateTitleDemo`; `Start`, `Exit`; 2 `First` lambdas) | Attract demo after idle on the title (inferred) | Title idle | movie playback | low | S |
-| `ScenarioSelect` (Scene `0x71002215a8`, update `0x71000de100`; `CreateScenarioSelect`; `Main`, `Decide`, `Close`) | Saku's story-piece selector: `/snrsel.txa` (`0x71000e35b0`); entries' states are persist slots `scenario_id + 1` (spec_save 6.1) | Title (new game), EXIT | persist data, ScenarioSelectBridge | high | M |
-| `ADV::SystemMenu` (Task `0x71001d45a0`, ctor `0x710001c100`, update `0x710001d000`; `Decide` + 8 `Decide2` lambdas) | In-game menu: vertical list (0xb8-byte items, up/down with wrap, "move"; confirm `0x710001e010`; cancel/Y "cancel"); shows play time `%d時間 %d分` (`0x710015b467`, capped 999:59) at x 756, size 38. Items lead to save, load, config, title (`0x710001ff98` -> SaveGame) etc. (inferred from the lambdas) | ADV Y | SaveMenu, ConfigMenu, SaveGame | high | M |
-| `ADV::HiddenWindow` (Task `0x71001d44c8`, ctor `0x710001bd80`) | Hides the message window until a press | ADV B | - | medium | S |
-| `SaveMenu` + `First` (Task `0x7100220c28`; ctor `0x71000d5b40`; `Save`, `Load`, `Delete`, `Decide`, `Start`, `Close`, `Exit`) | 100 manual slots + auto, `/saveload.txa` (`0x71000dc290`); cursor = `save_menu_position`, scroll `clamp(pos*186 - 279, 0, 17856)`; save `0x71000da920`, load `0x71000db120` -> new ADV; thumbnails are **rendered by replaying each slot** (`ThumbMaker::StateBuilder`, spec_save 4.5) | system menu, title | ThumbMaker (replay + off-screen render), SaveGame, ADV restart from GameData | high | L (M without thumbnails) |
-| `ConfigMenu` + `First` + `MenuItem` / `ButtonMenuItem` (0x80) / `SliderMenuItem` (0xd0) (Task `0x71001d7dc0`; `InitMenu` `0x7100058e90` with 14 item lambdas; `ResetDefault`; `Close`/`_Close`) | Edits Global settings (ids in spec_save section 7); `/config.txa` (`0x7100060d90`); on close compares with a copy (`0x71000d13c0`) and writes the save if changed | system menu, title | Settings plumbing (Structural 2) | high | M |
-| `MessageBrowser` + `First` + `ChapterSelector` + `LogBuilder` + `Layouter` (Task `0x71001dc010`; `Main`, `QuickLoad`, `OnTap`) | Backlog: `/logview.txa` (`0x71000ad9b0`); LogBuilder (ctor `0x71000a3280`, a `Scripter::Listener`) **re-runs the VM over a copy of the GameData and persist data** to rebuild past lines (SGET `0x71000ab130`, SELECT `0x71000ab4a0`, QUIZ `0x71000abed0`); voices can be replayed (v4 read `0x71000a3f84`, v8 read `0x71000a493c`); QuickLoad jumps to a line by starting a new ADV from a GameData it builds (`0x71000ad068`) | ADV X | VM replay without side effects (shin's `replay_command` is the base), message layouter, voice player, ADV restart | high | L |
-| `ManualViewer` + `First` (Task `0x71001da678`) | Paged manual images `/manual.txa` (`0x7100087850`) | title, system menu (inferred) | - | low | S |
-| `TipsMode` + `First` (Task `0x71002239d0`) | Tips list `/tips.txa` (`0x710010af64`); entries unlocked by TIPSGET (stub in shin) | title / system menu (inferred) | TIPSGET state | medium | M |
-| `CharsMode` + `First` (Task `0x71001d76b0`; `ChangePage`, `ChangeChar`, `ChangeStatus`, `ChangeDress`) | Character profiles `/chars.txa` (`0x7100056230`); state from CHARS/SHOWCHARS (stubs in shin) | title / system menu (inferred) | CHARS state | medium | M |
-| `CGMode` + `First` + `Viewer` (Scene `0x71001d6ee8`; `CreateCGMode`) | CG gallery `/cgmode.txa` (`0x710004d2a0`) | title extras | `unlocked_cgs` (never written by shin, see 1d) | medium | M |
-| `BGMMode` + `First` (Scene `0x71001d5df0`; `CreateBGMMode`; `Close`) | Music room `/bgmmode.txa` (`0x7100033180`); calls `0x71000fc3b0` (v18 related) | title extras | `unlocked_bgms`, BGM player | medium | M |
-| `MovieMode` + `First` + `Viewer` (Scene `0x71001daa88`; `CreateMovieMode`) | Movie gallery `/moviemode.txa` (`0x710008b340`) | title extras | `unlocked_movies`, movie playback | low | M |
-| `BustupMode` + `First` + `Viewer` (Scene `0x71001d63d0`; `ChangeBustup`, `ChangeBg`, `Hidden`) | Sprite viewer `/bupmode.txa` (`0x710003f164`) | title extras | bustup layer | low | M |
+| `FirstBoot` (Scene; vtable `0x71001d90b0`; update `0x7100065300`, render `0x7100065720`; `CreateFirstBoot`) | Boot: system assets (`/systex.txa` load `0x7100065d24`, `/system.fnt` `0x7100065ae8`), logo sequence from a table at `*0x7100226cb8` (0x18-byte entries, frame count at +8; 60-frame fades, `0x710015a778`; dead code in v1.0.3, engine-internals §15), then the `LoadGame` task (`0x71000d5290`); its callback `0x71000664d0` sets the play-time clock; then `CreateTitle` (`0x7100066530`). **shin:** `shin/src/app.rs` `App::new` (loads the save, then TitleDemo); matches | process start | LoadGame | none | - |
+| `LoadGame` (Task `0x7100220860`; read job `0x71000d4890`; `SubErrorAlert`, `InheritAlert` lambdas) | Reads SAVEDATA; corrupt / newer-version dialogs. **shin:** `shin/src/savedata.rs`; diverges: no dialogs, an unreadable save is logged and nothing is saved that session (the file is kept) | FirstBoot | dialogs | low | S |
+| `SaveGame` (Task `0x7100220828`; job `0x71000d3ce0`; create `0x71000d52f0`) | Writes SAVEDATA (>= 1 s, with an indicator, `SaveGame::Update` lambdas). **shin:** `shin/src/savedata.rs`, `shin/src/adv/menu/save_notice.rs`; matches | EXIT `0x71000147e0`, title return, config close if changed `0x71000609b0`, manual save `0x71000daafc`, delete `0x71000db6c0` | - | none | - |
+| `Title` (no RTTI for the class itself; `Title::First` `0x7100223fe0` vfunc_3 `0x71001112d0`; `CreateTitle(int)`; methods `StartMenu`, `MenuItemOut`, `Start`, `Decide` (3 lambdas), `Continue`, `DebugMenu`) | Title screen: `/title.txa` (load `0x7100113be4`), background `/title/bg%02d.pic` (`0x7100113df0`, number chosen at runtime); fade-in 60 frames, or 90 frames with property 66 (blur) tweened to 0 when `+0x22c < 0`. Continue = new ADV from `Global.auto` (`0x7100112670`). DebugMenu writes persist slots ("unlock all", `0x7100112890..`). Scene switches from title decisions at `0x710010e368..0x710010e588`. **shin:** `shin/src/title.rs`; matches (DebugMenu not ported; unverified whether retail can reach it) | FirstBoot, EXIT, system menu "return to title", TitleDemo exit | SaveMenu, ConfigMenu, ScenarioSelect, extras, ManualViewer | none | - |
+| `Title::SubMenu` (Task `0x7100223f08`; `MenuItemIn/Out`, `Decide` x3) | The episode list of Characters and Tips on the title (`0x710010f0a0`). **shin:** `shin/src/title.rs` `SubMenu`; matches | Title | CharsMode, TipsMode | none | - |
+| `TitleDemo` (Scene `0x7100224a80`; `CreateTitleDemo`; `Start`, `Exit`; 2 `First` lambdas) | The opening movie (movie table entry 0) before the title; confirm, + or a tap skips it. **shin:** `shin/src/title_demo.rs`; matches (whether the title also returns to it after idle is unverified) | boot | movie playback | none | - |
+| `ScenarioSelect` (Scene `0x71002215a8`, update `0x71000de100`; `CreateScenarioSelect`; `Main`, `Decide`, `Close`) | Saku's story-piece selector: `/snrsel.txa` (`0x71000e35b0`); entries' states are persist slots `scenario_id + 1` (spec_save 6.1). **shin:** `shin/src/scenario_select.rs`; matches | Title (new game), EXIT | persist data, ScenarioSelectBridge | none | - |
+| `ADV::SystemMenu` (Task `0x71001d45a0`, ctor `0x710001c100`, update `0x710001d000`; `Decide` + 8 `Decide2` lambdas) | In-game menu: vertical list (0xb8-byte items, up/down with wrap, "move"; confirm `0x710001e010`; cancel/Y "cancel"); shows play time `%d時間 %d分` (`0x710015b467`, capped 999:59) at x 756, size 38. Items: save, load, config, characters, tips, manual, title (`0x710001ff98` -> SaveGame). **shin:** `shin/src/adv/menu/system_menu.rs`; matches | ADV Y | SaveMenu, ConfigMenu, SaveGame | none | - |
+| `ADV::HiddenWindow` (Task `0x71001d44c8`, ctor `0x710001bd80`) | Hides the message window until a press. **shin:** `shin/src/adv/menu/hidden_window.rs`; matches | ADV B | - | none | - |
+| `SaveMenu` + `First` (Task `0x7100220c28`; ctor `0x71000d5b40`; `Save`, `Load`, `Delete`, `Decide`, `Start`, `Close`, `Exit`) | 100 manual slots + auto, `/saveload.txa` (`0x71000dc290`); cursor = `save_menu_position`, scroll `clamp(pos*186 - 279, 0, 17856)`; save `0x71000da920`, load `0x71000db120` -> new ADV; thumbnails are **rendered by replaying each slot** (`ThumbMaker::StateBuilder`, spec_save 4.5). **shin:** `shin/src/adv/menu/save_menu.rs`, `shin/src/adv/menu/thumbnail.rs`; matches (thumbnails leave out movie layers and render at window size before halving) | system menu, title | ThumbMaker (replay + off-screen render), SaveGame, ADV restart from GameData | low | M |
+| `ConfigMenu` + `First` + `MenuItem` / `ButtonMenuItem` (0x80) / `SliderMenuItem` (0xd0) (Task `0x71001d7dc0`; `InitMenu` `0x7100058e90` with 14 item lambdas; `ResetDefault`; `Close`/`_Close`) | Edits Global settings (ids in spec_save section 7); `/config.txa` (`0x7100060d90`); on close compares with a copy (`0x71000d13c0`) and writes the save if changed. **shin:** `shin/src/adv/menu/config_menu.rs` (plus a port-only PC tab, `shin/src/port_settings.rs`); matches | system menu, title | settings read each frame | none | - |
+| `MessageBrowser` + `First` + `ChapterSelector` + `LogBuilder` + `Layouter` (Task `0x71001dc010`; `Main`, `QuickLoad`, `OnTap`) | Backlog: `/logview.txa` (`0x71000ad9b0`); LogBuilder (ctor `0x71000a3280`, a `Scripter::Listener`) **re-runs the VM over a copy of the GameData and persist data** to rebuild past lines (SGET `0x71000ab130`, SELECT `0x71000ab4a0`, QUIZ `0x71000abed0`); voices can be replayed (v4 read `0x71000a3f84`, v8 read `0x71000a493c`); QuickLoad jumps to a line by starting a new ADV from a GameData it builds (`0x71000ad068`). **shin:** `shin/src/adv/menu/backlog.rs`, `shin/src/adv/menu/chapter_list.rs`, LogBuilder in `shin/src/adv/mod.rs`; matches (v8 is not read; its meaning is open) | ADV X | VM replay (`replay_command`), message layouter, voice player, ADV restart | none | - |
+| `ManualViewer` + `First` (Task `0x71001da678`) | Paged manual images `/manual.txa` (`0x7100087850`). **shin:** `shin/src/adv/menu/manual.rs`; matches | title, system menu | - | none | - |
+| `TipsMode` + `First` (Task `0x71002239d0`) | Tips list `/tips.txa` (`0x710010af64`); entries unlocked by TIPSGET. **shin:** `shin/src/adv/menu/tips.rs`; matches | title (per episode), system menu (collected tips) | TIPSGET state | none | - |
+| `CharsMode` + `First` (Task `0x71001d76b0`; `ChangePage`, `ChangeChar`, `ChangeStatus`, `ChangeDress`) | Character profiles `/chars.txa` (`0x7100056230`); state from CHARS/SHOWCHARS. **shin:** `shin/src/adv/menu/chars.rs`; matches | title (per episode), system menu | CHARS state | none | - |
+| `CGMode` + `First` + `Viewer` (Scene `0x71001d6ee8`; `CreateCGMode`) | CG gallery `/cgmode.txa` (`0x710004d2a0`). **shin:** `shin/src/picture_box.rs`; matches (the viewer pans with the d-pad and pointer, not the left stick) | title extras | `unlocked_cgs` (`shin/src/adv/unlocks.rs`) | low | S |
+| `BGMMode` + `First` (Scene `0x71001d5df0`; `CreateBGMMode`; `Close`) | Music room `/bgmmode.txa` (`0x7100033180`); calls `0x71000fc3b0` (v18 related; read by the port as the console's keep-awake request, n/a on PC). **shin:** `shin/src/music_box.rs`; matches | title extras | `unlocked_bgms`, BGM player | none | - |
+| `MovieMode` + `First` + `Viewer` (Scene `0x71001daa88`; `CreateMovieMode`) | Movie gallery `/moviemode.txa` (`0x710008b340`). **shin:** `shin/src/movie_box.rs`; matches | title extras | `unlocked_movies`, movie playback | none | - |
+| `BustupMode` + `First` + `Viewer` (Scene `0x71001d63d0`; `ChangeBustup`, `ChangeBg`, `Hidden`) | Sprite viewer `/bupmode.txa` (`0x710003f164`). **shin:** `shin/src/character_box.rs`; matches (loads synchronously; the viewer does not pan with the left stick) | title extras | bustup layer | low | S |
 | `CharsMode` typeinfo copies (`0x710005580c` ...) | inventory artefacts (string matches inside code), not classes | - | - | none | - |
 
 ### 1c. Audio and video (13 RTTI classes + the RTTI-less SePlayer)
 
 | Original (address) | shin counterpart | Status | What differs / evidence | Impact | Fix |
 |---|---|---|---|---|---|
-| `VoicePlayer` (vtable `0x71002251b8`; play `0x710011a000`, update `0x710011ab70`, stop `0x710011a6b0`, status `0x710011a980`) | `shin/src/audio/voice_player.rs` | **stub** | `play` returns false, `stop` and status do nothing; VOICEPLAY (`voiceplay.rs`) only logs TODO. **39,649 of 72,998 MSGSETs carry `@v`**: the game is silent where the Switch is voiced. Missing too: 5-frame stop fade, grouped start, v2 gain, v5 pan, v19 per-character filter (`0x71000eadc0`), lip-sync amplitude (`shin-audio` `get_amplitude` unused) | **high** | M-L |
-| `BGMPlayer` (vtable `0x71001d61d8`; play `0x71000337f0`, update `0x7100033eb0`, status `0x7100033e00`, position `0x7100033e70`) | `audio/bgm_player.rs` | diverges | (1) v0 never applied (music 1/0.7 = 1.43x louder than default); (2) no voice-focus duck; (3) BGMPLAY of the playing id restarts the track (original: volume retarget only; 4 such sites in linear script order); (4) old track is cut in 15 ms instead of fading over max(fade, 4) frames; (5) no BGM unlock; (6) no song-title banner (v15). Status bits and position match | medium | S |
-| SePlayer (no RTTI; ADV+0xc0; play `0x71000f2580`, update `0x71000f3210`, stop `0x71000f2b30`, stopAll `0x71000f2d20`, status `0x71000f2fd0`) | `audio/se_player.rs`, `seplay.rs`, `sestop.rs`, `sevol.rs` | diverges | (1) v1 never applied; (2) no duck of looping channels; (3) **re-issuing the playing looping SE on the same slot restarts it** (original continues and retargets; ~750 such sites in linear order: ambient loops audibly restart); (4) stops with fade 0 cut instantly (original >= 4 frames); (5) **fast-forward still plays every one-shot SEPLAY** (original: skip mode plays nothing, stops the slot); (6) SEONCE/SESTOPALL use fast-forward instead of `isSkipping` (shortcut noted in code). Pan formula in `shin-audio/src/sound.rs:226` is wrong (`pan.sqrt()` is NaN for pan < 0, centre is 0.5) but every SEPLAY/SEONCE in main.snr has pan 0 and speed 1000 | medium | S |
-| `SystemSound` (vtable `0x7100223318`; play `0x71000ff620` via `SysSePlayer::play` `0x71000272b0`) | `audio/sys_se.rs` | diverges | v3 not applied (1/0.55 = 1.8x too loud). Only SYSSE uses it in shin; all menu sounds are missing with the menus | low | S |
+| `VoicePlayer` (vtable `0x71002251b8`; play `0x710011a000`, update `0x710011ab70`, stop `0x710011a6b0`, status `0x710011a980`) | `shin/src/audio/voice_player.rs`, `shin/src/adv/command/voiceplay.rs` | matches | Grouped start, v2 gain, 5-frame stop fade, v5 pan to the speaker's bustup, v19 per-character switches (`0x71000eadc0`), lip-sync from a level table. Not done: `@x` voice segments (unused by Umineko) | none | - |
+| `BGMPlayer` (vtable `0x71001d61d8`; play `0x71000337f0`, update `0x7100033eb0`, status `0x7100033e00`, position `0x7100033e70`) | `shin/src/audio/bgm_player.rs`, `shin/src/adv/command/bgmplay.rs` | matches | v0 gain, voice-focus duck, same-id retarget, crossfade over max(fade, 4) frames, unlock, song-title banner. The duck target also moves while a menu is open (original: only with an empty task pool); unverified whether audible | none | - |
+| SePlayer (no RTTI; ADV+0xc0; play `0x71000f2580`, update `0x71000f3210`, stop `0x71000f2b30`, stopAll `0x71000f2d20`, status `0x71000f2fd0`) | `shin/src/audio/se_player.rs`, `seplay.rs`, `seonce.rs`, `sestop.rs`, `sestopall.rs`, `sevol.rs` | matches | v1 gain, duck of looping channels, looping re-issue keeps playing, 4-frame stop floor, skip-mode one-shots stop the slot, SEONCE follows `isSkipping`. Play speed is ignored (every SEPLAY in main.snr uses 1000); SEONCE's automatic channels stop without the 4-frame floor (unverified whether the original's stopAll applies it). The pan formula in `shin-audio/src/sound.rs` is fixed | none | - |
+| `SystemSound` (vtable `0x7100223318`; play `0x71000ff620` via `SysSePlayer::play` `0x71000272b0`) | `shin/src/audio/sys_se.rs` | matches | v3 applied; the menus play their sounds through it | none | - |
 | `StreamSound` (vtable `0x7100222f80`; set gain `0x71000f5390`) | `shin-audio` `AudioSound` (kira) | matches | Linear gain; loop from the file's loop point; bit 1 "not started" never set because shin starts synchronously (equivalent) | none | - |
 | `Audio::Delegate`, `Audio::Voice`, `Audio::Voice::Delegate`, `Audio::VoiceImpl` (slot 8 `0x710002bb40` = set gain) | `shin-audio` + kira/cpal | matches | Linear gain clamp >= 0 matches `Volume` (0..1000 -> 0..1 linear) | none | - |
 | `AudioDecoder` / `AudioDecoderImpl` | `shin-core/src/format/audio` | matches | Plays every BGM/SE in use | none | - |
-| `Movie`, `MovieImpl` (vtable `0x71001dd4c0..`), `MovieImpl::StreamReader`, `movie::ClientStreamReader`, `MovieLayer::Shared` (`0x71000c29c0`) | `shin-video`, `layer/user/movie_layer.rs` | diverges | (1) settings gain not applied (`movie_layer.rs:59` TODO; original uses v0/v1/v2 by volume source); (2) **repeat unsupported** (8 LAYERLOADs with repeat = 1: the clip stops instead of looping); (3) transparency modes unsupported (warn); (4) AAC seek `todo!` (`shin-video/src/audio.rs:103`). 758 movie loads pass volume 0 (silent in both) and 69 pass 1000 | medium | M |
+| `Movie`, `MovieImpl` (vtable `0x71001dd4c0..`), `MovieImpl::StreamReader`, `movie::ClientStreamReader`, `MovieLayer::Shared` (`0x71000c29c0`) | `shin-video`, `shin/src/layer/user/movie_layer.rs` | matches | Settings gain by volume source, repeat and transparency are in. Open: the movie layer's fast-forward does nothing and AAC seek is a `todo!` (`shin-video/src/audio.rs`); whether either is ever reached is unverified. 758 movie loads pass volume 0 (silent in both) and 69 pass 1000 | low | S |
 
 ### 1d. Data, files and assets (20 RTTI classes)
 
@@ -146,145 +145,73 @@ Sounds go through `SysSePlayer::play` with names from pointers: "decide" `*0x710
 |---|---|---|---|---|---|
 | `SourceMedia`, `MountableSourceMedia(Impl)`, `DataSource`, `FileDataSourceImpl`, `File::Handle(Impl)` | `asset/system/locate.rs` (`LayeredAssetIo`), `shin-core/src/format/rom.rs` | matches | patch dir, patch.rom, data dir, data.rom in that order; engine-internals section 3 (patch.rom first) and section 4 (ROM2 confirmed) | none | - |
 | `CachedAssets::CacheDataSource(Impl)`, `RangedCacheDataSourceImpl`, `Data`, `DataImpl`, `MutableData(Impl)`, `RangedDataImpl` | `asset/system/cache.rs`, `server/accessor.rs` | matches (different shape) | Caching and ranged reads; shin's accessor reads synchronously (TODO async) | none | - |
-| `TXA4` | `asset/texture_archive.rs` | matches | used by the minigames and messagebox | none | - |
+| `TXA4` | `asset/texture_archive.rs` | matches | used by the minigames, messagebox and menus | none | - |
 | `Font` | `asset/font.rs` | matches | text area audit | none | - |
 | `MaskTexture` | `asset/mask.rs` | matches | MASKLOAD works | none | - |
 | `RenderTexture`, `DepthStencil` | `shin-render` | matches | | none | - |
 | PIC4, bustup, sysse.bin, scenario, NXA formats | `shin-core/src/format/*` | matches | engine-internals sections 4, 5 confirmed | none | - |
-| Global SaveData (`0x7100229218`), file format | `shin-core/src/format/save`, `savedata.rs` | matches (format) / **diverges (contents)** | Format, obfuscation, defaults `0x71000d2110` match (spec_save 6.5, 7). But shin never writes **seen messages** (+0x20; written by the MessageLayer listener `0x7100014f50`/`0x7100014fa0` in the original) nor **unlocked CGs/BGMs/movies** (+0x68/+0x80/+0x98; `0x7100020470`, `0x71000337f0`, UNLOCK): grep finds no writer in `shin/src`. A Switch save keeps its old sets; new play adds nothing | medium now, high once skip/galleries exist | S |
-| Settings (Global+0xb0) | `Settings` in `format/save/mod.rs` | **diverges: parsed, never applied** | See 1e | high | S (after Structural 2) |
+| Global SaveData (`0x7100229218`), file format | `shin-core/src/format/save`, `shin/src/savedata.rs` | matches | Format, obfuscation, defaults `0x71000d2110` match (spec_save 6.5, 7). Seen messages are written when a line finishes (`0x7100014f50`, `shin/src/adv/mod.rs`); CG/BGM/movie unlocks (+0x68/+0x80/+0x98; `0x7100020470`, `0x71000337f0`, UNLOCK) in `shin/src/adv/unlocks.rs` | none | - |
+| Settings (Global+0xb0) | `Settings` in `format/save/mod.rs` | matches | Read from the save data each frame by the players, message layer and HUD (`AdvState::apply_settings`); see 1e | none | - |
 
 ### 1e. Settings: what each one does and whether shin applies it
 
 | # | Meaning (spec_save 7 + this audit) | Original reader | shin | Status / visible effect |
 |---|---|---|---|---|
-| v0 70 | BGM volume | `0x7100033eb0`, movies | ignored | diverges: BGM 1.43x louder |
-| v1 70 | SE volume | `0x71000f3210`, movies | ignored | diverges: SE 1.43x louder |
-| v2 90 | voice volume; 0 = voices not started | `0x710011ab70`, MessageLayer `0x71000b1eb8`/`0x71000b2290` | hard-coded 90 (`message_layer/mod.rs:292`) | stub (no voices) |
-| v3 55 | system sound volume | `0x71000ff620` | ignored | diverges: 1.8x louder |
-| v4 0 | voice focus (BGM and looping SE x0.5 while a voice plays, 0.04/frame) | ADV `0x7100011670` | missing | missing (no effect at default) |
-| v5 1 | voice pans with the speaker | VoicePlayer | missing | stub |
-| v6 0 | keep the voice playing past a last/auto-click wait when 1 | MessageLayer `0x71000b1cb4` | hard-coded false (`message_layer/mod.rs:608`) | matches at default |
-| v7, v8, v12, v16 | unknown (v8 read by backlog `0x71000a493c`) | - | - | open |
-| v9 50 | text speed (layouter default speed; 100 for box type 5) | `0x71000b04a0` | **hard-coded 80** (`message_layer/mod.rs:413`) | diverges: every line types faster than the Switch default |
-| v10 50 | auto-advance: delay x (100 - v10)/100 | `0x71000b1ff0` | **hard-coded 80** (`message_layer/mod.rs:789`) | diverges: auto waits 2.5x shorter than default |
-| v11 1 | skip only read lines (also JumpPrev/Next text) | `isSkipping` `0x7100012430`, MSGSET `0x71000052b4` | ignored; Ctrl skips everything | diverges |
-| v13 85 | message window opacity | `0x71000b47fc` | hard-coded 0.85 (`messagebox.rs:72`) | matches at default |
-| v14 1 | scene-title banner (AUTOSAVE) | `0x7100064480` | banner missing | missing |
-| v15 1 | song-title banner (BGMPLAY) | `0x710009e590` | banner missing | missing |
-| v17 1 | touch effect | FirstBoot -> `0x7100027300` | missing | missing (low on PC) |
-| v18 0 | unknown; ADV and BGMMode call `0x71000fc3b0` (sets a float at `0x7100242010` to 55.0) | ADV `0x71000113b0` | - | open |
-| v19 all | voice filter bit mask per character | `0x71000eadc0` | missing | stub |
+| v0 70 | BGM volume | `0x7100033eb0`, movies | `audio/bgm_player.rs`, `audio/sys_se.rs` (movies) | matches |
+| v1 70 | SE volume | `0x71000f3210`, movies | `audio/se_player.rs`, `audio/sys_se.rs` (movies) | matches |
+| v2 90 | voice volume; 0 = voices not started | `0x710011ab70`, MessageLayer `0x71000b1eb8`/`0x71000b2290` | `audio/voice_player.rs`, `layer/message_layer/mod.rs` | matches |
+| v3 55 | system sound volume | `0x71000ff620` | `audio/sys_se.rs` | matches |
+| v4 0 | voice focus (BGM and looping SE x0.5 while a voice plays, 0.04/frame) | ADV `0x7100011670` | `adv/mod.rs` `apply_settings` | matches |
+| v5 1 | voice pans with the speaker | VoicePlayer | `audio/voice_player.rs` | matches |
+| v6 0 | keep the voice playing past a last/auto-click wait when 1 | MessageLayer `0x71000b1cb4` | `layer/message_layer/mod.rs` | matches |
+| v7, v8, v12, v16 | unknown (v8 read by backlog `0x71000a493c`) | - | not read | open |
+| v9 50 | text speed (layouter default speed; 100 for box type 5) | `0x71000b04a0` | `layer/message_layer/mod.rs` | matches |
+| v10 50 | auto-advance: delay x (100 - v10)/100 | `0x71000b1ff0` | `layer/message_layer/mod.rs` | matches |
+| v11 1 | skip only read lines (also JumpPrev/Next text) | `isSkipping` `0x7100012430`, MSGSET `0x71000052b4` | `adv/mod.rs` | matches; holding Ctrl (port extra) skips under the same rule |
+| v13 85 | message window opacity | `0x71000b47fc` | `layer/message_layer/messagebox.rs` | matches |
+| v14 1 | scene-title banner (AUTOSAVE) | `0x7100064480` | `adv/hud.rs` | matches |
+| v15 1 | song-title banner (BGMPLAY) | `0x710009e590` | `adv/hud.rs` | matches |
+| v17 1 | touch effect | FirstBoot -> `0x7100027300` | `ui/touch_effect.rs` | matches |
+| v18 0 | unknown; ADV and BGMMode call `0x71000fc3b0` (sets a float at `0x7100242010` to 55.0) | ADV `0x71000113b0` | config item only | n/a on PC if it is the keep-awake request (port's reading, inferred) |
+| v19 all | voice filter bit mask per character | `0x71000eadc0` | `audio/voice_player.rs` | matches |
 
 ---
 
-## 2. Top divergences (ordered by what the player hears and sees)
+## 2. What still differs
 
-1. **No voices** (39,649 voiced lines). Implement `audio/voice_player.rs` after `0x710011a000/ab70/a6b0/a980`: a
-   `Vec<Voice { handle, state: Loading|Playing|Stopping, fade: f32 }>`; start all loading voices together; gain =
-   `v2/100 * fade`; stop = state Stopping, `fade -= 0.2 * dt_frames`, drop at 0; status 3/2/0 as `0x710011a980`.
-   Wire VOICEPLAY (`0x7100007420`: skipped in skip mode, volume x 0.001, flags) and the MessageLayer voice blocks
-   (already call `VoicePlayer::play`). Apply v19 (`0x71000eadc0`: play if any of the line's characters has its bit
-   set in v19) and v5 panning; lip-sync from amplitude after that. Size M-L (file naming of `voice/*` and segment
-   start/duration need a check against the assets).
-2. **Settings are never applied** (text speed 80 instead of v9, auto delay 80 instead of v10, volumes ignored, v11
-   ignored). Pass the Global settings to the message layer and audio players (Structural 2), then: draw speed =
-   `if box type 5 {100} else {v9}`; auto delay `* (100 - v10) / 100`; BGM gain `v0/100`, SE `v1/100`, sys SE
-   `v3/100`, movies by volume source (1 v0, 2 v1, 3 v2); voice only if `v2 != 0`. Size S each.
-3. **No menus and no game flow** (title, save/load, config, backlog, system menu, scenario select). Build order in
-   section 3. Size L overall.
-4. **Looping SEs restart when re-issued, and skip plays every SE.** In `SePlayer::play` keep the channel when
-   `slot` already plays the same `se_id` and both are looping: just `set_volume/set_panning` over `fade`
-   (`0x71000f2580`); otherwise stop the old one with `max(fade, 4)` frames. In SEPLAY/SEONCE/SESTOPALL/BGMPLAY/
-   BGMSTOP/BGMVOL/SESTOP/VOICEPLAY use an `is_skipping` that follows `0x7100012430` (skip toggle, not in an event,
-   v11 read test) instead of "Ctrl held": one-shot SEPLAY stops the slot and plays nothing, fades become 0. Size S.
-5. **Read lines and unlocks are not recorded.** Insert `msg_id` into `seen_messages` when the message layer reports
-   a line finished (`0x7100014f50`; mind the id - 1 convention, engine-internals section 10); insert CG/BGM/movie ids
-   on layer instantiation, BGMPLAY of a new track and UNLOCK (spec_save 6.3). Needed by v11 skip, the read colour,
-   the galleries and the title. Size S.
-6. **ADV controls**: map keyboard and gamepad to the engine bit mask (confirm/cancel 28/29, X/Y, L/R, ZL/ZR, "any
-   direction" 24-27 with the existing repeat), then port `0x7100011f08`: L auto toggle (bit 0 of a mode word), R skip
-   toggle (bit 1), cancel/X/Y stops both, Up = rollback to the previous checkpoint (`0x71000137f0`, the load
-   machinery shin already has), X backlog, Y system menu, B hide window, ZL/ZR JumpPrev/Next, cancel in an event =
-   event skip (`0x710000f600`), Down = advance. Auto mode itself: the auto-click logic exists in the message layer;
-   it needs the mode bit. Size M.
-7. **BGM semantics**: same-id BGMPLAY = volume retarget only; crossfade old tracks over `max(fade, 4)` frames;
-   voice-focus duck 0.5 at 0.04/frame for BGM and looping SE when v4 is set and no task is open
-   (`0x7100010fb0`, `0x7100033eb0`, `0x71000f3210`). Size S.
-8. **Movies**: loop when LAYERLOAD's repeat bit is set (8 uses), apply settings gain by volume source, alpha
-   transparency modes (check the movie table for how many use them). Size M.
-9. **Overlays the script triggers**: the notification pop-up (ADV queue at +0x900; plays "notify1"/"notify2" by bit 4
-   of the queued byte; tweens +0x930: hold 30 frames, flag 0x1000, 180 frames; +0x988: 0 -> 1 over 30, hold, 120,
-   -> 0 over 60; fast-forwarded in skip) used by NOTIFYSET (524), CHARS (511), TIPSGET (21); the song-title banner
-   (BGMPLAY, ADV+0x2e0, v15) and the scene-title banner (AUTOSAVE, ADV+0x1f0, v14). Size M.
-10. **Boot sequence**: FirstBoot logos and LoadGame instead of starting straight in Episode 1 (`app.rs` builds a new
-    game or `--load`). Size S once the scene framework exists.
+1. **Down does not advance the story** (`0x7100011f08` advances on mask `0x12000000`, confirm or any-down); the
+   port's default binding puts Down on the menus only. Size S.
+2. **No confirm/cancel swap** (`0x71000fc1f0`); the HUD's event hint always uses row 0. Rebinding covers the swap.
+3. **LoadGame dialogs** (corrupt / newer save) are not shown; the port logs and saves nothing that session.
+4. **Play time** counts only in the ADV, not in every scene as the main loop `0x7100026d50` does. Size S.
+5. **TROPHY** is a stub (nothing to install on PC).
+6. Small shortcuts noted in the module docs: thumbnails without movie layers, galleries without left-stick panning,
+   synchronous loads in the Character Box, movie fast-forward and AAC seek not done.
 
 ---
 
 ## 3. Structural
 
-1. **Scene + TaskPool framework, in the original's shape.** The original has exactly one current `Scene` and a
-   pending factory (`std::function<Scene*()>`, set by `0x7100027370`, consumed at the top of the next frame by the
-   main loop `0x7100026d50`); each scene owns a `TaskPool` of UI tasks (menus) that get input first and whose
-   emptiness gates the ADV's input and its voice-focus update. Proposal: in `app.rs`,
-   `trait Scene { fn update(&mut self, ctx, input) ; fn render(&self, pass) }`, `scene: Box<dyn Scene>`,
-   `next_scene: Option<Box<dyn FnOnce(&mut SceneCtx) -> Box<dyn Scene>>>`; `Adv` becomes the `ADV` scene;
-   `struct TaskPool(Vec<Box<dyn Task>>)` with `trait Task { fn update(&mut self, ctx, has_focus) -> bool /*done*/;
-   fn render(&self, pass) }`. Scenes: FirstBoot, Title, TitleDemo, ScenarioSelect, ScenarioSelectBridge, ADV,
-   BGMMode, BustupMode, CGMode, MovieMode. Tasks: SaveMenu, ConfigMenu, MessageBrowser, TipsMode, CharsMode,
-   ManualViewer, Title::SubMenu, ADV::SystemMenu, ADV::HiddenWindow, the Viewers, SaveGame/LoadGame (with a job on
-   `shin-tasks`). Without this, every menu would be bolted into `Adv::handle_input` as another early return (the
-   select layer and QUIZ already are), which is how input-priority bugs start.
-2. **One Global (SaveData) owned by the app, read by every subsystem.** The original reads settings straight from
-   `Global` (`*0x71002264f0`) in the audio players, message layer, movies, backlog and menus. shin keeps the
-   SaveData inside `VmState.global` (owned by `Adv`) and the subsystems hard-code values with "TODO: need a settings
-   handle". Proposal: `App` owns `SaveData`; `UpdateContext` carries `&Settings` (or `Arc<RwLock<SaveData>>` if menus
-   edit it while the ADV runs); writers (seen messages, unlocks, slots) go through the same handle. This removes the
-   whole class "setting parsed but not applied" and lets the config menu take effect immediately.
-3. **Audio players compute gain every frame on the main thread, like the original.** Today a sound's volume is baked
-   when it starts and changed only by script tweens inside the kira thread. The original keeps per-track tweeners on
-   the main thread and each frame pushes `setting * duck * tween` (`0x7100033eb0`, `0x71000f3210`,
-   `0x710011ab70`) to the stream. Proposal: `BgmPlayer { tracks: Vec<Track { id, active, volume: Tweener, handle }>,
-   duck: f32, duck_target: f32 }` and `SePlayer { channels: Vec<Channel { slot, id, looping, volume/pan/speed
-   tweeners, handle }> }` with an `update(dt, &Settings)` that sets the handle's gain without a tween; keep kira only
-   as the mixer. Volume changes from settings, ducking and crossfades then follow the original's numbers by
-   construction.
-4. **Input as the engine's bit mask.** Replace the ad hoc `AppAction` set with the original's 32-bit
-   held/pressed/repeat masks (layout under "Controller" at the top), filled from keyboard, mouse and gilrs with a binding table, and
-   let each scene/task test the same bits the original tests. Then ported input code reads like the decompile
-   (`(pressed >> 28) & 1` = confirm), and the A/B swap is one flag.
-5. **A side-effect-free VM replayer reused by LogBuilder and ThumbMaker.** The backlog, save thumbnails, rollback
-   and JumpPrev/Next all replay the route on a copy of the GameData (spec_save 4.5). shin's load replay
-   (`replay_command`) is the seed; make it a standalone `Replayer` over `(Scenario, GameData, PersistData)` with
-   per-command hooks so MessageBrowser and SaveMenu can drive it without touching the live ADV.
+The five structural proposals of the first audit are in place, in this shape:
 
-### Suggested build order
-
-1. Structural 2 (settings handle) + top divergences 2, 4, 5, 7 (all S): audible and visible on every line.
-2. Voice player (1).
-3. Structural 1 (scene/task framework) + Structural 4 (input mask) + ADV controls (6) + HiddenWindow.
-4. ConfigMenu (needs 2), SystemMenu, SaveMenu without thumbnails (save/load to slots, SaveGame write moments).
-5. FirstBoot -> Title -> ScenarioSelect -> Bridge -> ADV, and EXIT back to the menus.
-6. MessageBrowser with LogBuilder (Structural 5), then rollback/JumpPrev/Next on the same replayer; SaveMenu
-   thumbnails (ThumbMaker) on it too.
-7. Overlays (notification pop-up, song/scene title banners), then TipsMode, CharsMode (need TIPSGET/CHARS state),
-   galleries (CG, BGM, Movie, Bustup), ManualViewer, TitleDemo, TouchEffect.
+1. **Scene + TaskPool**: `App` holds one `Scene` and switches with a crossfade (`shin/src/app.rs`); the ADV and the
+   title run a task pool (`shin/src/adv/menu/mod.rs`), the top task taking the input.
+2. **Settings**: the subsystems read the settings from the save data each frame (`AdvState::apply_settings`); the
+   other scenes keep their own copy of the save data and pass it on.
+3. **Audio gain**: each frame the players set `setting * duck` on their kira track; script tweens stay on the
+   sounds inside kira. The result follows the original's numbers.
+4. **Input**: not the engine's bit mask but `AppAction` in the Switch's button roles, filled from keyboard, mouse and
+   gamepad through a binding table (`shin/src/bindings.rs`).
+5. **Replayer**: `replay_command` drives the load, the backlog's LogBuilder, the thumbnails, rollback and the chapter
+   jumps.
 
 ---
 
 ## 4. Open questions
 
-- v7, v8, v12, v16, v18: meanings (v18: what the 55.0 float at `0x7100242010` controls; probably an idle/sleep
-  timer, **inferred**).
+- v7, v8, v12, v16, v18: meanings (v18: the port reads the 55.0 float at `0x7100242010` as a keep-awake/idle timer,
+  **inferred**).
 - SePlayer `+0` flag: when set the SE update `0x71000f3210` is skipped entirely (pause while a menu is open?).
-- `VoicePlayer::play` `0x710011a000` was not decompiled: pan formula (v5), how segments map to files, the second
-  argument (Context+0x2520, a voice mapping table?).
 - `TaskPool::vfunc_2` returning true is read here as "empty"; the voice-focus update depends on it (**inferred**).
-- Which SystemMenu / Title / Title::SubMenu item does what (8 `Decide2` lambdas, 3 + 3 `Decide` lambdas): needs the
-  item tables or an Eden session.
 - When `0x71000fc1f0` (confirm/cancel swap) is true (system language or region setting?).
-- The movie table: how many movies use a transparency mode, and whether volume 0 movies are meant to be silent
-  (758 loads; both engines treat them as silent).
-- ADV+0x4f8/+0x500 (also cleared by SYSCALL 0 and the menu openers): something that fades out 60 s after auto/skip
-  starts; still unknown.
+- Whether volume 0 movies are meant to be silent (758 loads; both engines treat them as silent).

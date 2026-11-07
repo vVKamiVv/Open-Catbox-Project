@@ -1,5 +1,7 @@
 # Aligning shin with the original engine: audit results and plan
 
+Status checked against the code on 2026-11-07.
+
 An audit (November 2026) compared every part of shin with the Switch v1.0.3 executable, area by area. The full
 reports, with addresses for every claim, are in [`audit/`](audit/):
 [commands](audit/commands.md) (script VM, commands, the adventure screen),
@@ -14,47 +16,55 @@ states, colour and alpha maths, the effect chain (blur, mosaic, raster, ripple, 
 wiper. What diverges is local, or sits in a few structural spots listed below.
 
 "Checked" marks a finding read again in shin's code while merging; the rest come from the reports' own reading of
-both codebases.
+both codebases. In the table, "Audit found" is what the audit saw then, not the port today.
 
 ## What the player notices most
 
 | # | Finding | Area | Size |
 |---|---|---|---|
-| 1 | **Done** (voices play, pan to their bustups with setting v5 and drive the lip-sync; engine-internals §16). **No voices**: `VoicePlayer::play` is an empty stub and VOICEPLAY only logs; 39,649 lines carry `@v`. Checked | systems, text | M-L |
-| 2 | **Done**, voice and movie volumes included. **Settings are parsed but never applied**: text speed 80 instead of v9 (default 50; text types 2.5 x too fast; checked), auto delay 80 instead of v10, no volume setting (BGM/SE about 1.4 x, system sounds 1.8 x louder than the Switch default), window opacity, voice-on-advance | systems, text | S each |
-| 3 | **Done** (blinking is ported but Umineko's bustups have no eye frames; the mouth level is the original's 50 ms table, and voices pan to their bustups with setting v5). **Bustups never blink or move their lips**: property 27 (set 154 times) is ignored; the original blinks every `(1 − r²)·240 + 80` ticks and moves the mouth with the voice level (`0x7100036a00`) | layers | M |
-| 4 | **Done** (rollback, the chapter jumps and event skip too; event skip checked in play in an Episode 1 event, by B and by a long press). **Skip has none of the original's rules**: a held Ctrl instead of the R/L toggles with sounds and icon; it ignores events, unread lines (v11) and the system flag; read lines are never recorded; instant commands can't see it (fades not zeroed, one-shot SEs still play). Checked (held Ctrl) | commands, systems | M |
-| 5 | **Done.** **Event lines wait for a click**: MSGSET passes no flags (`read | event << 1`), so the 72 event lines don't play by themselves. Checked (flags empty) | commands | S |
-| 6 | **Done.** **MSGCLOSE closes the box mid-line** after an un-waited line (35 places, e.g. `0x31ce57`) | commands | S |
-| 7 | **Done** (the scene and song titles, skip/auto icons, notifications and the event-skip hint; the touch-screen buttons are not drawn). **Banners missing**: the scene title (AUTOSAVE, bottom left, size 48, 240 frames), the song title (BGMPLAY, top left with ♪), and 123 "characters/tips updated" notifications with their sounds | commands, text, systems | M |
-| 8 | **Done**, voice focus included (BGM and loops ducked while a voice plays, setting v4). **Looping sound effects restart** when re-issued (about 750 places); the original keeps them and changes the volume. BGM crossfades and stops need at least 4 frames; voice focus (BGM and loops ducked to 0.5) is missing | systems | S |
-| 9 | **Done.** **Layer containers clear to opaque black** instead of transparent, so plane 1's 407 dissolves show black where plane 0 should show. Checked (`layer_group.rs:417/424`, `page_layer.rs:109`) | layers | S |
-| 10 | **Done** (confirmed in code). **Screen shake and zoom applied twice** while a screen or page effect (ghosting, ripple, blur) runs: `screen_layer.rs`/`page_layer.rs` pass their own transform into the effect chain instead of the parent's (`0x71000e67f0`, `0x710009f360`). To verify on screen | layers | S |
-| 11 | **Done** (layer banks still break ties between layers without an id, such as the screen and the message window). **Layers with equal RenderPosition stack in reverse** (`0x7100081110`: lower layer id below) | layers | S |
-| 12 | **Done**: the Check screen matches Eden line for line. **Check and choice texts**: wrong font (system.fnt, not newrodin-medium; the 1.3 % width) and not justified | text | S |
-| 13 | **Done.** Read lines, CG/BGM/movie unlocks and UNLOCK are not recorded (needed by skip, galleries, the title) | systems, commands | S |
-| 14 | **Done**, transparent movies included (compared: the Episode 8 fire, below). Movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
-| 15 | **Done**: the opening movie, title, scenario select with its door bridge and curtain wipe, system menu, config, save/load with thumbnails, hidden window, the shared dialog, the backlog and its chapter list, the Picture, Music, Movie and Character Boxes, Characters, Tips and the manual, all compared with Eden; the original's touch gestures (drags, flicks, taps, long presses) on every one of them with the mouse; the shared BGM player. No menus or game flow: title, save/load, config, backlog, system menu, scenario select, galleries | systems | L |
-| 16 | **Done** (one noted shortcut: EXIT does not clear the layer banks, so the title fades in over the last scene). Smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
+| 1 | **Done** (voices play, pan to their bustups with setting v5 and drive the lip-sync; engine-internals §16). Audit found: **No voices**: `VoicePlayer::play` is an empty stub and VOICEPLAY only logs; 39,649 lines carry `@v`. Checked | systems, text | M-L |
+| 2 | **Done**, voice and movie volumes included. Audit found: **Settings are parsed but never applied**: text speed 80 instead of v9 (default 50; text types 2.5 x too fast; checked), auto delay 80 instead of v10, no volume setting (BGM/SE about 1.4 x, system sounds 1.8 x louder than the Switch default), window opacity, voice-on-advance | systems, text | S each |
+| 3 | **Done** (blinking is ported but Umineko's bustups have no eye frames; the mouth level is the original's 50 ms table, and voices pan to their bustups with setting v5). Audit found: **Bustups never blink or move their lips**: property 27 (set 154 times) is ignored; the original blinks every `(1 − r²)·240 + 80` ticks and moves the mouth with the voice level (`0x7100036a00`) | layers | M |
+| 4 | **Done** (rollback, the chapter jumps and event skip too; event skip checked in play in an Episode 1 event, by B and by a long press). Audit found: **Skip has none of the original's rules**: a held Ctrl instead of the R/L toggles with sounds and icon; it ignores events, unread lines (v11) and the system flag; read lines are never recorded; instant commands can't see it (fades not zeroed, one-shot SEs still play). Checked (held Ctrl) | commands, systems | M |
+| 5 | **Done.** Audit found: **Event lines wait for a click**: MSGSET passes no flags (`read | event << 1`), so the 72 event lines don't play by themselves. Checked (flags empty) | commands | S |
+| 6 | **Done.** Audit found: **MSGCLOSE closes the box mid-line** after an un-waited line (35 places, e.g. `0x31ce57`) | commands | S |
+| 7 | **Done** (the scene and song titles, skip/auto icons, notifications and the event-skip hint, `adv/hud.rs`; the touch buttons a leftward flick slides in are drawn too, `adv/touch_buttons.rs`, `0x7100019580`). Audit found: **Banners missing**: the scene title (AUTOSAVE, bottom left, size 48, 240 frames), the song title (BGMPLAY, top left with ♪), and 123 "characters/tips updated" notifications with their sounds | commands, text, systems | M |
+| 8 | **Done**: a re-issued loop keeps playing and takes the new volume (`0x71000f2580`); stops and crossfades last at least 4 frames (`0x71000f2b30`); voice focus ducks BGM and loops to 0.5 while a voice plays (setting v4, `0x7100010fb0`). Audit found: **Looping sound effects restart** when re-issued (about 750 places); the original keeps them and changes the volume. BGM crossfades and stops need at least 4 frames; voice focus (BGM and loops ducked to 0.5) is missing | systems | S |
+| 9 | **Done.** Audit found: **Layer containers clear to opaque black** instead of transparent, so plane 1's 407 dissolves show black where plane 0 should show. Checked (`layer_group.rs:417/424`, `page_layer.rs:109`) | layers | S |
+| 10 | **Done** in code (both now pass the parent's transform); on screen unverified. Audit found: **Screen shake and zoom applied twice** while a screen or page effect (ghosting, ripple, blur) runs: `screen_layer.rs`/`page_layer.rs` pass their own transform into the effect chain instead of the parent's (`0x71000e67f0`, `0x710009f360`) | layers | S |
+| 11 | **Done** (layer banks still break ties between layers without an id, such as the screen and the message window). Audit found: **Layers with equal RenderPosition stack in reverse** (`0x7100081110`: lower layer id below) | layers | S |
+| 12 | **Done**: the Check screen matches Eden line for line. Audit found: **Check and choice texts**: wrong font (system.fnt, not newrodin-medium; the 1.3 % width) and not justified | text | S |
+| 13 | **Done.** Audit found: read lines, CG/BGM/movie unlocks and UNLOCK are not recorded (needed by skip, galleries, the title) | systems, commands | S |
+| 14 | **Done**, transparent movies included (compared: the Episode 8 fire, below). Audit found: movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
+| 15 | **Done**: the opening movie, title, scenario select with its door bridge and curtain wipe, system menu, config, save/load with thumbnails, hidden window, the shared dialog, the backlog and its chapter list, the Picture, Music, Movie and Character Boxes, Characters, Tips and the manual, all compared with Eden; the original's touch gestures (drags, flicks, taps, long presses) on every one of them with the mouse; the shared BGM player. Audit found: no menus or game flow: title, save/load, config, backlog, system menu, scenario select, galleries | systems | L |
+| 16 | **Done** (one noted shortcut: EXIT does not clear the layer banks, so the title fades in over the last scene). Audit found, smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
 
 ## Structural changes (prevent whole classes of bugs)
 
 1. **One settings/Global handle owned by the app**, read by every subsystem as the original reads `*0x71002264f0`
-   (systems). Today the save data lives inside `Adv`'s `VmState`, so the message layer and audio hard-code values.
+   (systems). Partly done: the save data still lives in `Adv`'s `VmState` (`vm_state.global`), but
+   `AdvState::apply_settings` hands it to the message layer and the sound players every frame, so none hard-code it.
 2. **Skip/auto/wait state in the ADV** (`ADV+0x470..+0x494`) with `is_skipping`/`is_auto` exactly as
-   `0x7100012430`/`0x71000122f0`, visible to every command's start (commands).
+   `0x7100012430`/`0x71000122f0`, visible to every command's start (commands). Done (`adv/mod.rs`).
 3. **One ADV overlay** drawn after the layers in the original order (`0x71000125a0`): fade, scene title, song title,
-   skip/auto icons, notifications (commands).
+   skip/auto icons, notifications (commands). Done (`adv/hud.rs`).
 4. **One TextObject type** with the original's parameter block and one font, building `LayoutParams` the way
-   `0x7100101360` does (Justify, rubi 0.4 × size, width − padding) (text).
+   `0x7100101360` does (Justify, rubi 0.4 × size, width − padding) (text). Partly done:
+   `TextBlock` (`layer/text_block.rs`) serves the HUD, menus and choices; the culprit game's Check text lays out on
+   its own (`murderer/check.rs`).
 5. **One layer container implementation** instead of three drifting copies (`LayerGroup`, `PageLayer`,
-   `ScreenLayer`), always passing the parent transform and clearing to transparent (layers).
-6. **One property table and blend ids as in the original** (layers).
+   `ScreenLayer`), always passing the parent transform and clearing to transparent (layers). Not done: the three
+   types remain, though each now passes the parent transform and clears to transparent.
+6. **One property table and blend ids as in the original** (layers). Unverified.
 7. **Audio gain computed every frame** (`setting × duck × tween`) as the original does, kira only mixing (systems).
+   Partly done: `setting × duck` is set every frame; the tweens still run in kira.
 8. **A scene and task framework** (one current scene, a task pool of menus with input priority) before any menu,
-   and **input as the engine's bit mask** with a binding table for keyboard, mouse and gamepad (systems).
+   and **input as the engine's bit mask** with a binding table for keyboard, mouse and gamepad (systems). Done:
+   the scenes (`app.rs`), the ADV task pool (`adv/menu/mod.rs`) and the binding table (`bindings.rs`); whether input
+   is one bit mask as in the engine is unverified.
 9. **A side-effect-free replayer** reused by the backlog, save thumbnails, rollback and jump (systems, commands);
-   the load replay (`replay_command`) is its seed.
+   the load replay (`replay_command`) is its seed. Done: one `replay` (`adv/mod.rs`) drives load, rollback, the
+   chapter jumps, event skip, the backlog and the save thumbnails.
 
 ## Order of work
 
@@ -68,6 +78,9 @@ both codebases.
 5. **Scene/task framework**, then config, system menu, save/load menus, title and scenario select, backlog on the
    replayer (structural 9), galleries.
 6. The smaller items of row 16 alongside the areas they touch.
+
+All six steps are done (rows 1-16). Left: structural changes 1 and 4-7 as marked, EXIT's layer banks (row 16), row 10
+on screen, and the comparisons below.
 
 Each step: fix from the original's addresses in the reports, compare with Eden on screen, then update
 `engine-internals.md`.
