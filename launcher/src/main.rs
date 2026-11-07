@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod history;
+mod home;
 mod install;
 mod langs;
 mod nx;
@@ -24,14 +25,18 @@ fn repo_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
 }
 
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
 #[serde(default)]
-struct Settings {
-    data_dir: Option<PathBuf>,
-    language: Option<String>,
-    fullscreen: bool,
+pub struct Settings {
+    /// The data folder when it is not `<home>\data`; a relative path is relative to the home.
+    pub data_dir: Option<PathBuf>,
+    pub language: Option<String>,
+    pub fullscreen: bool,
     /// Game log at debug level for shin's own crates instead of warnings only.
-    debug_logging: bool,
+    pub debug_logging: bool,
+    /// The `%APPDATA%\OpenCatbox` this portable home's settings, data and saves were brought in from (once).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub migrated_from: Option<PathBuf>,
 }
 
 #[derive(Serialize)]
@@ -42,6 +47,12 @@ struct State {
     languages: std::collections::HashMap<String, Option<String>>,
     shin: Option<PathBuf>,
     program: Program,
+    /// Where launcher.json, data\ and saves\ live (see `home.rs`).
+    home: PathBuf,
+    portable: bool,
+    savedata: PathBuf,
+    /// Settings, data and saves to bring in from `%APPDATA%` before anything else (first start of a portable home).
+    migration: Option<home::Plan>,
 }
 
 /// The launcher's own installation (see `install.rs`).
@@ -66,38 +77,27 @@ struct ProgressEvent {
     fraction: f64,
 }
 
-fn base_dir(app: &AppHandle) -> PathBuf {
-    app.path()
-        .data_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("OpenCatbox")
-}
-
-fn settings_path(app: &AppHandle) -> PathBuf {
-    base_dir(app).join("launcher.json")
-}
-
-fn load_settings(app: &AppHandle) -> Settings {
-    fs::read_to_string(settings_path(app))
+fn load_settings() -> Settings {
+    fs::read_to_string(home::get().settings())
         .ok()
         .and_then(|t| serde_json::from_str(&t).ok())
         .unwrap_or_default()
 }
 
-fn store_settings(app: &AppHandle, settings: &Settings) -> Result<(), String> {
-    let path = settings_path(app);
+fn store_settings(settings: &Settings) -> Result<(), String> {
+    write_settings(&home::get().settings(), settings)
+}
+
+pub fn write_settings(path: &Path, settings: &Settings) -> Result<(), String> {
     fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
     fs::write(path, serde_json::to_string_pretty(settings).unwrap()).map_err(|e| e.to_string())
 }
 
-fn data_dir(app: &AppHandle, settings: &Settings) -> PathBuf {
-    settings
-        .data_dir
-        .clone()
-        .unwrap_or_else(|| base_dir(app).join("data"))
+fn data_dir(settings: &Settings) -> PathBuf {
+    home::get().data(settings)
 }
 
-fn exe_dir() -> PathBuf {
+pub fn exe_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(Path::to_path_buf))
@@ -130,9 +130,10 @@ fn emit(app: &AppHandle, task: &str, label: &str, fraction: f64) {
 }
 
 #[tauri::command]
-fn get_state(app: AppHandle) -> State {
-    let settings = load_settings(&app);
-    let data = data_dir(&app, &settings);
+fn get_state() -> State {
+    let settings = load_settings();
+    let data = data_dir(&settings);
+    let home = home::get();
     let languages = ["en", "enx", "ja"]
         .iter()
         .map(|id| (id.to_string(), langs::installed(&data, id)))
@@ -160,12 +161,64 @@ fn get_state(app: AppHandle) -> State {
         languages,
         data_dir: data,
         settings,
+        home: home.dir.clone(),
+        portable: home.portable,
+        savedata: home.savedata(),
+        migration: home::plan(home),
     }
 }
 
 #[tauri::command]
-fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
-    store_settings(&app, &settings)
+fn save_settings(settings: Settings) -> Result<(), String> {
+    store_settings(&settings)
+}
+
+/// Brings settings, data and saves in from `%APPDATA%` (see `home::plan`); returns what to tell the player.
+#[tauri::command]
+async fn migrate(app: AppHandle) -> Result<Vec<String>, String> {
+    let home = home::get();
+    let Some(plan) = home::plan(home) else {
+        return Ok(Vec::new());
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        home::migrate(home, plan, &|label, f| emit(&app, "migrate", label, f))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Checks a game folder chosen on the setup screen: true if its data.rom is the known dump.
+#[tauri::command]
+async fn check_game_folder(app: AppHandle, folder: PathBuf) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        home::check_game_folder(&folder, &|label, f| emit(&app, "setup", label, f))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Uses a checked game folder: copied into `<home>\data`, or as the data folder where it is.
+#[tauri::command]
+async fn use_game_folder(app: AppHandle, folder: PathBuf, copy: bool) -> Result<(), String> {
+    let mut settings = load_settings();
+    let home_data = home::get().dir.join("data");
+    if copy && folder != home_data {
+        let to = home_data.clone();
+        let from = folder.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            home::copy_game_folder(&from, &to, &|label, f| emit(&app, "setup", label, f))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    }
+    settings.data_dir = (!copy && folder != home_data).then_some(folder);
+    store_settings(&settings)
+}
+
+/// A release's notes (markdown) as one string per bullet, hard-wrapped lines joined.
+#[tauri::command]
+fn release_notes(body: String) -> Vec<String> {
+    history::notes(&body)
 }
 
 #[tauri::command]
@@ -176,7 +229,7 @@ async fn run_setup(
     prod_keys: PathBuf,
     title_keys: Option<PathBuf>,
 ) -> Result<Vec<String>, String> {
-    let data = data_dir(&app, &load_settings(&app));
+    let data = data_dir(&load_settings());
     fs::create_dir_all(&data)
         .map_err(|e| format!("Cannot create the data folder {}: {e}", data.display()))?;
     let input = setup::Input {
@@ -194,7 +247,7 @@ async fn run_setup(
 
 #[tauri::command]
 async fn install_language(app: AppHandle, id: String) -> Result<String, String> {
-    let data = data_dir(&app, &load_settings(&app));
+    let data = data_dir(&load_settings());
     tauri::async_runtime::spawn_blocking(move || {
         langs::install(&data, &id, &|f| emit(&app, &id, "Downloading", f))
     })
@@ -224,11 +277,11 @@ async fn version_history(online: bool) -> history::History {
 }
 
 #[tauri::command]
-fn launch(app: AppHandle, lang: String) -> Result<u32, String> {
-    let mut settings = load_settings(&app);
-    let data = data_dir(&app, &settings);
+fn launch(lang: String) -> Result<u32, String> {
+    let mut settings = load_settings();
+    let data = data_dir(&settings);
     if !data.join("data.rom").is_file() {
-        return Err("The game data is missing. Please run the setup again.".into());
+        return Err("Game data missing. Run setup again.".into());
     }
     if langs::installed(&data, &lang).is_none() {
         return Err("This language is not installed yet.".into());
@@ -250,7 +303,9 @@ fn launch(app: AppHandle, lang: String) -> Result<u32, String> {
         .arg("--patch-dir")
         .arg(&lang_dir)
         .arg("--exefs")
-        .arg(lang_dir.join("exefs"));
+        .arg(lang_dir.join("exefs"))
+        .arg("--savedata")
+        .arg(home::get().savedata());
     if settings.fullscreen {
         cmd.arg("--fullscreen");
     }
@@ -264,53 +319,32 @@ fn launch(app: AppHandle, lang: String) -> Result<u32, String> {
         .spawn()
         .map_err(|e| format!("Cannot start the game: {e}"))?;
     settings.language = Some(lang);
-    store_settings(&app, &settings)?;
+    store_settings(&settings)?;
     Ok(child.id())
 }
 
-/// Moves the data folder (rename, or copy + delete across drives) and remembers the new place.
+/// Moves the data folder (rename, or copy + check + delete across drives) and remembers the new place.
 #[tauri::command]
 async fn move_data_dir(app: AppHandle, target: PathBuf) -> Result<(), String> {
-    let mut settings = load_settings(&app);
-    let old = data_dir(&app, &settings);
+    let mut settings = load_settings();
+    let old = data_dir(&settings);
     if target == old {
         return Ok(());
     }
-    if fs::read_dir(&target).is_ok_and(|mut d| d.next().is_some()) {
-        return Err("Please choose an empty folder.".into());
+    if !home::is_empty(&target) {
+        return Err("Choose an empty folder.".into());
     }
     if old.is_dir() {
         let (from, to) = (old.clone(), target.clone());
-        tauri::async_runtime::spawn_blocking(move || move_dir(&from, &to))
-            .await
-            .map_err(|e| e.to_string())??;
+        tauri::async_runtime::spawn_blocking(move || {
+            home::move_dir(&from, &to, &|label, f| emit(&app, "move", label, f))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("The game data was not moved. {e}"))?;
     }
-    settings.data_dir = Some(target);
-    store_settings(&app, &settings)
-}
-
-fn move_dir(from: &Path, to: &Path) -> Result<(), String> {
-    let _ = fs::remove_dir(to); // an empty target blocks rename on Windows
-    if fs::rename(from, to).is_ok() {
-        return Ok(());
-    }
-    copy_dir(from, to).map_err(|e| format!("Cannot copy the data folder: {e}"))?;
-    fs::remove_dir_all(from)
-        .map_err(|e| format!("Copied, but could not delete the old folder: {e}"))
-}
-
-fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(to)?;
-    for entry in fs::read_dir(from)? {
-        let entry = entry?;
-        let dest = to.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir(&entry.path(), &dest)?;
-        } else {
-            fs::copy(entry.path(), dest)?;
-        }
-    }
-    Ok(())
+    settings.data_dir = (target != home::get().dir.join("data")).then_some(target);
+    store_settings(&settings)
 }
 
 /// Installs the launcher (this program) and starts the installed copy, which takes over from here.
@@ -337,20 +371,23 @@ async fn install_program(
     Ok(())
 }
 
-/// Removes the installed launcher (once it has exited) and, if asked, the game data and settings.
+/// Removes the installed launcher (once it has exited) and, if asked, the game data, languages, saves and settings.
 #[tauri::command]
 async fn uninstall_program(app: AppHandle, delete_data: bool) -> Result<(), String> {
     if !install::is_installed() {
         return Err("Only the installed Open Catbox can uninstall itself.".into());
     }
-    let data = if delete_data {
-        vec![data_dir(&app, &load_settings(&app)), base_dir(&app)]
-    } else {
-        vec![]
-    };
-    // the web view's cache, %LOCALAPPDATA%\<identifier>
-    let webview = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || install::uninstall(&exe_dir(), &data, &webview))
+    let home = home::get();
+    if delete_data {
+        home::delete_user_data(home, &data_dir(&load_settings()))?;
+    }
+    // the web view's data: in a portable home, and Tauri's default %LOCALAPPDATA%\<identifier>
+    let webview: Vec<PathBuf> = home
+        .webview()
+        .into_iter()
+        .chain(app.path().app_local_data_dir().ok())
+        .collect();
+    tauri::async_runtime::spawn_blocking(move || install::uninstall(&exe_dir(), &webview))
         .await
         .map_err(|e| e.to_string())?
 }
@@ -410,9 +447,23 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            // made here ("create": false in tauri.conf.json) so a portable home also holds the WebView2 data
+            let config = app.config().app.windows[0].clone();
+            let mut window = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?;
+            if let Some(dir) = home::get().webview() {
+                window = window.data_directory(dir);
+            }
+            window.build()?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_state,
             save_settings,
+            migrate,
+            check_game_folder,
+            use_game_folder,
+            release_notes,
             run_setup,
             install_language,
             check_updates,

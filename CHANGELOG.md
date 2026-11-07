@@ -2,6 +2,14 @@
 
 What changed in each release.
 
+## v0.2.1 — 2026-11-07
+
+- The launcher keeps everything in its own folder: settings, game data and saves. Your existing setup moves in
+  automatically.
+- Setup can use a game folder you already have.
+- Shorter, clearer text in the launcher.
+- Release notes display properly.
+
 ## v0.2.0 — 2026-11-07
 
 - The launcher now installs itself: no administrator rights, with shortcuts and an uninstaller.

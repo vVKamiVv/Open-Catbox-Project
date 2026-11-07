@@ -15,10 +15,6 @@ pub const EXE: &str = "Open Catbox.exe";
 const SHIN_EXE: &str = "shin.exe";
 const SHORTCUT: &str = "Open Catbox.lnk";
 const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Open Catbox";
-/// v0.1.0 was an NSIS install (`%LOCALAPPDATA%\Open Catbox`, same uninstall key): its binary had another name, it had
-/// its own uninstaller, and it kept its folder under this key.
-const NSIS_FILES: [&str; 2] = ["open-catbox-launcher.exe", "uninstall.exe"];
-const NSIS_KEY: &str = r"Software\github\Open Catbox";
 
 /// `shin.exe`, built into release builds by `scripts/release.ps1`.
 #[cfg(feature = "installer")]
@@ -44,8 +40,6 @@ pub fn mode(args: &[OsString]) -> Mode {
         Some("--uninstall") => Mode::Uninstall,
         Some("--update") => Mode::Update(args.get(1).map(PathBuf::from)),
         Some("--update-failed") => Mode::UpdateFailed(arg(1).unwrap_or_default()),
-        // v0.1.0's updater starts what it downloaded as an NSIS installer: `/P /UPDATE /R /ARGS`
-        Some(a) if a.starts_with('/') => Mode::Update(None),
         _ => Mode::Normal,
     }
 }
@@ -86,7 +80,7 @@ fn location(key: &str) -> Option<PathBuf> {
         .ok()?
         .get_string("InstallLocation")
         .ok()?;
-    let text = text.trim().trim_matches('"'); // NSIS wrote it in quotes
+    let text = text.trim();
     (!text.is_empty()).then(|| PathBuf::from(text))
 }
 
@@ -110,35 +104,24 @@ pub fn install(choices: &Choices, progress: Progress) -> Result<PathBuf, String>
     Ok(exe)
 }
 
-/// Replaces the installation in `folder` with this program, points its existing shortcuts at it and updates its
-/// entry. Also turns a v0.1.0 NSIS install into one of ours.
+/// Replaces the program files in `folder` with this program (nothing else there: data, saves and settings stay),
+/// points its existing shortcuts at it and updates its entry.
 fn update(folder: &Path) -> Result<PathBuf, String> {
     // the old launcher exits right after starting this, so its file frees up within moments
     let exe = put_files(folder, Duration::from_secs(60))?;
-    for name in NSIS_FILES {
-        remove_retrying(&folder.join(name), Duration::from_secs(10));
-    }
     for place in [Place::Menu, Place::Desktop] {
         add_shortcut(&place, &exe, true)?;
     }
     register(UNINSTALL_KEY, folder)?;
-    let _ = CURRENT_USER.remove_tree(NSIS_KEY);
     Ok(exe)
 }
 
 /// `--update`: replaces the installation, starts it (told the reason if the update failed), and has this downloaded
 /// copy deleted once it has exited.
 pub fn run_update(folder: Option<PathBuf>) {
-    let folder = folder
-        .or_else(registered_folder)
-        .unwrap_or_else(|| local_app_data().join("Open Catbox"));
+    let folder = folder.unwrap_or_else(default_folder);
     let result = update(&folder);
-    let new = folder.join(EXE);
-    let program = if new.is_file() {
-        new
-    } else {
-        folder.join(NSIS_FILES[0])
-    };
+    let program = folder.join(EXE);
     let args: Vec<OsString> = match &result {
         Ok(_) => vec![],
         Err(e) => vec!["--update-failed".into(), e.into()],
@@ -158,11 +141,16 @@ fn put_files(folder: &Path, wait: Duration) -> Result<PathBuf, String> {
     )?;
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let me = fs::read(&me).map_err(|e| format!("Cannot read {}: {e}", me.display()))?;
+    put(folder, shin, &me, wait)
+}
+
+/// Only these two files are written: the folder is also the launcher's home, with data\, saves\ and launcher.json.
+fn put(folder: &Path, shin: &[u8], launcher: &[u8], wait: Duration) -> Result<PathBuf, String> {
     fs::create_dir_all(folder).map_err(|e| format!("Cannot create {}: {e}", folder.display()))?;
     // shin.exe first: if the game is running and it cannot be replaced, nothing has changed yet
     place(&folder.join(SHIN_EXE), shin, wait)?;
     let exe = folder.join(EXE);
-    place(&exe, &me, wait)?;
+    place(&exe, launcher, wait)?;
     Ok(exe)
 }
 
@@ -177,19 +165,12 @@ fn place(to: &Path, bytes: &[u8], wait: Duration) -> Result<(), String> {
             Err(e) if start.elapsed() >= wait => {
                 let _ = fs::remove_file(&part);
                 return Err(format!(
-                    "Cannot replace {}: {e}. If Open Catbox or the game is running, close it and try again.",
+                    "Cannot replace {}: {e}. Close Open Catbox and the game, then try again.",
                     to.display()
                 ));
             }
             Err(_) => std::thread::sleep(Duration::from_millis(250)),
         }
-    }
-}
-
-fn remove_retrying(path: &Path, wait: Duration) {
-    let start = Instant::now();
-    while path.exists() && fs::remove_file(path).is_err() && start.elapsed() < wait {
-        std::thread::sleep(Duration::from_millis(250));
     }
 }
 
@@ -222,27 +203,21 @@ fn register(key: &str, folder: &Path) -> Result<(), String> {
         .map_err(err)?;
     k.set_u32("NoModify", 1).map_err(err)?;
     k.set_u32("NoRepair", 1).map_err(err)?;
-    let _ = k.remove_value("MainBinaryName"); // v0.1.0's NSIS
     Ok(())
 }
 
-/// Deletes `data` (the game data and settings, only when the player asked), the shortcuts and the entry; the program
-/// files in `folder` and the web view's cache in `webview` go once this process has exited, as a running program
-/// cannot delete itself. Only our own files are deleted, and `folder` only if that leaves it empty.
-pub fn uninstall(folder: &Path, data: &[PathBuf], webview: &Path) -> Result<(), String> {
-    for dir in data.iter().filter(|d| d.exists()) {
-        fs::remove_dir_all(dir).map_err(|e| format!("Cannot delete {}: {e}", dir.display()))?;
-    }
+/// Removes the shortcuts and the entry; the program files in `folder` and the web view's data in `webview` go once
+/// this process has exited, as a running program cannot delete itself. Only those are deleted (the game data and
+/// saves are `home::delete_user_data`'s, when the player asks), and `folder` only if that leaves it empty.
+pub fn uninstall(folder: &Path, webview: &[PathBuf]) -> Result<(), String> {
     for place in [Place::Menu, Place::Desktop] {
         remove_shortcut(&place)?;
     }
     let _ = CURRENT_USER.remove_tree(UNINSTALL_KEY);
-    let _ = CURRENT_USER.remove_tree(NSIS_KEY);
     let files: Vec<PathBuf> = [EXE, SHIN_EXE]
         .into_iter()
-        .chain(NSIS_FILES)
         .map(|name| folder.join(name))
-        .chain([webview.to_path_buf()])
+        .chain(webview.iter().cloned())
         .collect();
     after_exit(&files, Some(folder))
 }
@@ -330,7 +305,7 @@ impl Place<'_> {
     }
 }
 
-/// Creates the shortcut, or with `only_existing` re-points one that is already there (v0.1.0's went to another name).
+/// Creates the shortcut, or with `only_existing` re-points one that is already there.
 fn add_shortcut(place: &Place, program: &Path, only_existing: bool) -> Result<(), String> {
     let folder = quoted(program.parent().unwrap_or(Path::new("")));
     let guard = if only_existing {
@@ -384,12 +359,7 @@ mod tests {
             mode(&args(&["--update-failed", "busy"])),
             Mode::UpdateFailed("busy".into())
         );
-        // what v0.1.0's updater passes to the NSIS installer it thinks it downloaded
-        assert_eq!(
-            mode(&args(&["/P", "/UPDATE", "/R", "/ARGS"])),
-            Mode::Update(None)
-        );
-        assert_eq!(mode(&args(&["/UPDATE"])), Mode::Update(None));
+        assert_eq!(mode(&args(&["--update"])), Mode::Update(None));
     }
 
     #[test]
@@ -404,13 +374,43 @@ mod tests {
     }
 
     #[test]
+    fn an_update_replaces_only_the_two_programs() {
+        let dir = temp("update");
+        let user = [
+            (r"data\data.rom", "rom"),
+            (r"data\languages\en\version.txt", "v1"),
+            (r"saves\SAVEDATA", "save"),
+            (r"saves\settings.json", "{}"),
+            ("launcher.json", "{}"),
+        ];
+        for (name, text) in user {
+            fs::create_dir_all(dir.join(name).parent().unwrap()).unwrap();
+            fs::write(dir.join(name), text).unwrap();
+        }
+        put(&dir, b"shin 1", b"launcher 1", Duration::ZERO).unwrap();
+        put(&dir, b"shin 2", b"launcher 2", Duration::ZERO).unwrap();
+        assert_eq!(fs::read(dir.join(EXE)).unwrap(), b"launcher 2");
+        assert_eq!(fs::read(dir.join(SHIN_EXE)).unwrap(), b"shin 2");
+        for (name, text) in user {
+            assert_eq!(fs::read_to_string(dir.join(name)).unwrap(), text, "{name}");
+        }
+        let mut names: Vec<_> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        assert_eq!(names, [EXE, "data", "launcher.json", "saves", SHIN_EXE]);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn a_file_in_use_is_reported_and_no_part_is_left() {
         let dir = temp("in use");
         let to = dir.join("busy");
         fs::create_dir(&to).unwrap(); // a folder of that name stands in for a locked file
         assert!(place(&to, b"x", Duration::from_millis(300))
             .unwrap_err()
-            .contains("close it"));
+            .contains("then try again"));
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -440,16 +440,10 @@ mod tests {
         fs::write(dir.join(EXE), vec![0; 4096]).unwrap();
         fs::write(dir.join(SHIN_EXE), vec![0; 4096]).unwrap();
         let key = format!(r"Software\Open Catbox test {}", std::process::id());
-        CURRENT_USER
-            .create(&key)
-            .unwrap()
-            .set_string("MainBinaryName", "old.exe")
-            .unwrap();
         register(&key, &dir).unwrap();
         let k = CURRENT_USER.open(&key).unwrap();
         let uninstall = k.get_string("UninstallString").unwrap();
         let size = k.get_u32("EstimatedSize").unwrap();
-        let old = k.get_string("MainBinaryName");
         let found = location(&key);
         CURRENT_USER.remove_tree(&key).unwrap();
         assert_eq!(found.as_deref(), Some(dir.as_path()));
@@ -459,23 +453,6 @@ mod tests {
             format!("\"{}\" --uninstall", dir.join(EXE).display())
         );
         assert_eq!(size, 8);
-        assert!(old.is_err(), "v0.1.0's value removed");
         fs::remove_dir_all(dir).unwrap();
-    }
-
-    #[test]
-    fn nsis_quotes_around_the_location_are_dropped() {
-        let key = format!(r"Software\Open Catbox test quotes {}", std::process::id());
-        CURRENT_USER
-            .create(&key)
-            .unwrap()
-            .set_string(
-                "InstallLocation",
-                r#""C:\Users\x\AppData\Local\Open Catbox""#,
-            )
-            .unwrap();
-        let found = location(&key);
-        CURRENT_USER.remove_tree(&key).unwrap();
-        assert_eq!(found, Some(r"C:\Users\x\AppData\Local\Open Catbox".into()));
     }
 }

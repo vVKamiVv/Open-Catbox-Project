@@ -23,7 +23,7 @@ pub struct History {
 }
 
 /// Bullet items of a markdown body; indented lines continue the previous item, other text lines are items too.
-fn notes(body: &str) -> Vec<String> {
+pub fn notes(body: &str) -> Vec<String> {
     let mut items: Vec<String> = Vec::new();
     for line in body.lines() {
         let trimmed = line.trim();
@@ -178,6 +178,20 @@ mod tests {
         assert_eq!(merged[0].date, "2027-03-01");
         assert_eq!(merged[0].notes, ["Ten", "Eleven"]);
         assert_eq!(merged[1].notes, ["Two", "Long line"]);
+    }
+
+    #[test]
+    fn hard_wrapped_bullets_are_joined_one_per_line() {
+        let body = "- The launcher is now its own installer: one Setup installs it (no administrator\r\n  rights), with \
+            shortcuts.\r\n  Updates swap it in place.\r\n- **Controls**: rebind\n  - a sub-item\n";
+        assert_eq!(
+            notes(body),
+            [
+                "The launcher is now its own installer: one Setup installs it (no administrator rights), with shortcuts. Updates swap it in place.",
+                "**Controls**: rebind",
+                "a sub-item",
+            ]
+        );
     }
 
     #[test]

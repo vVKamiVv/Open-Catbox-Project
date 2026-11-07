@@ -29,6 +29,8 @@ if (-not (Test-Path -LiteralPath $sig)) { throw "No $sig. Build the release with
 $text = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $NotesFile))
 $section = [regex]::Match($text, "(?ms)^## v$([regex]::Escape($Version))\b[^\n]*\n(.*?)(?=^## |\z)")
 $notes = $(if ($section.Success) { $section.Groups[1].Value } else { $text }).Trim()
+# the changelog hard-wraps bullets: join each indented continuation line into its bullet, one bullet per line
+$notes = [regex]::Replace($notes, '\r?\n[ \t]+(?![-*] )(?=\S)', ' ')
 
 $latest = [ordered]@{
   version   = $Version

@@ -13,6 +13,8 @@ launcher/
   src/main.rs      Tauri commands: state, settings, setup, downloads, launching the game, moving the data folder,
                    installing, uninstalling, updating, version history
   src/install.rs   installing the launcher itself: copy, shortcuts, Installed apps entry, update, uninstall
+  src/home.rs      where things live (the portable home), the one-time move in from %APPDATA%, checked copy/move,
+                   using an existing game folder, deleting the player's data on uninstall
   src/setup.rs     first-run setup: finds the program NCAs, extracts and hash-checks data.rom, main, patch.rom
   src/nx/          Switch dump reader
     mod.rs           Storage trait, file regions, PFS0 (NSP / ExeFS) listing, streaming copy + SHA-256
@@ -59,7 +61,8 @@ cargo test -p open-catbox-launcher
 
 Unit tests cover the formats with synthetic data. The `real_dump` test in `setup.rs` runs the whole setup on a real
 dump (never committed): set `NX_BASE`, `NX_UPDATE`, `NX_KEYS`, `NX_TITLEKEYS` and `NX_OUT`, then
-`cargo test --release -p open-catbox-launcher -- --ignored --nocapture`.
+`cargo test --release -p open-catbox-launcher -- --ignored --nocapture`. `OPEN_CATBOX_APPDATA` stands in for
+`%APPDATA%` in tests.
 
 ## Installing, updating, uninstalling
 
@@ -68,13 +71,12 @@ In short, `OpenCatbox-Setup.exe` is the launcher itself with `shin.exe` embedded
 `OPEN_CATBOX_SHIN`, behind the `installer` feature). Not installed, it shows the Install screen and copies itself to
 `%LOCALAPPDATA%\Programs\Open Catbox\Open Catbox.exe` (folder of the player's choice) with `shin.exe` beside it,
 shortcuts and an HKCU Installed apps entry; no administrator rights. `--uninstall` shows the Uninstall screen,
-`--update <folder>` replaces an installation without a window and starts it.
+`--update <folder>` replaces only `Open Catbox.exe` and `shin.exe` without a window and starts the launcher. The
+window is created in `main.rs` (`"create": false` in `tauri.conf.json`) so its WebView2 data can live in the home.
 
 Updates use `tauri-plugin-updater` only to check `latest.json` and download the new Setup, whose minisign signature is
 checked against the public key in `tauri.conf.json`. The launcher then starts that Setup with `--update <its folder>`
-and exits. v0.1.0 (an NSIS install) runs whatever it downloads as an NSIS installer (`/P /UPDATE /R /ARGS`): the Setup
-treats any argument starting with `/` as an update of the registered installation, takes over v0.1.0's folder and
-entry, re-points its shortcuts and removes its NSIS uninstaller.
+and exits.
 
 ## Releases
 
@@ -101,11 +103,13 @@ The private key never goes into the repository; without it (and its password) no
 
 | What | Where |
 | --- | --- |
-| launcher | `%LOCALAPPDATA%\Programs\Open Catbox\Open Catbox.exe` (or the folder chosen at install; v0.1.0: `%LOCALAPPDATA%\Open Catbox`) |
+| home | the launcher's folder (`%LOCALAPPDATA%\Programs\Open Catbox` by default) if writable, else `%APPDATA%\OpenCatbox` (also for source builds) |
 | `shin.exe` | next to the launcher (release builds), then `target\release\shin.exe` of the source checkout (other builds) |
 | Installed apps entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Open Catbox` |
-| settings | `%APPDATA%\OpenCatbox\launcher.json` |
-| game data | `%APPDATA%\OpenCatbox\data` (can be moved in Settings) |
+| settings | `<home>\launcher.json` |
+| game data | `<home>\data`, or `data_dir` in the settings (absolute, or relative to the home) |
+| saves | `<home>\saves\SAVEDATA` and `settings.json` (home in `%APPDATA%`: `%APPDATA%\shin`) |
+| web view data | `<home>\webview` |
 | game log | `<data>\logs\shin.log` |
 
 ## Not done yet

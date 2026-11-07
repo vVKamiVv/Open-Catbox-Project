@@ -14,11 +14,11 @@
     <div class="panel setup-panel narrow">
       <p class="kicker">Open Catbox <span class="app-version"></span></p>
       <h1 class="display">Install Open Catbox</h1>
-      <p class="lead">The launcher and the game engine go into a folder of yours, for this Windows user only.
-        No administrator rights are needed, and game data you already set up stays where it is.</p>
+      <p class="lead">Installs for this Windows user, no administrator rights needed.
+        Your settings, game data and saves are kept in this folder.</p>
 
       <div class="file-row">
-        <div class="file-label">Install folder <small>about 50 MB</small></div>
+        <div class="file-label">Install folder <small>about 11 GB with the game data</small></div>
         <output class="path set" id="install-dir"></output>
         <button class="btn ghost" id="install-browse">Browse…</button>
       </div>
@@ -34,8 +34,7 @@
           Desktop shortcut
         </label>
       </div>
-      <p class="note">Open Catbox is also added to Installed apps, where it can be uninstalled, and it keeps itself
-        up to date.</p>
+      <p class="note">Updates itself. Uninstall from Installed apps.</p>
 
       <div id="install-progress" class="progress" hidden>
         <div class="progress-label"></div>
@@ -54,18 +53,17 @@
     <div class="panel setup-panel narrow">
       <p class="kicker">Uninstall</p>
       <h1 class="display">Leave the island?</h1>
-      <p class="lead">This removes Open Catbox from <span id="uninstall-dir" class="mono"></span>,
-        with its shortcuts and its entry in Installed apps.</p>
+      <p class="lead">Removes Open Catbox from <span id="uninstall-dir" class="mono"></span>.</p>
 
       <div class="checks">
         <label class="switch">
           <input type="checkbox" id="uninstall-data">
           <span class="switch-track" aria-hidden="true"></span>
-          Also delete the game data and settings
+          Also delete the game data, languages and saves
         </label>
       </div>
-      <p class="note">The game data is <span id="uninstall-data-dir" class="mono"></span>: data.rom and the installed
-        languages. Kept, it is ready for a new install. Your saves (%APPDATA%\shin) are always kept.</p>
+      <p class="note">Game data: <span id="uninstall-data-dir" class="mono"></span><br>
+        Saves: <span id="uninstall-saves" class="mono"></span></p>
 
       <div id="uninstall-msg" class="message" role="status"></div>
       <div class="actions">
@@ -75,22 +73,34 @@
     </div>
   </section>
 
+  <!-- First start of a portable home: moving the game data in from %APPDATA% (shown only while copying) -->
+  <section id="migrate" class="screen" hidden>
+    <div class="panel setup-panel narrow">
+      <p class="kicker">One moment</p>
+      <h1 class="display">Moving in</h1>
+      <p class="lead">Moving your game data here. Keep the launcher open.</p>
+      <div id="migrate-progress" class="progress">
+        <div class="progress-label"></div>
+        <div class="bar"><span></span></div>
+      </div>
+    </div>
+  </section>
+
   <!-- First run: extract the game data from the player's own dump -->
   <section id="setup" class="screen" hidden>
     <div class="panel setup-panel">
       <p class="kicker">First-time setup</p>
       <h1 class="display">Bring your copy to the island</h1>
-      <p class="lead">Open Catbox plays <em>Umineko no Naku Koro ni Saku</em> from your own Nintendo Switch dump.
-        Choose the files you dumped from your console. Everything stays on this computer.</p>
+      <p class="lead">Choose the files dumped from your Switch.</p>
 
       <div class="file-rows">
         <div class="file-row">
-          <div class="file-label">Base game NSP <small>01006A300BA2C000 · required</small></div>
+          <div class="file-label">Base game NSP <small>required</small></div>
           <output class="path" data-path="base">Not chosen</output>
           <button class="btn ghost" data-pick="base">Browse…</button>
         </div>
         <div class="file-row">
-          <div class="file-label">1.0.3 update NSP <small>01006A300BA2C800 · optional, only for Japanese</small></div>
+          <div class="file-label">1.0.3 update NSP <small>optional, for Japanese</small></div>
           <output class="path" data-path="update">Not chosen</output>
           <button class="btn ghost" data-pick="update">Browse…</button>
         </div>
@@ -100,14 +110,26 @@
           <button class="btn ghost" data-pick="prodKeys">Browse…</button>
         </div>
         <div class="file-row">
-          <div class="file-label">title.keys <small>optional, for personalised tickets</small></div>
+          <div class="file-label">title.keys <small>optional</small></div>
           <output class="path" data-path="titleKeys">Not chosen</output>
           <button class="btn ghost" data-pick="titleKeys">Browse…</button>
         </div>
       </div>
 
-      <p class="note">The game data goes to <span id="setup-data" class="mono"></span>.
-        Setup needs about as much free space there as the base game NSP, plus 1 GB.</p>
+      <p class="note">Saved to <span id="setup-data" class="mono"></span>.</p>
+
+      <div class="alt-setup">
+        <p class="or">or</p>
+        <div class="file-row">
+          <div class="file-label">Use an existing game folder <small>with data.rom</small></div>
+          <output class="path" id="existing-path">Not chosen</output>
+          <button class="btn ghost" id="existing-pick">Browse…</button>
+        </div>
+        <div id="existing-choice" class="actions start" hidden>
+          <button class="btn ghost" id="existing-copy">Copy it here</button>
+          <button class="btn ghost" id="existing-use">Use it where it is</button>
+        </div>
+      </div>
 
       <div id="setup-progress" class="progress" hidden>
         <div class="progress-label"></div>
@@ -154,8 +176,7 @@
           <h2 class="display">Languages</h2>
           <button id="check-updates" class="btn ghost">Check for updates</button>
         </div>
-        <p class="note">The English translations are downloaded from their authors' GitHub releases when you ask for them.
-          They are the translators' work and are not part of this project.</p>
+        <p class="note">Translations are downloaded from their authors.</p>
         <div id="lang-cards" class="cards"></div>
       </div>
     </div>
@@ -167,7 +188,7 @@
         <section class="group">
           <h3>Game data</h3>
           <div class="file-row">
-            <div class="file-label">Data folder <small>data.rom and the installed languages</small></div>
+            <div class="file-label">Data folder </div>
             <output class="path" id="data-dir"></output>
             <button class="btn ghost" id="move-data">Move…</button>
           </div>
@@ -179,21 +200,15 @@
           <label class="switch">
             <input type="checkbox" id="fullscreen">
             <span class="switch-track" aria-hidden="true"></span>
-            Start in fullscreen <small>(for now, press F11 in the game)</small>
+            Start in fullscreen
           </label>
         </section>
 
-        <section class="group" id="graphics">
-          <h3>Graphics <small>coming in a later version</small></h3>
-          <label class="field">Resolution scale
-            <select disabled><option>100%</option></select>
-          </label>
-        </section>
         <section class="group">
           <h3>Launcher</h3>
           <div class="field">
             <span>Open Catbox <span class="app-version"></span></span>
-            <button class="btn ghost small" id="check-app-update">Check for launcher updates</button>
+            <button class="btn ghost small" id="check-app-update">Check for updates</button>
             <button class="btn ghost small" id="open-uninstall" hidden>Uninstall…</button>
           </div>
           <div id="app-update-msg" class="message" role="status"></div>
@@ -204,7 +219,7 @@
           <label class="switch">
             <input type="checkbox" id="debug-logging">
             <span class="switch-track" aria-hidden="true"></span>
-            Debug logging <small>(more detail in logs\shin.log in the data folder)</small>
+            Debug logging
           </label>
         </section>
         <div id="settings-msg" class="message" role="status"></div>
@@ -231,11 +246,10 @@
           (<a href="https://github.com/andOlga/umineko-catbox-english">repository</a>).<br>
           <strong>Catbox X</strong> by Foxdear
           (<a href="https://github.com/Foxdear/umineko-catbox-X-english">repository</a>).<br>
-          Both are downloaded from their authors and are not part of this project.</p>
+          Not part of this project.</p>
         <h3>The game</h3>
         <p><em>Umineko no Naku Koro ni</em> was created by Ryukishi07 and 07th Expansion. The Switch release
-          <em>Saku</em> is published by Entergram. This project contains none of the game's files:
-          <strong>you need to own the game</strong> and dump it from your own console.</p>
+          <em>Saku</em> is published by Entergram. <strong>You need to own the game.</strong></p>
         <h3>Also used</h3>
         <p>Tauri · the Cinzel and Cormorant Garamond typefaces (SIL Open Font Licence).</p>
       </div>
@@ -252,6 +266,16 @@
     <div class="actions">
       <button id="update-later" class="btn ghost small">Later</button>
       <button id="update-now" class="btn primary small">Update now</button>
+    </div>
+  </aside>
+
+  <!-- Once, after settings, data and saves were brought in from %APPDATA% -->
+  <aside id="notice" class="update-banner notice" role="status" hidden>
+    <p class="kicker">A new home</p>
+    <h3>Everything is in one folder now</h3>
+    <p id="notice-text" class="update-notes"></p>
+    <div class="actions">
+      <button id="notice-ok" class="btn primary small">OK</button>
     </div>
   </aside>
 

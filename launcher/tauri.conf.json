@@ -10,6 +10,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Open Catbox",
         "width": 1100,
         "height": 680,

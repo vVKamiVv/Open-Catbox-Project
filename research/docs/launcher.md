@@ -30,6 +30,10 @@ that dump is untested. Everything is written to `<data>\.setup` first and only m
 succeeded; the folder is deleted afterwards, on failure too. Setup checks first that the data folder has about the
 size of the base NSP plus 1 GB free.
 
+**Use an existing game folder** skips extraction: pick a folder with a `data.rom`, which is hash-checked with a
+progress bar (an unknown hash only warns), then choose **Copy it here** (into the home's data folder) or **Use it where
+it is** (saved as `data_dir`).
+
 ## How extraction works
 
 Setup is native Rust (`launcher/src/setup.rs` and `launcher/src/nx/`); no external tool is downloaded or started.
@@ -73,7 +77,20 @@ The formats follow switchbrew.org (NCA, PFS0, RomFS, Ticket).
 
 ## Data layout
 
-The data folder is `%APPDATA%\OpenCatbox\data` by default and can be moved in Settings (to an empty folder).
+Everything lives in the launcher's own folder, the **home**: the install folder when it is writable, otherwise (and
+for builds from source) `%APPDATA%\OpenCatbox`.
+
+```
+<home>/
+  Open Catbox.exe, shin.exe
+  launcher.json              the launcher's settings
+  data/                      the game data (below); data_dir in launcher.json can point elsewhere
+  saves/SAVEDATA             the game's saves, and its settings.json
+  webview/                   the window's WebView2 data
+```
+
+With the home in `%APPDATA%`, the saves stay in `%APPDATA%\shin`, as before. The data folder can be moved in
+Settings (to an empty folder).
 
 ```
 data/
@@ -115,7 +132,7 @@ The English translations are never bundled; they are downloaded from their autho
 The launcher runs, from `shin.exe`'s own folder:
 
 ```
-shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs [--fullscreen]
+shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs --savedata <home>\saves\SAVEDATA [--fullscreen]
 ```
 
 `--fullscreen` is added when the launcher's Fullscreen setting is on: the game then starts in borderless fullscreen
@@ -125,8 +142,8 @@ puts it), then, in builds from source, in `target\release\` of the checkout.
 
 ## Settings and logs
 
-- Settings are stored in `%APPDATA%\OpenCatbox\launcher.json`: the data folder, the last language, fullscreen and
-  debug logging.
+- Settings are stored in `<home>\launcher.json`: the last language, fullscreen, debug logging, an optional `data_dir`
+  (absolute, or relative to the home) and `migrated_from` after the one-time move below.
 - The game's output goes to `<data>\logs\shin.log`, overwritten on each start. By default it is run with
   `RUST_LOG=warn`; **Settings → Debug logging** raises shin's own crates to `debug`, which is what a bug report
   needs.
@@ -143,6 +160,19 @@ keeps the built-in list (`launcher/src/history.rs`).
 
 The launcher is built for the Windows GUI subsystem, so it opens no console. `shin.exe` stays a console program for
 developers, but the launcher starts it with `CREATE_NO_WINDOW` and sends its output to the log instead.
+
+## Moving in from %APPDATA%
+
+Before v0.2.1 everything lived in `%APPDATA%`. The first time an installed launcher starts with a home that has no
+`launcher.json`, it brings things in once:
+
+- the old `%APPDATA%\OpenCatbox\launcher.json` is adopted;
+- game data in the old default folder is moved into `<home>\data` (a rename on the same drive; otherwise copied,
+  read back and checked with SHA-256, then deleted), with a progress screen. If space is short or the copy fails,
+  the data stays where it is and `data_dir` points at it. A custom data folder is kept as it is;
+- `SAVEDATA` and `settings.json` from `%APPDATA%\shin` are copied to `<home>\saves` if it has no saves yet; the
+  originals are kept;
+- a short notice says what happened, once.
 
 ## Installing, updating, uninstalling
 
@@ -161,32 +191,27 @@ Start menu and a desktop shortcut. **Install** then:
 3. adds Open Catbox to Installed apps: `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Open Catbox` with
    `DisplayName`, `DisplayVersion`, `Publisher` (Open Catbox Project), `DisplayIcon`, `InstallLocation`,
    `UninstallString` (`"<folder>\Open Catbox.exe" --uninstall`), `EstimatedSize`, `NoModify` and `NoRepair`;
-4. starts the installed copy and closes. The installed copy finds the game data and settings already set up
-   (`%APPDATA%\OpenCatbox`), and never shows the Install screen. Running the Setup again offers the registered folder,
+4. starts the installed copy and closes. On its first start the installed copy brings in settings, data and saves from
+   `%APPDATA%` (above), and never shows the Install screen. Running the Setup again offers the registered folder,
    which reinstalls over it.
 
-**Update.** On start, and from **Settings → Check for launcher updates**, the launcher reads
+**Update.** On start, and from **Settings → Check for updates**, the launcher reads
 `https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/latest.json`. If it names a newer version, a
 banner offers it. **Update now** downloads that version's `OpenCatbox-Setup.exe` and checks its signature (minisign,
 against the public key built into the launcher; a file that does not match is refused), saves it to a temporary folder,
 starts it as `OpenCatbox-Setup.exe --update <install folder>` and closes. The new Setup opens no window: it waits for the
-old launcher to exit (up to a minute), replaces `shin.exe` and `Open Catbox.exe`, points the shortcuts that exist at it,
+old launcher to exit (up to a minute), replaces only `shin.exe` and `Open Catbox.exe` (data, saves and settings are
+left alone), points the shortcuts that exist at it,
 updates the version in Installed apps, starts the new launcher and has its temporary copy deleted. If it cannot (for
 example while the game is running), nothing is half replaced: the launcher starts again and says why in the banner.
 
-**From v0.1.0.** v0.1.0 was installed by an NSIS installer into `%LOCALAPPDATA%\Open Catbox`, and its updater starts
-whatever it downloads as an NSIS installer with `/P /UPDATE /R /ARGS`. The new Setup treats any such `/` argument as an
-update of the installation registered in Installed apps: it puts `Open Catbox.exe` and `shin.exe` into that folder,
-removes v0.1.0's `open-catbox-launcher.exe` and NSIS `uninstall.exe`, re-points the Start menu and desktop shortcuts,
-rewrites the Installed apps entry (uninstalling now goes through the launcher) and starts the new launcher. Nothing
-needs to be done by hand.
-
-**Uninstall.** From Installed apps, or **Settings → Uninstall…**. The Uninstall screen asks whether to also delete the
-game data and settings (off by default: they are kept for a new install unless you tick it). Uninstalling deletes those
-if asked, removes the shortcuts and the Installed apps entry, closes, and a hidden PowerShell then deletes
-`Open Catbox.exe` and `shin.exe` (a running program cannot delete itself), the web view's cache
-(`%LOCALAPPDATA%\io.github.vvkamivv.opencatbox`) and the program folder if nothing else is in it. Only files the
-launcher put there are deleted. Your saves (`%APPDATA%\shin\SAVEDATA`) are never touched.
+**Uninstall.** From Installed apps, or **Settings → Uninstall…**. The Uninstall screen asks whether to **Also delete the
+game data, languages and saves** (off by default). If ticked, only known files are deleted (`data.rom`, the languages,
+the logs, `SAVEDATA*`, `settings.json`, `launcher.json`) and folders only when left empty, so other files in a data
+folder of your own survive. Uninstalling then removes the shortcuts and the Installed apps entry, closes, and a hidden PowerShell then deletes
+`Open Catbox.exe` and `shin.exe` (a running program cannot delete itself), the web view's data
+(`<home>\webview`, and the older `%LOCALAPPDATA%\io.github.vvkamivv.opencatbox`) and the program folder if nothing else
+is in it. Saves are deleted only when the box is ticked.
 
 ## Design
 

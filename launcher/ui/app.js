@@ -12,26 +12,27 @@ const LANGS = [
   {
     id: "en", name: "English", variant: "Catbox English", by: "&Olga",
     repo: "https://github.com/andOlga/umineko-catbox-english",
-    about: "The complete English translation of the Switch release.",
-    credits: "Translation patch by &Olga and the contributors credited in its repository.",
+    about: "The full English translation.",
+    credits: "By &Olga and contributors.",
   },
   {
     id: "enx", name: "English", variant: "Catbox X", by: "Foxdear",
     repo: "https://github.com/Foxdear/umineko-catbox-X-english",
-    about: "A revision of Catbox English: currently revised up to Episode 7, fixes minor issues.",
-    credits: "Revision by Foxdear, building on &Olga's Catbox English.",
+    about: "Catbox English with fixes, up to Episode 7.",
+    credits: "By Foxdear, based on Catbox English.",
   },
   {
     id: "ja", name: "Japanese", variant: "Original", by: "Entergram",
-    about: "The original Japanese text. Comes from the 1.0.3 update in your own dump.",
-    credits: "Text by Ryukishi07 / 07th Expansion; Switch release by Entergram.",
+    about: "The original text. Needs the 1.0.3 update.",
+    credits: "By Ryukishi07 / 07th Expansion and Entergram.",
   },
 ];
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
-let state = null;
+let state = null; // until it arrives (and while moving in from %APPDATA%), no screen shows: only the sky
+let migrating = false;
 let showSetup = false;
 let showUninstall = false;
 let installDir = null; // chosen on the install screen
@@ -57,16 +58,19 @@ function selectedLanguage() {
 }
 
 function render() {
+  if (!state || migrating) return;
   const program = state.program;
   const screen = program.uninstall || showUninstall ? "uninstall"
     : program.can_install && !program.installed ? "install"
     : showSetup || !state.data_ready ? "setup" : "main";
   $$(".screen").forEach((s) => (s.hidden = s.id !== screen));
+  if (screen !== "main") $("#notice").hidden = true;
   installDir ??= program.folder;
   $("#install-dir").textContent = installDir;
   $("#install-dir").title = installDir;
   $("#uninstall-dir").textContent = program.folder;
   $("#uninstall-data-dir").textContent = state.data_dir;
+  $("#uninstall-saves").textContent = state.savedata.replace(/[\\/]SAVEDATA$/, "");
   $("#open-uninstall").hidden = !program.installed;
   $("#setup-data").textContent = state.data_dir;
   $("#setup-cancel").hidden = !state.data_ready;
@@ -224,7 +228,7 @@ $("#move-data").addEventListener("click", async () => {
   const target = await dialog.open({ directory: true, title: "Choose an empty folder for the game data" });
   if (!target) return;
   const msg = $("#settings-msg");
-  say(msg, "Moving the game data… (this can take a few minutes across drives)");
+  say(msg, "Moving the game data…");
   try {
     await invoke("move_data_dir", { target });
     say(msg, "Moved.", "ok");
@@ -252,12 +256,14 @@ async function checkAppUpdate(manual) {
     }
     pendingUpdate = update;
     $("#update-title").textContent = `Open Catbox ${update.version}`;
-    $("#update-notes").textContent = update.body ?? "";
+    // one bullet per line: the notes come hard-wrapped from the changelog
+    const notes = await invoke("release_notes", { body: update.body ?? "" });
+    $("#update-notes").textContent = notes.map((n) => `• ${plain(n)}`).join("\n");
     $("#update-banner").hidden = false;
     $("#update-now").hidden = false;
     if (manual) say(msg, `Version ${update.version} is available.`, "ok");
   } catch (e) {
-    if (manual) say(msg, `Could not check for updates (offline, or no release published yet).\n${e}`, "error");
+    if (manual) say(msg, `Could not check for updates.\n${e}`, "error");
   }
 }
 
@@ -324,7 +330,7 @@ $("#uninstall-start").addEventListener("click", async () => {
   say(msg, "Uninstalling…");
   try {
     await invoke("uninstall_program", { deleteData: $("#uninstall-data").checked });
-    say(msg, "Open Catbox has been removed. Farewell.", "ok");
+    say(msg, "Open Catbox was removed. Farewell.", "ok");
     setTimeout(() => processApi.exit(0), 2000);
   } catch (e) {
     say(msg, String(e), "error");
@@ -333,6 +339,9 @@ $("#uninstall-start").addEventListener("click", async () => {
 });
 
 // --- Version history ---
+
+// markdown emphasis and code marks, shown as plain text
+const plain = (note) => note.replace(/\*\*?|`/g, "");
 
 function renderHistory(history) {
   const list = $("#history-list");
@@ -355,7 +364,7 @@ function renderHistory(history) {
     const ul = document.createElement("ul");
     for (const note of entry.notes) {
       const li = document.createElement("li");
-      li.textContent = note.replace(/\*\*?|`/g, ""); // markdown emphasis and code marks, shown as plain text
+      li.textContent = plain(note);
       ul.append(li);
     }
     item.append(head, ul);
@@ -371,7 +380,7 @@ async function loadHistory() {
   const history = await invoke("version_history", { online: true });
   renderHistory(history);
   // offline only hides releases newer than this launcher, so a quiet note is enough
-  if (history.online_error) say($("#history-msg"), "Newer releases could not be checked (offline?).", "warn");
+  if (history.online_error) say($("#history-msg"), "Could not check for newer releases.", "warn");
 }
 
 // --- Setup screen ---
@@ -399,13 +408,13 @@ $("#setup-cancel").addEventListener("click", () => { showSetup = false; render()
 $("#setup-start").addEventListener("click", async () => {
   const msg = $("#setup-msg");
   if (!picks.base || !picks.prodKeys) {
-    say(msg, "Please choose at least the base game NSP and prod.keys.", "error");
+    say(msg, "Choose the base game NSP and prod.keys.", "error");
     return;
   }
   const controls = $$("#setup button");
   controls.forEach((b) => (b.disabled = true));
   $("#setup-progress").hidden = false;
-  say(msg, "This takes a few minutes. Please keep the launcher open.");
+  say(msg, "This takes a few minutes. Keep the launcher open.");
   try {
     const warnings = await invoke("run_setup", { base: picks.base, update: picks.update, prodKeys: picks.prodKeys, titleKeys: picks.titleKeys });
     $("#setup-progress").hidden = true;
@@ -420,6 +429,82 @@ $("#setup-start").addEventListener("click", async () => {
   }
 });
 
+// a folder that already holds data.rom (another PC, a backup, an earlier install): copied here or used where it is
+let existing = null;
+
+$("#existing-pick").addEventListener("click", async () => {
+  const folder = await dialog.open({ directory: true, title: "Choose the folder with data.rom" });
+  if (folder) checkExisting(folder);
+});
+
+async function checkExisting(folder) {
+  const msg = $("#setup-msg");
+  const controls = $$("#setup button");
+  existing = null;
+  $("#existing-choice").hidden = true;
+  $("#existing-path").textContent = folder;
+  $("#existing-path").title = folder;
+  $("#existing-path").classList.add("set");
+  controls.forEach((b) => (b.disabled = true));
+  $("#setup-progress").hidden = false;
+  say(msg, "Checking data.rom…");
+  try {
+    const known = await invoke("check_game_folder", { folder });
+    existing = folder;
+    say(msg, known ? "Game data OK." : "Unknown data.rom version. It may still work.",
+      known ? "ok" : "warn");
+    $("#existing-choice").hidden = false;
+  } catch (e) {
+    say(msg, String(e), "error");
+  } finally {
+    $("#setup-progress").hidden = true;
+    controls.forEach((b) => (b.disabled = false));
+  }
+}
+
+async function useExisting(copy) {
+  const msg = $("#setup-msg");
+  const controls = $$("#setup button");
+  controls.forEach((b) => (b.disabled = true));
+  $("#setup-progress").hidden = !copy;
+  say(msg, copy ? "Copying the game data…" : "");
+  try {
+    await invoke("use_game_folder", { folder: existing, copy });
+    say(msg, "The game data is ready.", "ok");
+    await refresh();
+    setTimeout(() => { showSetup = false; render(); }, 1500);
+  } catch (e) {
+    say(msg, String(e), "error");
+  } finally {
+    $("#setup-progress").hidden = true;
+    controls.forEach((b) => (b.disabled = false));
+  }
+}
+
+$("#existing-copy").addEventListener("click", () => useExisting(true));
+$("#existing-use").addEventListener("click", () => useExisting(false));
+
+// --- Moving in from %APPDATA% (first start of a portable home) ---
+
+async function moveIn() {
+  migrating = true;
+  let said;
+  try {
+    said = await invoke("migrate");
+  } catch (e) {
+    said = [`Some settings could not be brought over: ${e}`];
+  }
+  migrating = false;
+  $("#migrate").hidden = true;
+  await refresh();
+  if (said.length) {
+    $("#notice-text").textContent = [`Your settings are now in ${state.home}.`, ...said].join("\n");
+    $("#notice").hidden = false;
+  }
+}
+
+$("#notice-ok").addEventListener("click", () => { $("#notice").hidden = true; });
+
 // --- shared ---
 
 listen("progress", ({ payload }) => {
@@ -432,6 +517,18 @@ listen("progress", ({ payload }) => {
   if (payload.task === "app-update") {
     $("#update-progress span").style.width = percent;
     say($("#update-msg"), payload.fraction >= 1 ? "Installing… the launcher restarts by itself." : `Downloading… ${percent}`);
+    return;
+  }
+  if (payload.task === "migrate") {
+    if (!migrating) return;
+    // only a copy across drives reports progress; a rename is done before anything would show
+    $$(".screen").forEach((s) => (s.hidden = s.id !== "migrate"));
+    $("#migrate-progress .progress-label").textContent = `${payload.label}… ${percent}`;
+    $("#migrate-progress .bar span").style.width = percent;
+    return;
+  }
+  if (payload.task === "move") {
+    say($("#settings-msg"), `${payload.label}… ${percent}`);
     return;
   }
   if (payload.task === "setup") {
@@ -457,7 +554,10 @@ document.addEventListener("click", (e) => {
 });
 
 window.__TAURI__.app.getVersion().then((v) => $$(".app-version").forEach((n) => (n.textContent = `v${v}`)));
-refresh().then(() => {
+invoke("get_state").then(async (first) => {
+  state = first;
+  if (first.migration && !first.program.uninstall) await moveIn();
+  else render();
   if (state.program.update_error) {
     $("#update-title").textContent = "The update did not finish";
     say($("#update-msg"), state.program.update_error, "error");

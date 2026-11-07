@@ -64,7 +64,7 @@ small { font-size: 0.8em; color: var(--ink-dim); font-weight: 500; }
 
 /* 4. Layout */
 .screen { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
-#setup, #install, #uninstall { align-items: center; justify-content: safe center; padding: 20px var(--pad); overflow-y: auto; }
+#setup, #install, #uninstall, #migrate { align-items: center; justify-content: safe center; padding: 20px var(--pad); overflow-y: auto; }
 .topbar {
   height: var(--topbar-h); flex: none;
   display: flex; align-items: center; justify-content: space-between;
@@ -167,7 +167,6 @@ h3 { font-size: 15px; font-weight: 600; color: var(--gold); margin: 0 0 12px; te
 
 .group { padding: 18px 0; border-top: 1px solid rgba(226, 182, 90, 0.15); }
 .group:first-of-type { border-top: 0; }
-#graphics { opacity: 0.6; }
 .field { display: flex; gap: 14px; align-items: center; }
 select {
   font: inherit; font-size: 16px; color: var(--ink); background: var(--field-bg);
@@ -265,6 +264,9 @@ select {
 .update-banner h3 { margin: 6px 0 8px; font-size: 18px; color: var(--gold-light); text-transform: none; }
 .update-notes { margin: 0 0 10px; max-height: 160px; overflow-y: auto; white-space: pre-wrap; color: var(--ink-dim); font-size: 0.9em; user-select: text; }
 .update-banner .actions { margin-top: 10px; }
+.update-banner.notice { bottom: auto; top: calc(var(--topbar-h) + 8px); }
+.alt-setup { margin-top: 6px; }
+.or { margin: 0 0 6px; text-align: center; color: var(--ink-dim); font-style: italic; }
 
 /* 7. Motion */
 .view:not([hidden]), .screen:not([hidden]) { animation: fade-in 0.5s var(--ease); }
