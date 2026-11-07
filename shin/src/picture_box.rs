@@ -5,7 +5,7 @@
 //!
 //! shortcut: the viewer's pictures cannot be panned with the left stick; the d-pad and the pointer pan them.
 
-use std::sync::Arc;
+use std::{cell::Cell, sync::Arc};
 
 use enum_map::EnumMap;
 use glam::{Mat4, Vec2, vec3};
@@ -52,6 +52,7 @@ use crate::{
     ui::{
         self, MenuInput,
         gesture::{Coast, Gesture, GestureRecognizer},
+        serif::UiText,
     },
     update::{AdvUpdatable as _, AdvUpdateContext, UpdateContext},
 };
@@ -153,6 +154,10 @@ pub struct PictureBox {
     touch: Option<Touch>,
     /// Port-only: the viewer's Save
     export: Exporter,
+    /// Port-only: the viewer's key help labels (zoom, hide the marks, previous picture), made on the first update
+    help: Option<[UiText; 3]>,
+    /// Where the viewer's help entries were last drawn (empty while hidden), for the pointer
+    help_hits: Cell<[[f32; 4]; 3]>,
 }
 
 impl PictureBox {
@@ -232,6 +237,8 @@ impl PictureBox {
             coast: Coast::default(),
             touch: None,
             export,
+            help: None,
+            help_hits: Cell::new([[0.0; 4]; 3]),
         })
     }
 
@@ -461,6 +468,19 @@ impl PictureBox {
         pointer: Pointer,
     ) {
         let frames = context.delta_ticks.as_f32();
+        if self.help.is_none() {
+            let japanese = crate::adv::menu::config_menu::japanese();
+            let font = &self.assets.system_font;
+            let label = |en: &str, ja: &str| {
+                let text = if japanese { ja } else { en };
+                UiText::new(context.pre_render, font, text, export::HELP_STYLE, 30.0)
+            };
+            self.help = Some([
+                label("Zoom", "拡大"),
+                label("Hide UI", "表示切替"),
+                label("Previous", "前へ"),
+            ]);
+        }
         let settings = self.global.settings;
         self.bgm.set_gain(settings.v0_bgmvol, 1.0);
         crate::audio::sys_se::set_setting_volume(settings.v3_sysvol);
@@ -647,6 +667,28 @@ impl PictureBox {
             self.viewer.as_mut().unwrap().position = None;
             return false;
         };
+        self.show_picture(context, position);
+        true
+    }
+
+    /// Port-only: the entry's unlocked picture before the one shown, if any
+    fn previous_position(&self) -> Option<usize> {
+        let viewer = self.viewer.as_ref()?;
+        let item = &self.items[viewer.item];
+        (0..viewer.position?).rev().find(|&k| item.unlocked[k])
+    }
+
+    /// Port-only: back to the entry's previous unlocked picture over the same crossfade, with `decide`
+    fn previous_picture(&mut self, context: &mut UpdateContext) {
+        if let Some(position) = self.previous_position() {
+            self.sound(context.asset_server, "decide");
+            self.show_picture(context, position);
+        }
+    }
+
+    /// Shows the entry's picture `position` over a crossfade
+    fn show_picture(&mut self, context: &mut UpdateContext, position: usize) {
+        let item = &self.items[self.viewer.as_ref().unwrap().item];
         let info = self
             .assets
             .scenario
@@ -691,7 +733,6 @@ impl PictureBox {
             layer
         });
         Self::layout(viewer, false);
-        true
     }
 
     /// `Viewer::Exit` (`0x710004b7b0`): back to the gallery over a crossfade
@@ -789,6 +830,10 @@ impl PictureBox {
                 }
                 return;
             }
+            if input.l {
+                self.previous_picture(context);
+                return;
+            }
             let viewer = self.viewer.as_mut().unwrap();
             if input.x && viewer.picture.is_some() {
                 viewer.fit = !viewer.fit;
@@ -840,7 +885,25 @@ impl PictureBox {
             let pannable = viewer.picture.is_some() && !viewer.fit;
             match gesture {
                 Gesture::Down(_) => viewer.velocity = Vec2::ZERO,
-                Gesture::Tap(_) => {
+                Gesture::Tap(at) => {
+                    // port-only: the key help entries act as their keys do
+                    let hits = self.help_hits.get();
+                    let inside = |[x0, y0, x1, y1]: [f32; 4]| at.x >= x0 && at.x < x1 && at.y >= y0 && at.y < y1;
+                    if inside(hits[0]) {
+                        if viewer.picture.is_some() {
+                            viewer.fit = !viewer.fit;
+                            Self::layout(viewer, true);
+                        }
+                        return true;
+                    }
+                    if inside(hits[1]) {
+                        viewer.show_marks = !viewer.show_marks;
+                        return true;
+                    }
+                    if inside(hits[2]) {
+                        self.previous_picture(context);
+                        return true;
+                    }
                     self.sound(context.asset_server, "decide");
                     if !self.next_picture(context) {
                         self.exit_viewer(context);
@@ -1019,8 +1082,30 @@ impl PictureBox {
             } else {
                 FloatColor4::from_rgba(0.502, 0.502, 0.502, 1.0)
             };
-            self.export
-                .draw_entry(pass, self.textures.get("key"), right, 1021.0, color);
+            let keys = self.textures.get("key");
+            let right = self.export.draw_entry(pass, keys, right, 1021.0, color);
+            // port-only: the viewer's own keys, right to left: zoom (X), hide the marks (Y), and the previous picture
+            // (L) for an entry with several
+            let mut hits = [[0.0; 4]; 3];
+            if let Some(help) = &self.help {
+                let grey = FloatColor4::from_rgba(0.502, 0.502, 0.502, 1.0);
+                let (right, hit) = export::draw_help_entry(pass, keys, 5, &help[0], right, 1021.0, color);
+                hits[0] = hit;
+                let (right, hit) =
+                    export::draw_help_entry(pass, keys, 6, &help[1], right, 1021.0, FloatColor4::WHITE);
+                hits[1] = hit;
+                if n > 1 {
+                    let previous = if self.previous_position().is_some() {
+                        FloatColor4::WHITE
+                    } else {
+                        grey
+                    };
+                    hits[2] = export::draw_help_entry(pass, keys, 10, &help[2], right, 1021.0, previous).1;
+                }
+            }
+            self.help_hits.set(hits);
+        } else {
+            self.help_hits.set([[0.0; 4]; 3]);
         }
     }
 

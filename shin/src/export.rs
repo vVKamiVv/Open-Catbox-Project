@@ -31,6 +31,7 @@ use shin_tasks::ComputeTask;
 use tracing::{info, warn};
 
 use crate::{
+    ui::serif::{self, UiText},
     adv::hud::{OUTLINE, text_layout},
     app::AppAction,
     asset::{
@@ -50,9 +51,38 @@ const FADE_FRAMES: f32 = 30.0;
 /// The `key` atlas' − glyph
 const SAVE_GLYPH: u8 = 13;
 
+/// The port's own key help labels, as the screens' help art: Georgia-like semi-bold white, capitals 18 tall
+pub const HELP_STYLE: serif::Style = serif::Style {
+    face: serif::Face::Serif,
+    weight: 600.0,
+    size: 26.0,
+    squeeze: 0.95,
+    shadow: (glam::Vec2::new(2.0, 2.0), 0.85),
+};
+
+/// A port-only key help entry ending at `right` on the 48 px row at `y`: `label`, and glyph `glyph` of the `key`
+/// atlas left of it as in the screens' key help. Returns the next entry's right edge and the entry's rectangle
+pub fn draw_help_entry(
+    pass: &mut RenderPass,
+    keys: &GpuTexture,
+    glyph: u8,
+    label: &UiText,
+    right: f32,
+    y: f32,
+    color: FloatColor4,
+) -> (f32, [f32; 4]) {
+    let projection = ui::projection();
+    let text_x = right - label.width();
+    // the help art's capitals have their middle 20.5 px down the row
+    label.draw(pass, projection, text_x, y + 20.5, color, BORDER.with_alpha(color.a));
+    let x = text_x - 52.0;
+    ui::prompts::draw(pass, ui::builder(), projection, keys, glyph, [x, y, x + 48.0, y + 48.0], color);
+    (x - 16.0, [x, y, right, y + 48.0])
+}
+
 pub struct Exporter {
     font: Arc<GpuFontLazy>,
-    label: Option<TextBlock>,
+    label: Option<UiText>,
     /// The notice and its frames left
     notice: Option<(TextBlock, f32)>,
     task: Option<ComputeTask<Result<PathBuf>>>,
@@ -131,7 +161,7 @@ impl Exporter {
             ..text_layout(1800.0, 30.0)
         };
         if self.label.is_none() {
-            self.label = Some(TextBlock::new(ctx, &self.font, "Save", layout, OUTLINE));
+            self.label = Some(UiText::new(ctx, &self.font, "Save", HELP_STYLE, 30.0));
         }
         if let Some((_, left)) = &mut self.notice {
             *left -= frames;
@@ -170,29 +200,9 @@ impl Exporter {
         let Some(label) = &self.label else {
             return right;
         };
-        let projection = ui::projection();
-        let size = label.size();
-        let text_x = right - size.x;
-        ui::draw_text(
-            pass,
-            label,
-            projection * Mat4::from_translation(vec3(text_x, y + (48.0 - size.y) / 2.0, 0.0)),
-            color,
-            BORDER.with_alpha(color.a),
-        );
-        let x = text_x - 52.0;
-        let rect = [x, y, x + 48.0, y + 48.0];
-        ui::prompts::draw(
-            pass,
-            ui::builder(),
-            projection,
-            keys,
-            SAVE_GLYPH,
-            rect,
-            color,
-        );
-        self.hit.set([x, y, right, y + 48.0]);
-        x - 16.0
+        let (next, hit) = draw_help_entry(pass, keys, SAVE_GLYPH, label, right, y, color);
+        self.hit.set(hit);
+        next
     }
 
     /// The Save entry is not on screen: the pointer cannot click it
