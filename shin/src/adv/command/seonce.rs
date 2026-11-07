@@ -60,8 +60,7 @@ impl UpdatableCommand for SEONCE {
         adv_state: &mut AdvState,
         is_fast_forwarding: bool,
     ) -> Option<CommandResult> {
-        // shortcut: the original's skip test also checks the message state and a config option; fast-forwarding
-        // stands in for it until skip mode is modelled
+        // skipping (`isSkipping`: skip mode or the held button, v11's read test) plays no one-shot sound
         if is_fast_forwarding {
             return Some(self.token.take().unwrap().finish());
         }

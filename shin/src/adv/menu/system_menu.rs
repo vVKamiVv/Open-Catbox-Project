@@ -2,8 +2,6 @@
 //! over the blurred scene. Its items slide in from the left one after another; on the right two panels show the
 //! scene's title and the play time. An item flashes, then opens its screen while the menu slides away, and the menu
 //! slides back when that screen closes.
-//!
-//! shortcut: Characters, Tips and Manual do not exist in the port yet; choosing them plays the error sound.
 
 use glam::{Mat4, vec3};
 use shin_core::{

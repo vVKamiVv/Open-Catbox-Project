@@ -1,8 +1,7 @@
 //! What the adventure screen draws over its layers (ADV render `0x71000125a0`): the scene-title banner (AUTOSAVE), the
 //! song-title banner (a new BGM), the skip and auto icons, the "Characters/Tips updated" notification and the
-//! event-skip hint, all in 1920x1080 top-left space with textures from `/adv.txa`.
-//!
-//! shortcut: the touch screen's on-screen buttons (`navi`) are not drawn, the port having no touch input.
+//! event-skip hint, and the touch buttons (`navi`, [`super::touch_buttons`]), all in 1920x1080 top-left space with
+//! textures from `/adv.txa`.
 
 use std::{collections::VecDeque, sync::Arc};
 
