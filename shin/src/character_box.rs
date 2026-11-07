@@ -44,6 +44,7 @@ use crate::{
         texture_archive::NamedTextures,
     },
     audio::{BgmPlayer, play_sys_se},
+    export::{self, Exporter},
     layer::{
         DrawableLayer, Layer, render_layers_with_bg,
         render_params::TransformParams,
@@ -210,6 +211,8 @@ pub struct CharacterBox {
     gestures: GestureRecognizer,
     touch: Option<Touch>,
     velocity: Vec2,
+    /// Port-only: the sprite's and the background's Save
+    export: Exporter,
 }
 
 impl CharacterBox {
@@ -237,6 +240,7 @@ impl CharacterBox {
                     .collect(),
             })
             .collect();
+        let export = Exporter::new(assets.system_font.clone());
         let mut character_box = Self {
             assets,
             audio,
@@ -263,6 +267,7 @@ impl CharacterBox {
             gestures: GestureRecognizer::new(false),
             touch: None,
             velocity: Vec2::ZERO,
+            export,
         };
         character_box.load_backgrounds();
         character_box.load_bustup();
@@ -305,6 +310,47 @@ impl CharacterBox {
     fn indices(&self) -> [usize; 5] {
         let (variant, pose, face) = self.current_selection();
         [self.character, variant, pose, face, self.background]
+    }
+
+    /// Port-only: the sprite as shown at rest (its base, face, first mouth and first eyes) and the primary background,
+    /// as PNGs at full size
+    fn save_scene(&mut self) {
+        let (variant, pose, face) = self.current_selection();
+        let id = self.table.characters[self.character][variant][pose][face];
+        let tables = self.assets.scenario.info_tables();
+        let bustup = tables.bustup_info(BustupId::from_number(id as i32));
+        let background = tables.picture_info(PictureId::from_number(
+            self.table.backgrounds[self.background].0 as i32,
+        ));
+        let (bustup_data, background_data) = (
+            self.asset_server.open(bustup.path()),
+            self.asset_server.open(background.path()),
+        );
+        let emotion = bustup.emotion.to_string();
+        let root = export::folder(dirs_next::picture_dir());
+        let sprite_name = [bustup.name.as_str(), &emotion]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("_");
+        let sprite_file = root
+            .join("Characters")
+            .join(format!("{}.png", export::file_name(&sprite_name)));
+        let background_file = root.join("Backgrounds").join(format!(
+            "{}.png",
+            export::file_name(background.name.as_str())
+        ));
+        self.export.start(move || {
+            export::save_png(
+                &export::compose_bustup(&bustup_data?, &emotion)?,
+                &sprite_file,
+            )?;
+            export::save_png(
+                &export::decode_picture(&background_data?)?,
+                &background_file,
+            )?;
+            Ok(root)
+        });
     }
 
     /// `0x710003acd0`: the selected face's bustup, at depth 1000
@@ -638,6 +684,8 @@ impl CharacterBox {
         let settings = self.global.settings;
         self.bgm.set_gain(settings.v0_bgmvol, 1.0);
         crate::audio::sys_se::set_setting_volume(settings.v3_sysvol);
+        let (pointer, clicked) = self.export.pointer(pointer);
+        let save = clicked || Exporter::pressed(state);
         let input = MenuInput::new(state, pointer);
 
         match self.state {
@@ -654,7 +702,11 @@ impl CharacterBox {
                 self.handle_pointer(context.pre_render, pointer, frames);
                 // a touch holds the buttons off (`0x710006b860`)
                 if !self.gestures.is_active() && self.state == State::Active {
-                    self.handle_keys(context.pre_render, &input);
+                    if save {
+                        self.save_scene();
+                    } else {
+                        self.handle_keys(context.pre_render, &input);
+                    }
                 }
             }
             State::Hiding => {
@@ -678,7 +730,11 @@ impl CharacterBox {
                     self.velocity *= 0.95f32.powf(frames);
                 }
                 if !self.gestures.is_active() && self.state == State::Viewer {
-                    self.handle_viewer_keys(&input, frames);
+                    if save {
+                        self.save_scene();
+                    } else {
+                        self.handle_viewer_keys(&input, frames);
+                    }
                 }
             }
             State::ViewerClosing => {
@@ -744,6 +800,8 @@ impl CharacterBox {
             bustup.update(&update);
             bustup.pre_render(context.pre_render, &parent);
         }
+        self.export
+            .update(context.pre_render, &self.audio, &self.asset_server, frames);
     }
 
     /// `BustupMode::First`: BGM 7 at full volume, which also unlocks it in the Music Box
@@ -805,6 +863,8 @@ impl CharacterBox {
 
     pub fn render(&self, pass: &mut RenderPass) {
         self.render_scene(pass);
+        self.export.hide_entry();
+        self.export.draw_notice(pass);
         let projection = ui::projection();
         let builder = ui::builder();
         let t = |name: &str| self.textures.get(name);
@@ -890,7 +950,9 @@ impl CharacterBox {
         let mut x = help.draw(pass, 1872.0, &[4], 48.0, 80.0, white);
         x = help.draw(pass, x, &[3], 96.0, 180.0, white);
         x = help.draw(pass, x, &[7, 2], 144.0, 214.0, white);
-        help.draw(pass, x, &[1], 0.0, 214.0, white);
+        x = help.draw(pass, x, &[1], 0.0, 214.0, white);
+        // port-only
+        self.export.draw_entry(pass, t("key"), x, help.y, white);
     }
 
     /// `0x7100039770`: "i/n" in the `num` glyphs, centred in the 112 px frame

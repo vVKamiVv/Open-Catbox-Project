@@ -31,6 +31,7 @@ use crate::{
     app::AppAction,
     asset::{system::AssetServer, texture_archive::NamedTextures},
     audio::{BgmPlayer, play_sys_se},
+    export::{self, Exporter},
     layer::{
         text_block::TextBlock,
         user::minigame::{self, Sprite},
@@ -95,6 +96,8 @@ pub struct MusicBox {
     gestures: GestureRecognizer,
     coast: Coast,
     touch: Option<Touch>,
+    /// Port-only: the selected track's Save
+    export: Exporter,
 }
 
 impl MusicBox {
@@ -150,6 +153,7 @@ impl MusicBox {
             layout,
             OUTLINE,
         );
+        let export = Exporter::new(assets.system_font.clone());
 
         Ok(Self {
             assets,
@@ -169,6 +173,7 @@ impl MusicBox {
             gestures: GestureRecognizer::new(false),
             coast: Coast::default(),
             touch: None,
+            export,
         })
     }
 
@@ -239,7 +244,7 @@ impl MusicBox {
         }
     }
 
-    fn handle_keys(&mut self, context: &UpdateContext, input: &MenuInput) {
+    fn handle_keys(&mut self, context: &UpdateContext, input: &MenuInput, save: bool) {
         let assets = context.asset_server;
         let n = self.items.len();
         if input.cancel {
@@ -249,6 +254,10 @@ impl MusicBox {
         }
         if input.confirm {
             self.play(assets);
+            return;
+        }
+        if save {
+            self.save_track(assets);
             return;
         }
         if input.y {
@@ -289,6 +298,25 @@ impl MusicBox {
             self.scroll = Tweener::new(scroll);
             self.follow_cursor(scroll);
         }
+    }
+
+    /// Port-only: the selected track as a WAV, `<number> <title>.wav`
+    fn save_track(&mut self, assets: &AssetServer) {
+        let item = &self.items[self.cursor];
+        if !item.unlocked {
+            self.sound(assets, "error");
+            return;
+        }
+        let info = self.assets.scenario.info_tables().bgm_info(item.bgm_id);
+        let title = info.display_name.as_str().to_string();
+        let data = assets.open(info.path());
+        let file = export::folder(dirs_next::audio_dir()).join(format!(
+            "{:02} {}.wav",
+            self.cursor + 1,
+            export::file_name(&title)
+        ));
+        self.export
+            .start(move || export::save_track(&data?, &title, &file));
     }
 
     /// `0x71000308a0`: the cursor follows by rows into the view
@@ -448,6 +476,8 @@ impl MusicBox {
             .handle::<CanvasSize>()
             .get();
         self.target_size = (size.width, size.height);
+        let (pointer, clicked) = self.export.pointer(pointer);
+        let save = clicked || Exporter::pressed(state);
 
         match self.state {
             State::Active => {
@@ -466,7 +496,7 @@ impl MusicBox {
                     && self.scroll.is_idle()
                     && self.state == State::Active
                 {
-                    self.handle_keys(context, &MenuInput::new(state, pointer));
+                    self.handle_keys(context, &MenuInput::new(state, pointer), save);
                 }
             }
             State::Closing => {
@@ -492,6 +522,12 @@ impl MusicBox {
             ui::advance(&mut item.highlight, frames);
             ui::advance(&mut item.flash, frames);
         }
+        self.export.update(
+            context.pre_render,
+            &self.audio,
+            context.asset_server,
+            frames,
+        );
     }
 
     pub fn render(&self, pass: &mut RenderPass) {
@@ -574,7 +610,9 @@ impl MusicBox {
         let mut x = self.draw_help(pass, 1872.0, &[4], 48.0, 72.0, white);
         x = self.draw_help(pass, x, &[6], 144.0, 74.0, stop);
         x = self.draw_help(pass, x, &[3], 96.0, 76.0, play);
-        self.draw_help(pass, x, &[7, 0], 0.0, 206.0, white);
+        x = self.draw_help(pass, x, &[7, 0], 0.0, 206.0, white);
+        // port-only
+        self.export.draw_entry(pass, t("key"), x, 1012.0, play);
 
         ui::draw_text(
             pass,
@@ -583,6 +621,7 @@ impl MusicBox {
             FloatColor4::WHITE,
             BORDER,
         );
+        self.export.draw_notice(pass);
     }
 
     fn draw_help(

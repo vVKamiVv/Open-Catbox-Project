@@ -31,6 +31,7 @@ use crate::{
     app::AppAction,
     asset::{movie::Movie, system::AssetServer, texture_archive::NamedTextures},
     audio::play_sys_se,
+    export::{self, Exporter},
     layer::{
         Layer as _, render_layer_without_bg,
         render_params::TransformParams,
@@ -113,6 +114,8 @@ pub struct MovieBox {
     /// The gallery's touch input (`GestureRecognizer`, listener `0x7100089300` and its neighbours)
     gestures: GestureRecognizer,
     touch: Option<Touch>,
+    /// Port-only: the selected movie's Save
+    export: Exporter,
 }
 
 impl MovieBox {
@@ -151,6 +154,7 @@ impl MovieBox {
             layout,
             OUTLINE,
         );
+        let export = Exporter::new(assets.system_font.clone());
         Ok(Self {
             assets,
             audio,
@@ -164,6 +168,7 @@ impl MovieBox {
             state: State::Active,
             gestures: GestureRecognizer::new(false),
             touch: None,
+            export,
         })
     }
 
@@ -175,7 +180,7 @@ impl MovieBox {
         play_sys_se(&self.audio, assets, name, Volume::default());
     }
 
-    fn handle_keys(&mut self, assets: &AssetServer, input: &MenuInput) {
+    fn handle_keys(&mut self, assets: &AssetServer, input: &MenuInput, save: bool) {
         if input.cancel {
             self.sound(assets, "cancel");
             self.close();
@@ -183,6 +188,10 @@ impl MovieBox {
         }
         if input.confirm {
             self.decide(assets);
+            return;
+        }
+        if save {
+            self.save_movie(assets);
             return;
         }
         let n = self.items.len();
@@ -204,6 +213,24 @@ impl MovieBox {
             self.sound(assets, "move");
             self.set_cursor(to);
         }
+    }
+
+    /// Port-only: the selected movie's `.mp4` as it is
+    fn save_movie(&mut self, assets: &AssetServer) {
+        let item = &self.items[self.cursor];
+        if !item.unlocked {
+            self.sound(assets, "error");
+            return;
+        }
+        let info = self
+            .assets
+            .scenario
+            .info_tables()
+            .movie_info(MovieId::from_number(item.movie));
+        let data = assets.open(info.path());
+        let file = export::folder(dirs_next::video_dir())
+            .join(format!("{}.mp4", export::file_name(info.name.as_str())));
+        self.export.start(move || export::save_raw(&data?, &file));
     }
 
     fn set_cursor(&mut self, to: usize) {
@@ -307,13 +334,15 @@ impl MovieBox {
             settings.v1_sfxvol,
             settings.v2_voicevol,
         );
+        let (pointer, clicked) = self.export.pointer(pointer);
+        let save = clicked || Exporter::pressed(state);
         let input = MenuInput::new(state, pointer);
         match self.state {
             State::Active => {
                 self.handle_pointer(context.asset_server, pointer, frames);
                 // a touch holds the buttons off (`0x710006b860`)
                 if !self.gestures.is_active() && self.state == State::Active {
-                    self.handle_keys(context.asset_server, &input);
+                    self.handle_keys(context.asset_server, &input, save);
                 }
             }
             State::Deciding => {
@@ -349,6 +378,12 @@ impl MovieBox {
             ui::advance(&mut item.highlight, frames);
             ui::advance(&mut item.flash, frames);
         }
+        self.export.update(
+            context.pre_render,
+            &self.audio,
+            context.asset_server,
+            frames,
+        );
     }
 
     /// True once the viewer is gone
@@ -499,7 +534,12 @@ impl MovieBox {
         };
         let mut x = self.draw_help(pass, 1872.0, 4, 48.0, 72.0, FloatColor4::WHITE);
         x = self.draw_help(pass, x, 3, 96.0, 76.0, watch);
-        self.draw_help(pass, x, 0, 0.0, 206.0, FloatColor4::WHITE);
+        x = self.draw_help(pass, x, 0, 0.0, 206.0, FloatColor4::WHITE);
+        // port-only; not clickable under a playing movie
+        self.export.draw_entry(pass, t("key"), x, 1012.0, watch);
+        if self.viewer.is_some() {
+            self.export.hide_entry();
+        }
 
         ui::draw_text(
             pass,
@@ -508,6 +548,7 @@ impl MovieBox {
             FloatColor4::WHITE,
             BORDER,
         );
+        self.export.draw_notice(pass);
 
         // the viewer: the black cover, then the movie at its fade
         if let Some(viewer) = &self.viewer {

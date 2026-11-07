@@ -132,6 +132,14 @@ impl AssetServer {
     {
         shin_tasks::block_on(self.load(path))
     }
+
+    /// The asset's file as stored, without loading it (the galleries' export reads it on a background thread)
+    pub fn open(&self, path: impl AsRef<str>) -> Result<AssetDataAccessor> {
+        let path = resolve_parent_dirs(path.as_ref());
+        self.io
+            .read_file(&path)
+            .with_context(|| format!("Reading asset {path:?}"))
+    }
 }
 
 #[derive(Debug, From)]

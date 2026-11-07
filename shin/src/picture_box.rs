@@ -38,6 +38,7 @@ use crate::{
     app::AppAction,
     asset::{picture::Picture, system::AssetServer, texture_archive::NamedTextures},
     audio::{BgmPlayer, play_sys_se},
+    export::{self, Exporter},
     layer::{
         DrawableLayer as _, Layer as _, render_layer_without_bg,
         render_params::TransformParams,
@@ -150,6 +151,8 @@ pub struct PictureBox {
     gestures: GestureRecognizer,
     coast: Coast,
     touch: Option<Touch>,
+    /// Port-only: the viewer's Save
+    export: Exporter,
 }
 
 impl PictureBox {
@@ -209,6 +212,7 @@ impl PictureBox {
             layout,
             OUTLINE,
         );
+        let export = Exporter::new(assets.system_font.clone());
         Ok(Self {
             assets,
             audio: audio.clone(),
@@ -227,6 +231,7 @@ impl PictureBox {
             gestures: GestureRecognizer::new(false),
             coast: Coast::default(),
             touch: None,
+            export,
         })
     }
 
@@ -464,6 +469,8 @@ impl PictureBox {
             .handle::<CanvasSize>()
             .get();
         self.target_size = (size.width, size.height);
+        let (pointer, clicked) = self.export.pointer(pointer);
+        let save = clicked || Exporter::pressed(state);
         let input = MenuInput::new(state, pointer);
 
         match self.state {
@@ -516,7 +523,7 @@ impl PictureBox {
                 }
             }
             State::Viewing => {
-                self.update_viewer(context, &input);
+                self.update_viewer(context, &input, save);
                 if self.viewer.is_none() {
                     self.state = State::Active;
                 }
@@ -551,6 +558,34 @@ impl PictureBox {
             ui::advance(&mut item.highlight, frames);
             ui::advance(&mut item.flash, frames);
         }
+        self.export.update(
+            context.pre_render,
+            &self.audio,
+            context.asset_server,
+            frames,
+        );
+    }
+
+    /// Port-only: the shown picture as a PNG, whole and at full size, decoded from its `.pic` (not the screen)
+    fn save_picture(&mut self, assets: &AssetServer) {
+        let Some(viewer) = &self.viewer else {
+            return;
+        };
+        let (Some(position), Some(_)) = (viewer.position, &viewer.picture) else {
+            return;
+        };
+        let id = self.items[viewer.item].pictures[position];
+        let info = self
+            .assets
+            .scenario
+            .info_tables()
+            .picture_info(PictureId::from_number(id as i32));
+        let data = assets.open(info.path());
+        let file = export::folder(dirs_next::picture_dir())
+            .join("Pictures")
+            .join(format!("{}.png", export::file_name(info.name.as_str())));
+        self.export
+            .start(move || export::save_png(&export::decode_picture(&data?)?, &file));
     }
 
     /// `CGMode::First`: BGM 6 at full volume, which also unlocks it in the Music Box
@@ -696,7 +731,7 @@ impl PictureBox {
         }
     }
 
-    fn update_viewer(&mut self, context: &mut UpdateContext, input: &MenuInput) {
+    fn update_viewer(&mut self, context: &mut UpdateContext, input: &MenuInput, save: bool) {
         let frames = context.delta_ticks.as_f32();
         let Some(viewer) = &mut self.viewer else {
             return;
@@ -734,6 +769,10 @@ impl PictureBox {
             }
             // a touch holds the buttons off (`0x710006b860`)
             if self.viewer.as_ref().unwrap().gestures.is_active() {
+                return;
+            }
+            if save {
+                self.save_picture(context.asset_server);
                 return;
             }
             if input.cancel {
@@ -917,9 +956,11 @@ impl PictureBox {
             BORDER,
         );
 
+        self.export.hide_entry();
         if let Some(viewer) = &self.viewer {
             self.render_viewer(pass, viewer);
         }
+        self.export.draw_notice(pass);
     }
 
     /// `Viewer` render (`0x710004b4b0`): the picture over black, the transition, the page marks
@@ -963,6 +1004,21 @@ impl PictureBox {
                 };
                 mark.draw(pass, ui::builder(), projection);
             }
+        }
+        // port-only: the Save entry, left of the marks, hidden with them
+        if viewer.show_marks && !viewer.finished {
+            let right = if n > 1 {
+                1889.0 - 30.0 * n as f32
+            } else {
+                1872.0
+            };
+            let color = if viewer.picture.is_some() {
+                FloatColor4::WHITE
+            } else {
+                FloatColor4::from_rgba(0.502, 0.502, 0.502, 1.0)
+            };
+            self.export
+                .draw_entry(pass, self.textures.get("key"), right, 1021.0, color);
         }
     }
 
