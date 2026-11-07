@@ -228,6 +228,14 @@ impl AdvUpdatable for BustupLayerImpl {
         } else {
             (level * mouth_count / 3).min(mouth_count - 1) as u32
         };
+        if mouth != self.mouth_state {
+            tracing::trace!(
+                "{}: mouth {} (level {level}, character {})",
+                self.label,
+                mouth,
+                self.lipsync_character_id
+            );
+        }
         self.mouth_state = mouth;
 
         self.blink_timer += ctx.delta_ticks.as_f32();

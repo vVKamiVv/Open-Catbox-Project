@@ -268,7 +268,8 @@ pub fn decode_picture(data: &AssetDataAccessor) -> Result<RgbaImage> {
     Ok(read_picture::<SimpleMergedPicture>(&data.read_all_sync(), ())?.image)
 }
 
-/// A `.bup`'s base with `emotion`'s face, its first mouth and its first eyes, as the sprite shows at rest
+/// A `.bup`'s base with `emotion`'s face, mouth and eyes as the sprite shows at rest: the second mouth and eyes,
+/// which an animated bustup starts from (`0x7100035350` leaves the first out), or the only ones
 pub fn compose_bustup(data: &AssetDataAccessor, emotion: &str) -> Result<RgbaImage> {
     let bustup = read_bustup::<DefaultBustupBuilder>(&data.read_all_sync(), ())?;
     let mut image = bustup.base_image;
@@ -276,8 +277,8 @@ pub fn compose_bustup(data: &AssetDataAccessor, emotion: &str) -> Result<RgbaIma
         let blocks = [&expression.face1, &expression.face2]
             .into_iter()
             .flatten()
-            .chain(expression.mouths.first())
-            .chain(expression.eyes.first());
+            .chain(expression.mouths.get(1).or(expression.mouths.first()))
+            .chain(expression.eyes.get(1).or(expression.eyes.first()));
         for block in blocks {
             let (x, y) = (block.offset_x as i64, block.offset_y as i64);
             image::imageops::overlay(&mut image, &block.data, x, y);

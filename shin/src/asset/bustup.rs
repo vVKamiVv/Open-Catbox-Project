@@ -140,15 +140,25 @@ impl<'b> BustupBuilder for GpuBustupBuilder<'b> {
         let mut mouth_blocks = Vec::new();
         let mut eye_blocks = Vec::new();
 
+        // `0x7100035350`: an animated bustup leaves the first mouth and the first eyes out (its mouth frames for
+        // lip-sync levels 0-2 and its blink frames are the rest, so at rest it shows the second of each); with
+        // animations disabled only the first of each is kept
+        let frames = |blocks: Vec<BustupBlockPromise<'a>>| {
+            let skip = (!args.disable_animations) as usize;
+            let take = if args.disable_animations { 1 } else { usize::MAX };
+            blocks
+                .into_iter()
+                .skip(skip)
+                .take(take)
+                .map(lower_block)
+                .collect::<Vec<_>>()
+        };
+
         if let Some(expression) = expressions.swap_remove(&args.expression) {
             face1 = expression.face1.map(lower_block);
             face2 = expression.face2.map(lower_block);
-            mouth_blocks = expression
-                .mouth_blocks
-                .into_iter()
-                .map(lower_block)
-                .collect();
-            eye_blocks = expression.eye_blocks.into_iter().map(lower_block).collect();
+            mouth_blocks = frames(expression.mouth_blocks);
+            eye_blocks = frames(expression.eye_blocks);
         }
 
         GpuBustupSkeleton {

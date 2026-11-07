@@ -312,7 +312,7 @@ impl CharacterBox {
         [self.character, variant, pose, face, self.background]
     }
 
-    /// Port-only: the sprite as shown at rest (its base, face, first mouth and first eyes) and the primary background,
+    /// Port-only: the sprite as shown at rest (its base, face, resting mouth and eyes) and the primary background,
     /// as PNGs at full size
     fn save_scene(&mut self) {
         let (variant, pose, face) = self.current_selection();

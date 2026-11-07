@@ -1004,7 +1004,10 @@ level on the near side, `1 - |pan|` on the far one. The level comes from a table
 (`0x71000f55d0`): per 50 ms window the peak of every sample of every channel, through hysteresis (closed -> half
 open above 0.12, half open -> closed below 0.10, -> open above 0.55, open -> half open below 0.45; half open closes
 after 4 windows without a change), read at the playing position (`0x71000f54e0`). The mouth frame is
-`level × count / 3`. In the port: `audio/voice_player.rs` (the table is made off the main thread when a voice
+`level × count / 3` of the bustup's frames as loaded (`0x7100035350`): an animated bustup leaves the expression's
+first mouth and first eyes out, so the levels pick from the rest and it rests on the second of each (Ronove's four
+mouths are closed, closed, half open, open: he speaks with the last three); with animations disabled only the first
+is kept. In the port: `audio/voice_player.rs` (the table is made off the main thread when a voice
 starts), `layer/user/bustup_layer.rs`, `shin-audio/src/sound.rs`.
 
 ## 17. Touch gestures and scrolling lists **confirmed** (code; every screen of the port tested with the mouse)
