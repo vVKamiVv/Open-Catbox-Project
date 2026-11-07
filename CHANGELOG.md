@@ -2,6 +2,11 @@
 
 What changed in each release.
 
+## v0.2.5 — 2026-11-07
+
+- Launcher: a music playlist beside Play, with the game's soundtrack from your game files. Hide it any time.
+- Picture Box: button help for Zoom, Hide UI and Previous, and L goes back to a picture's previous version.
+
 ## v0.2.4 — 2026-11-07
 
 - Story swipes, as on the Switch: right opens the menu, down hides the text box, left shows the touch buttons
