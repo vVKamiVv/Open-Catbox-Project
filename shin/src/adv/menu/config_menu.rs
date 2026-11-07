@@ -1324,12 +1324,14 @@ impl Task for ConfigMenu {
             }
         }
         ui::clip(pass, None, self.target_size);
-        // the window's edges over the list's clip
+        // the window's edges over the list's clip, opaque at the edge and clear on the list's side (vertex colours)
         Sprite::new(t("window"), [136.0, 247.0, 1784.0, 252.0])
             .uv([0.04825, 0.08513, 0.95175, 0.09113])
+            .fade(1.0, 0.0)
             .draw(pass, builder, slid);
         Sprite::new(t("window"), [136.0, 918.0, 1784.0, 923.0])
             .uv([0.04825, 0.88969, 0.95175, 0.89568])
+            .fade(0.0, 1.0)
             .draw(pass, builder, slid);
 
         for (page, (selected, flash)) in self.tabs.iter().enumerate() {

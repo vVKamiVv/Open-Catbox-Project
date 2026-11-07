@@ -12,6 +12,7 @@
 //! `research/docs/architecture.md`, the port-only display settings in `research/docs/engine-internals.md` §18.
 
 use std::{
+    cell::Cell,
     fmt::Debug,
     sync::Arc,
     time::{Duration, Instant},
@@ -170,9 +171,31 @@ pub struct WindowState {
     display: DisplaySettings,
     /// The largest texture the device takes, which bounds the supersampled canvas
     max_texture_size: u32,
+    /// Port-only: when the mouse last moved, clicked or scrolled, and whether the cursor is hidden for idling
+    last_mouse: Cell<Instant>,
+    cursor_hidden: Cell<bool>,
 }
 
+/// How long the mouse may sit still over the window before the cursor hides
+const CURSOR_IDLE: Duration = Duration::from_secs(3);
+
 impl WindowState {
+    /// The mouse moved, clicked or scrolled: the cursor shows again and the idle time restarts
+    fn mouse_used(&self) {
+        self.last_mouse.set(Instant::now());
+        if self.cursor_hidden.replace(false) {
+            self.window.set_cursor_visible(true);
+        }
+    }
+
+    /// Hides the cursor once the mouse has been still for `CURSOR_IDLE`
+    fn hide_idle_cursor(&self) {
+        if !self.cursor_hidden.get() && self.last_mouse.get().elapsed() >= CURSOR_IDLE {
+            self.window.set_cursor_visible(false);
+            self.cursor_hidden.set(true);
+        }
+    }
+
     pub fn new<A: ShinApp>(event_loop: &ActiveEventLoop, display: DisplaySettings) -> Self {
         #[allow(unused_mut)]
         let mut attributes = Window::default_attributes();
@@ -219,6 +242,8 @@ impl WindowState {
             window,
             display,
             max_texture_size: 4096,
+            last_mouse: Cell::new(Instant::now()),
+            cursor_hidden: Cell::new(false),
         };
         if display.mode != WindowMode::Windowed {
             state.apply_mode();
@@ -726,6 +751,14 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
         if window_id != winit.window.id() {
             return;
         }
+        if matches!(
+            event,
+            WindowEvent::CursorMoved { .. }
+                | WindowEvent::MouseInput { .. }
+                | WindowEvent::MouseWheel { .. }
+        ) {
+            winit.mouse_used();
+        }
 
         match event {
             WindowEvent::CloseRequested => {
@@ -788,6 +821,7 @@ impl<A: ShinApp> ApplicationHandler<ShinAppEventImpl<A::EventType>> for WinitApp
                     return;
                 };
 
+                winit.hide_idle_cursor();
                 if let Some(fps) = winit.display.frame_cap {
                     info_span!("frame_cap").in_scope(|| wait_for_frame(next_frame, fps));
                 }

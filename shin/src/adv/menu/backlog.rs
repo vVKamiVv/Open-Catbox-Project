@@ -680,12 +680,16 @@ impl Task for Backlog {
         }
         ui::clip(pass, None, self.target_size);
 
+        // the window's edges over the clipped rows, opaque at the edge and clear on the rows' side (vertex colours,
+        // `0x71000a4020`)
         let window = t("window");
         Sprite::new(window, [136.0, 183.0, 1784.0, 188.0])
             .uv([0.04825, 0.07906, 0.95175, 0.08463])
+            .fade(1.0, 0.0)
             .draw(pass, builder, slid);
         Sprite::new(window, [136.0, 918.0, 1784.0, 923.0])
             .uv([0.04825, 0.89755, 0.95175, 0.90312])
+            .fade(0.0, 1.0)
             .draw(pass, builder, slid);
         ui::draw_scroll_bar(
             pass,

@@ -467,13 +467,16 @@ impl Task for Tips {
         );
         ui::clip(pass, None, self.target_size);
 
-        // the window's edges over the clipped text, and the scroll bar
+        // the window's edges over the clipped text, fading it out: each strip is opaque at the window's edge and clear
+        // on the text's side (the render's vertex colours), and the scroll bar
         let edge = t("window");
         Sprite::new(edge, [86.0, 183.0, 1834.0, 188.0])
             .uv([0.0447917, 0.0790646, 0.955208, 0.0846325])
+            .fade(1.0, 0.0)
             .draw(pass, builder, window);
         Sprite::new(edge, [86.0, 918.0, 1834.0, 923.0])
             .uv([0.0447917, 0.89755, 0.955208, 0.903118])
+            .fade(0.0, 1.0)
             .draw(pass, builder, window);
         ui::draw_scroll_bar(
             pass,

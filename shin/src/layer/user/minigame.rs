@@ -187,6 +187,8 @@ pub struct Sprite<'a> {
     pub rect: [f32; 4],
     pub uv: [f32; 4],
     pub color: FloatColor4,
+    /// The alpha at the top and the bottom edge, multiplying `color`'s (the original's per-vertex colours)
+    pub fade: [f32; 2],
     pub glow: f32,
     pub flash: f32,
 }
@@ -198,8 +200,17 @@ impl<'a> Sprite<'a> {
             rect,
             uv: [0.0, 0.0, 1.0, 1.0],
             color: FloatColor4::WHITE,
+            fade: [1.0, 1.0],
             glow: 0.0,
             flash: 0.0,
+        }
+    }
+
+    /// Fades the quad from alpha `top` at its top edge to `bottom` at its bottom edge
+    pub fn fade(self, top: f32, bottom: f32) -> Self {
+        Self {
+            fade: [top, bottom],
+            ..self
         }
     }
 
@@ -228,17 +239,17 @@ impl<'a> Sprite<'a> {
         }
         let [x0, y0, x1, y1] = self.rect;
         let [u0, v0, u1, v1] = self.uv;
-        let color = self.color.into_unorm();
-        let vertex = |x: f32, y: f32, u: f32, v: f32| PosColTexVertex {
+        let [top, bottom] = self.fade.map(|f| self.color.with_alpha(self.color.a * f).into_unorm());
+        let vertex = |x: f32, y: f32, u: f32, v: f32, color| PosColTexVertex {
             position: vec2(x, y).extend(0.0),
             color,
             texture_position: vec2(u, v),
         };
         let vertices = [
-            vertex(x0, y0, u0, v0),
-            vertex(x1, y0, u1, v0),
-            vertex(x0, y1, u0, v1),
-            vertex(x1, y1, u1, v1),
+            vertex(x0, y0, u0, v0, top),
+            vertex(x1, y0, u1, v0, top),
+            vertex(x0, y1, u0, v1, bottom),
+            vertex(x1, y1, u1, v1, bottom),
         ];
         pass.run(builder.build(
             RenderProgramWithArguments::Button {
