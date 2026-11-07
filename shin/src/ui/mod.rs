@@ -2,6 +2,7 @@
 
 pub mod gesture;
 pub mod prompts;
+pub mod serif;
 pub mod touch_effect;
 
 use enum_map::EnumMap;

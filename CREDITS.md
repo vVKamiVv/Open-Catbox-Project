@@ -41,6 +41,12 @@ The launcher reads the Switch dump with its own code (`launcher/src/nx/`). The f
 [switchbrew](https://switchbrew.org/) and from [hactool](https://github.com/SciresM/hactool) by SciresM (ISC
 licence) and LibHac by Alex Barney, which document the NCA, PFS0, RomFS and BKTR (patch) structures.
 
+## Fonts
+
+The port's own menu texts use [Gelasio](https://github.com/SorkinType/Gelasio) by Eben Sorkin and
+[Cinzel](https://github.com/NDISCOVER/Cinzel) by Natanael Gama, both under the SIL Open Font License 1.1
+(`shin/fonts`, `launcher/ui/fonts`).
+
 ## The game
 
 *Umineko no Naku Koro ni* is by **07th Expansion**; the Switch release this port runs is by **Entergram**.

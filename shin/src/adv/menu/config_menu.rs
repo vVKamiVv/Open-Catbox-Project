@@ -28,6 +28,7 @@ use crate::{
     ui::{
         self, NineSlice,
         gesture::{Coast, Gesture, GestureRecognizer},
+        serif::{self, UiText},
     },
 };
 use shin_core::primitives::color::FloatColor4;
@@ -391,9 +392,21 @@ const LABEL_SIZE: f32 = 36.0;
 const OPTION_SIZE: f32 = 32.0;
 /// The labels' white and shadow, as the art's
 const TEXT_BORDER: FloatColor4 = FloatColor4::from_rgba(0.1, 0.07, 0.07, 1.0);
-/// The tabs' dark brown lettering and its light edge, as the art's
-const TAB_TEXT: FloatColor4 = FloatColor4::from_rgba(0.22, 0.13, 0.06, 1.0);
+/// The tabs' lettering, as the art's (`tab_off`, `tab_on`), and an edge for the Japanese fallback
+const TAB_TEXT_OFF: FloatColor4 = FloatColor4::from_rgba(0.28, 0.23, 0.17, 1.0);
+const TAB_TEXT_ON: FloatColor4 = FloatColor4::from_rgba(0.03, 0.025, 0.015, 1.0);
 const TAB_BORDER: FloatColor4 = FloatColor4::from_rgba(1.0, 0.92, 0.7, 1.0);
+/// The tab art's capitals: about 37.5 tall, their middle 34.7 down the 67.5 tab, in Cinzel without a shadow
+const TAB_STYLE: serif::Style = serif::Style {
+    face: serif::Face::Capitals,
+    weight: 600.0,
+    size: 50.0,
+    squeeze: 1.0,
+    shadow: (Vec2::ZERO, 0.0),
+};
+const TAB_MIDDLE: f32 = 34.7;
+/// Where the art's labels and option words have the middle of their capitals, down an 88-tall row
+const TEXT_MIDDLE: f32 = 46.0;
 /// A cycle's button in the list's space: where the last two option buttons would be
 const CYCLE_X0: f32 = 1132.0;
 const CYCLE_X1: f32 = 1624.0;
@@ -408,12 +421,12 @@ struct Item {
     /// A button item's per-option highlight and press flash (a cycle's one button: its press flash)
     options: Vec<(Tweener, Tweener)>,
     /// PC tab: the label and the options' texts in the game's font
-    label: Option<TextBlock>,
-    texts: Vec<TextBlock>,
+    label: Option<UiText>,
+    texts: Vec<UiText>,
 }
 
 impl Item {
-    fn new(def: &'static ItemDef, y: f32, text: &impl Fn(Text, f32) -> TextBlock) -> Self {
+    fn new(def: &'static ItemDef, y: f32, text: &impl Fn(Text, f32) -> UiText) -> Self {
         let buttons = match def.kind {
             Kind::Slider(_) | Kind::Open => 0,
             Kind::Buttons(options) => options.len(),
@@ -544,9 +557,9 @@ pub struct ConfigMenu {
     /// Per tab: selected (cross-fades `tab_off` to `tab_on`) and the press flash (scales it up)
     tabs: [(Tweener, Tweener); PAGES],
     /// The PC tab's label, in the game's font as the tab art has none
-    pc_tab: TextBlock,
+    pc_tab: UiText,
     /// The arrows of the PC tab's cycles
-    arrows: [TextBlock; 2],
+    arrows: [UiText; 2],
     close_flash: Tweener,
     default_flash: Tweener,
     /// The settings when the screen opened (`+0x534`)
@@ -573,7 +586,7 @@ pub struct ConfigMenu {
     japanese: bool,
 }
 
-fn build_pages(text: &impl Fn(Text, f32) -> TextBlock) -> [Vec<Item>; PAGES] {
+fn build_pages(text: &impl Fn(Text, f32) -> UiText) -> [Vec<Item>; PAGES] {
     let mut pages: [Vec<Item>; PAGES] = Default::default();
     for def in ITEMS {
         let y = ITEM_STEP * pages[def.page].len() as f32;
@@ -596,13 +609,7 @@ impl ConfigMenu {
         // the executable's texts tell the language; the PC tab's texts follow it
         let japanese = !RESET_QUESTION.get().is_ascii();
         let text = |t: Text, size: f32| {
-            TextBlock::new(
-                cx.pre_render,
-                &assets.system_font,
-                t.get(japanese),
-                text_layout(1000.0, size),
-                OUTLINE,
-            )
+            UiText::new(cx.pre_render, &assets.system_font, t.get(japanese), serif::Style::LABEL, size)
         };
         let mut menu = Self {
             assets: assets.clone(),
@@ -615,7 +622,7 @@ impl ConfigMenu {
             tabs: std::array::from_fn(|page| {
                 (Tweener::new((page == 0) as u8 as f32), Tweener::new(0.0))
             }),
-            pc_tab: text(PC_TAB, LABEL_SIZE),
+            pc_tab: UiText::new(cx.pre_render, &assets.system_font, PC_TAB.get(japanese), TAB_STYLE, LABEL_SIZE),
             arrows: [
                 text(Text::same("<"), OPTION_SIZE),
                 text(Text::same(">"), OPTION_SIZE),
@@ -1059,9 +1066,8 @@ impl ConfigMenu {
                     .draw(pass, builder, list);
             }
             (Label::Text(_), Some(label)) => {
-                // where the art's labels start, centred on the row
-                let at = vec2(44.0, y + (ITEM_H - label.size().y) / 2.0);
-                draw_text_at(pass, label, list, at, 1.0);
+                // where the art's labels start, their capitals at the art's height
+                label.draw(pass, list, 44.0, y + TEXT_MIDDLE, FloatColor4::WHITE, TEXT_BORDER);
             }
             (Label::Text(_), None) => {}
         }
@@ -1119,8 +1125,8 @@ impl ConfigMenu {
                         .glow(highlight.value() * 0.5)
                         .flash(flash.value())
                         .draw(pass, builder, list);
-                    let center = vec2(x + 120.0, y + ITEM_H / 2.0);
-                    draw_text_at(pass, text, list, center - text.size() / 2.0, 1.0);
+                    let center = vec2(x + 120.0, y + TEXT_MIDDLE);
+                    text.draw_centered(pass, list, center, FloatColor4::WHITE, TEXT_BORDER);
                 }
             }
             Kind::Cycle(options) => {
@@ -1139,10 +1145,10 @@ impl ConfigMenu {
                         .flash(flash)
                         .draw(pass, builder, list);
                 }
-                let middle = y + ITEM_H / 2.0;
+                let middle = y + TEXT_MIDDLE;
                 let text = &item.texts[(value as usize).min(options.len() - 1)];
                 let center = vec2((x0 + x1) / 2.0, middle);
-                draw_text_at(pass, text, list, center - text.size() / 2.0, 1.0);
+                text.draw_centered(pass, list, center, FloatColor4::WHITE, TEXT_BORDER);
                 // the arrows dim at the ends, which the steps do not wrap past
                 let [back, on] = &self.arrows;
                 let back_alpha = if value == 0 { 0.35 } else { 1.0 };
@@ -1151,10 +1157,10 @@ impl ConfigMenu {
                 } else {
                     1.0
                 };
-                let at = vec2(x0 + 40.0, middle) - back.size() / 2.0;
-                draw_text_at(pass, back, list, at, back_alpha);
-                let at = vec2(x1 - 40.0, middle) - on.size() / 2.0;
-                draw_text_at(pass, on, list, at, on_alpha);
+                let white = |a: f32| FloatColor4::WHITE.with_alpha(a);
+                let border = |a: f32| TEXT_BORDER.with_alpha(a);
+                back.draw_centered(pass, list, vec2(x0 + 40.0, middle), white(back_alpha), border(back_alpha));
+                on.draw_centered(pass, list, vec2(x1 - 40.0, middle), white(on_alpha), border(on_alpha));
             }
             Kind::Open => {}
         }
@@ -1328,12 +1334,18 @@ impl Task for ConfigMenu {
                 * Mat4::from_scale(vec3(s, s, 1.0))
                 * Mat4::from_translation(vec3(-150.0, -33.75, 0.0));
             let selected = selected.value();
-            // the art has the original three tabs, labels included; the PC tab is the first one's ends with its
-            // plain middle stretched between them, and its label in the game's font
+            // the art has the original three tabs, labels included; the PC tab is the first one's ends with the
+            // parchment beside its lettering in between, mirrored so the pieces meet seamlessly (the one seam, at
+            // the middle, is under the label), at the art's own scale
             let pieces: &[([f32; 2], [f32; 2])] = if page == PC_PAGE {
                 &[
                     ([0.0, 60.0], [0.0, 0.2]),
-                    ([60.0, 240.0], [0.19, 0.2]),
+                    ([60.0, 90.0], [0.2, 0.12]),
+                    ([90.0, 120.0], [0.12, 0.2]),
+                    ([120.0, 150.0], [0.2, 0.12]),
+                    ([150.0, 180.0], [0.88, 0.8]),
+                    ([180.0, 210.0], [0.8, 0.88]),
+                    ([210.0, 240.0], [0.88, 0.8]),
                     ([240.0, 300.0], [0.8, 1.0]),
                 ]
             } else {
@@ -1356,16 +1368,10 @@ impl Task for ConfigMenu {
                     .draw(pass, builder, transform);
             }
             if page == PC_PAGE {
-                // the art's dark lettering, brighter when selected
-                // a little high, as the art's capitals sit
-                let at = vec2(150.0, 30.0) - self.pc_tab.size() / 2.0;
-                ui::draw_text(
-                    pass,
-                    &self.pc_tab,
-                    transform * Mat4::from_translation(at.extend(0.0)),
-                    TAB_TEXT.with_alpha(0.6 + 0.4 * selected),
-                    TAB_BORDER.with_alpha(0.5 * (0.6 + 0.4 * selected)),
-                );
+                // the art's lettering: brown on the plain tab, near black on the selected one
+                let color = ui::lerp_color(TAB_TEXT_OFF, TAB_TEXT_ON, selected);
+                self.pc_tab
+                    .draw_centered(pass, transform, vec2(150.0, TAB_MIDDLE), color, TAB_BORDER);
             }
         }
 

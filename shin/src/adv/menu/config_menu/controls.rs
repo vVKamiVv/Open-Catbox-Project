@@ -13,7 +13,7 @@ use shin_render::{render_pass::RenderPass, resize::CanvasSize};
 
 use super::{
     FOCUS, HELP_ADJUST, HELP_DEFAULT, HELP_SAVE, HELP_SELECT, Help, ITEM_H, ITEM_STEP, LABEL_SIZE,
-    LIST_W, LIST_X, LIST_Y, OPTION_SIZE, Text, VIEW, draw_text_at,
+    LIST_W, LIST_X, LIST_Y, OPTION_SIZE, TEXT_BORDER, TEXT_MIDDLE, Text, VIEW,
 };
 use crate::{
     adv::{
@@ -31,6 +31,7 @@ use crate::{
         self,
         gesture::{Coast, Gesture, GestureRecognizer},
         prompts,
+        serif::{self, UiText},
     },
 };
 
@@ -111,12 +112,12 @@ enum Touched {
 pub(super) struct Controls {
     assets: MenuAssets,
     japanese: bool,
-    labels: Vec<TextBlock>,
-    headers: Vec<TextBlock>,
-    waits: [TextBlock; 2],
-    hold_to_cancel: TextBlock,
+    labels: Vec<UiText>,
+    headers: Vec<UiText>,
+    waits: [UiText; 2],
+    hold_to_cancel: UiText,
     /// The keyboard cells' texts, by text
-    names: HashMap<String, TextBlock>,
+    names: HashMap<String, UiText>,
     generation: u32,
     cursor: usize,
     column: usize,
@@ -130,7 +131,7 @@ pub(super) struct Controls {
     capture: Option<Capture>,
     /// After a capture: the game sees no input until everything is released (or a second has passed)
     releasing: Option<f32>,
-    notice: Option<(TextBlock, f32)>,
+    notice: Option<(UiText, f32)>,
     dialog: Option<Dialog>,
     reset_pending: bool,
     close_flash: Tweener,
@@ -143,13 +144,7 @@ pub(super) struct Controls {
 impl Controls {
     pub fn new(cx: &TaskCx, assets: &MenuAssets, japanese: bool) -> Self {
         let text = |t: Text, size: f32| {
-            TextBlock::new(
-                cx.pre_render,
-                &assets.system_font,
-                t.get(japanese),
-                text_layout(1400.0, size),
-                OUTLINE,
-            )
+            UiText::new(cx.pre_render, &assets.system_font, t.get(japanese), serif::Style::LABEL, size)
         };
         let mut focus: Vec<Tweener> = ROWS.iter().map(|_| Tweener::new(0.0)).collect();
         focus[0] = Tweener::new(1.0);
@@ -223,13 +218,7 @@ impl Controls {
         for &(action, _) in ROWS {
             let name = Self::keyboard_text(&table, action);
             self.names.entry(name).or_insert_with_key(|name| {
-                TextBlock::new(
-                    cx.pre_render,
-                    font,
-                    name,
-                    text_layout(2000.0, OPTION_SIZE),
-                    OUTLINE,
-                )
+                UiText::new(cx.pre_render, font, name, serif::Style::LABEL, OPTION_SIZE)
             });
         }
     }
@@ -330,12 +319,12 @@ impl Controls {
                     .find(|(a, _)| *a == other)
                     .map_or("?", |(_, label)| label.get(self.japanese));
                 let message = format!("{}{name}", IN_USE.get(self.japanese));
-                let text = TextBlock::new(
+                let text = UiText::new(
                     cx.pre_render,
                     &self.assets.system_font,
                     &message,
-                    text_layout(1600.0, OPTION_SIZE),
-                    OUTLINE,
+                    serif::Style::LABEL,
+                    OPTION_SIZE,
                 );
                 self.notice = Some((text, NOTICE_FRAMES));
             }
@@ -591,14 +580,13 @@ impl Controls {
         let pad_style = prompts::pad_style();
 
         // the headers, over the cells' columns
-        // where the tabs are, above the window
-        let header_y = 164.0;
-        let at = vec2(LIST_X + 44.0, header_y);
-        draw_text_at(pass, &self.headers[0], slid, at, 1.0);
+        // where the tabs are, above the window, level with the tabs' lettering
+        let header_y = 178.0;
+        let (white, border) = (FloatColor4::WHITE, TEXT_BORDER);
+        self.headers[0].draw(pass, slid, LIST_X + 44.0, header_y, white, border);
         for (k, [x0, x1]) in CELLS.iter().enumerate() {
-            let text = &self.headers[k + 1];
-            let at = vec2(LIST_X + (x0 + x1) / 2.0 - text.size().x / 2.0, header_y);
-            draw_text_at(pass, text, slid, at, 1.0);
+            let center = vec2(LIST_X + (x0 + x1) / 2.0, header_y);
+            self.headers[k + 1].draw_centered(pass, slid, center, white, border);
         }
 
         ui::clip(
@@ -622,14 +610,7 @@ impl Controls {
                     FloatColor4::WHITE.with_alpha(0.75 * focus),
                 );
             }
-            let label = &self.labels[row];
-            draw_text_at(
-                pass,
-                label,
-                list,
-                vec2(44.0, y + (ITEM_H - label.size().y) / 2.0),
-                1.0,
-            );
+            self.labels[row].draw(pass, list, 44.0, y + TEXT_MIDDLE, white, border);
 
             let capturing = self
                 .capture
@@ -649,22 +630,27 @@ impl Controls {
                     if selected { 0.5 * focus } else { 0.0 },
                     flash,
                 );
-                let center = vec2((cell[0] + cell[1]) / 2.0, y + ITEM_H / 2.0);
+                let center = vec2((cell[0] + cell[1]) / 2.0, y + TEXT_MIDDLE);
                 if capturing == Some(column) {
                     // the wait blinks
                     let alpha = 0.55 + 0.45 * (self.blink / 60.0 * std::f32::consts::TAU).cos();
-                    let text = &self.waits[column];
-                    draw_text_at(pass, text, list, center - text.size() / 2.0, alpha);
+                    self.waits[column].draw_centered(
+                        pass,
+                        list,
+                        center,
+                        white.with_alpha(alpha),
+                        border.with_alpha(alpha),
+                    );
                     continue;
                 }
                 if column == 0 {
                     if let Some(text) = self.names.get(&Self::keyboard_text(&table, action)) {
                         let width = cell[1] - cell[0] - 48.0;
-                        let scale = (width / text.size().x).min(1.0);
+                        let scale = (width / text.width()).min(1.0);
                         let transform = list
                             * Mat4::from_translation(center.extend(0.0))
                             * Mat4::from_scale(vec3(scale, scale, 1.0));
-                        draw_text_at(pass, text, transform, -text.size() / 2.0, 1.0);
+                        text.draw_centered(pass, transform, Vec2::ZERO, white, border);
                     }
                 } else {
                     let pads: Vec<Input> = table[action]
@@ -720,8 +706,13 @@ impl Controls {
             _ => None,
         };
         if let Some((text, alpha)) = message {
-            let at = vec2(960.0 - text.size().x / 2.0, 932.0);
-            draw_text_at(pass, text, slid, at, alpha);
+            text.draw_centered(
+                pass,
+                slid,
+                vec2(960.0, 950.0),
+                FloatColor4::WHITE.with_alpha(alpha),
+                TEXT_BORDER.with_alpha(alpha),
+            );
         }
 
         // the key help: back, defaults, change, select
