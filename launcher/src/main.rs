@@ -347,6 +347,12 @@ async fn move_data_dir(app: AppHandle, target: PathBuf) -> Result<(), String> {
     store_settings(&settings)
 }
 
+/// Replaces the game's save with a file the player picked (a Switch SAVEDATA), backing up the current one.
+#[tauri::command]
+fn import_save(file: PathBuf) -> Result<(), String> {
+    home::import_save(&file, &home::get().savedata())
+}
+
 /// Installs the launcher (this program) and starts the installed copy, which takes over from here.
 #[tauri::command]
 async fn install_program(
@@ -470,6 +476,7 @@ fn main() {
             version_history,
             launch,
             move_data_dir,
+            import_save,
             install_program,
             uninstall_program,
             install_update

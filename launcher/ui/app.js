@@ -241,6 +241,18 @@ $("#move-data").addEventListener("click", async () => {
 
 $("#rerun-setup").addEventListener("click", () => { showSetup = true; render(); });
 
+$("#import-save").addEventListener("click", async () => {
+  const file = await dialog.open({ title: "Choose your SAVEDATA file" });
+  if (!file) return;
+  const msg = $("#settings-msg");
+  try {
+    await invoke("import_save", { file });
+    say(msg, "Save imported. The old one was kept as SAVEDATA.bak.", "ok");
+  } catch (e) {
+    say(msg, String(e), "error");
+  }
+});
+
 // --- Launcher updates ---
 
 let pendingUpdate = null;
