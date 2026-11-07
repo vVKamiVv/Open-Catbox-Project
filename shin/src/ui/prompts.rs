@@ -134,7 +134,10 @@ impl PadGlyph {
     pub fn of_input(input: Input) -> Option<Self> {
         use PadGlyph::*;
         Some(match input {
+            // with the bottom-confirm setting the two buttons sit at each other's place (shin_input)
             Input::Pad(button) => match button {
+                GamepadButton::B if shin_input::inputs::bottom_confirms() => East,
+                GamepadButton::A if shin_input::inputs::bottom_confirms() => South,
                 GamepadButton::B => South,
                 GamepadButton::A => East,
                 GamepadButton::Y => West,

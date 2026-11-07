@@ -61,10 +61,26 @@ pub enum VirtualGamepadButton {
     StickRRight,
 }
 
+/// The PC setting "confirm with the bottom button": the pad's bottom and right face buttons trade places, so an
+/// Xbox or PlayStation pad confirms with A / ✕ as Western releases do. Off, the buttons map by position as on the
+/// Switch (the right one confirms).
+static BOTTOM_CONFIRMS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_bottom_confirms(on: bool) {
+    BOTTOM_CONFIRMS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn bottom_confirms() -> bool {
+    BOTTOM_CONFIRMS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 impl GamepadButton {
     pub fn from_gilrs(button: gilrs::Button) -> Option<Self> {
         use gilrs::Button::*;
+        let swap = bottom_confirms();
         Some(match button {
+            South if swap => GamepadButton::A,
+            East if swap => GamepadButton::B,
             South => GamepadButton::B,
             East => GamepadButton::A,
             West => GamepadButton::Y,

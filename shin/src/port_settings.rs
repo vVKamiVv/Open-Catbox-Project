@@ -62,6 +62,8 @@ pub struct PortSettings {
     /// The canvas is rendered this many times larger and filtered down to the window
     pub supersampling: f32,
     pub button_prompts: ButtonPrompts,
+    /// A controller confirms with its bottom face button (Xbox A, PlayStation ✕) instead of the right one
+    pub bottom_confirms: bool,
     /// The remapped controls: action name to inputs (see [`crate::bindings`]); actions not here keep their defaults
     pub bindings: BTreeMap<String, Vec<String>>,
 }
@@ -74,6 +76,7 @@ impl PortSettings {
         frame_cap: 0,
         supersampling: 1.0,
         button_prompts: ButtonPrompts::Auto,
+        bottom_confirms: false,
         bindings: BTreeMap::new(),
     };
 
@@ -128,6 +131,7 @@ pub fn load(path: Option<PathBuf>) {
         _ => PortSettings::default(),
     };
     crate::bindings::apply(&settings.bindings);
+    shin_input::inputs::set_bottom_confirms(settings.bottom_confirms);
     *SETTINGS.lock().unwrap() = settings;
     *PATH.lock().unwrap() = path;
 }
@@ -148,6 +152,7 @@ pub fn update(change: impl FnOnce(&mut PortSettings)) {
     if settings.bindings != old.bindings {
         crate::bindings::apply(&settings.bindings);
     }
+    shin_input::inputs::set_bottom_confirms(settings.bottom_confirms);
     if let Some(path) = PATH.lock().unwrap().as_deref() {
         if let Err(e) = write(path, &settings) {
             warn!("Saving the PC settings failed: {e:?}");

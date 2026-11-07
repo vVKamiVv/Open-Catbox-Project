@@ -181,6 +181,7 @@ const FRAME_CAPS: &[Text] = &[
     Text::same("240"),
 ];
 const SUPERSAMPLING: &[Text] = &[Text::same("1x"), Text::same("1.5x"), Text::same("2x")];
+const CONFIRM_BUTTONS: &[Text] = &[Text("Right", "右"), Text("Bottom", "下")];
 const BUTTON_PROMPTS: &[Text] = &[
     Text("Auto", "自動"),
     Text::same("Xbox"),
@@ -365,6 +366,13 @@ const ITEMS: &[ItemDef] = &[
                 s.button_prompts = [Auto, Xbox, PlayStation, Switch, Keyboard][v as usize]
             })
         },
+    },
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("Confirm button", "決定ボタン")),
+        kind: Kind::Texts(CONFIRM_BUTTONS),
+        get: |_| port_settings::get().bottom_confirms as u8,
+        set: |_, v| port_settings::update(|s| s.bottom_confirms = v == 1),
     },
     // the Controls screen
     ItemDef {

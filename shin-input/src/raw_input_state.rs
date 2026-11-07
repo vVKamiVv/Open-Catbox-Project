@@ -109,7 +109,12 @@ impl RawInputAccumulator {
     pub fn new() -> Self {
         Self {
             gilrs: match Gilrs::new() {
-                Ok(gilrs) => Some(gilrs),
+                Ok(gilrs) => {
+                    for (_, pad) in gilrs.gamepads() {
+                        log_gamepad(&pad);
+                    }
+                    Some(gilrs)
+                }
                 Err(gilrs::Error::NotImplemented(gilrs)) => {
                     warn!("Gamepad input is not implemented on this platform");
                     Some(gilrs)
@@ -198,6 +203,9 @@ impl RawInputAccumulator {
                     }
                     _ => false,
                 };
+                if let EventType::Connected = event.event {
+                    log_gamepad(&gilrs.gamepad(event.id));
+                }
                 if active {
                     let pad = gilrs.gamepad(event.id);
                     self.state.last_device = InputDevice::Gamepad(GamepadFamily::detect(
@@ -349,4 +357,16 @@ fn convert_winit_mouse_button(winit: winit::event::MouseButton) -> Option<MouseB
         winit::event::MouseButton::Back | winit::event::MouseButton::Forward => None,
         winit::event::MouseButton::Other(_) => None,
     }
+}
+
+/// A controller and what the button prompts make of it, for diagnosing pads
+fn log_gamepad(pad: &gilrs::Gamepad) {
+    let family = crate::inputs::GamepadFamily::detect(pad.name(), pad.vendor_id(), pad.product_id());
+    tracing::info!(
+        "Controller: {} (vendor {:04x?}, product {:04x?}) -> {:?} prompts",
+        pad.name(),
+        pad.vendor_id(),
+        pad.product_id(),
+        family
+    );
 }
