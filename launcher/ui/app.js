@@ -147,6 +147,7 @@ $("#play").addEventListener("click", async () => {
     $("#play").disabled = true;
     await invoke("launch", { lang });
     say(msg, "The game is starting…", "ok");
+    setTimeout(() => say(msg, ""), 5000);
   } catch (e) {
     say(msg, String(e), "error");
   } finally {
