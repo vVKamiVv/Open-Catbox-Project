@@ -160,8 +160,9 @@ the selected language's script (`/main.snr` in its `patch.rom`, else `data.rom`)
 `/bgm/<name>.nxa` from the same archives and hands the page its Opus frames repackaged as Ogg Opus (not
 re-encoded; `shin_core::format::audio::to_ogg_opus`, shared with `sdu audio remux`), after 12 bytes with the loop
 start, loop end (samples after the pre-skip, as the game seeks) and sample rate. The page decodes it with Web Audio
-and loops it between those points, as the game does, except for the tracks the Music Box plays once; at the end of
-those it moves to the next. Starting the game pauses it. Nothing of the game is in the launcher: it all comes from
+and loops it between those points, as the game does, except for the tracks the Music Box plays once. A looping
+track goes through its loop twice, then fades out over 4 seconds while the next one starts; a track played once
+moves on at its end. Starting the game pauses it. Nothing of the game is in the launcher: it all comes from
 the data set up on this computer.
 
 A search box filters the list by title (each track keeps its number). A seek bar, separate from the volume, shows
@@ -170,6 +171,17 @@ decoded track at the new position, with its loop points. Changing tracks crossfa
 while the next fades in, each through its own gain, and a track played once starts the next one a crossfade before
 its end. The length is **Settings → Music → Crossfade between tracks** (Off, 1, 2, 3 or 5 seconds; 2 by default),
 stored as `music_crossfade` in `launcher.json`; from silence or a pause a track just starts.
+
+Shuffle and repeat sit beside the transport buttons; both are remembered in local storage. Repeat cycles through the
+list (the default; it starts over after the last track, reshuffled if shuffle is on), one track (a looping track
+loops forever, a track played once loops whole) and off (the music stops after the last track). Shuffle plays the
+list in a random order that starts with the chosen track. Previous starts the track over when it is more than 3
+seconds in. Playing a track queues the list it was chosen from: all tracks or a playlist.
+
+Playlists are stored in `launcher.json` as `music_playlists`, each a name and the `/bgm/` file names of its tracks
+(the same in every language). The picker above the search box shows all tracks or one playlist, with New, Rename
+and Delete (Delete asks once more). In all tracks, each row's + adds it to a playlist or to a new one; in a
+playlist, × removes a row and rows can be dragged into a new order. Names must differ, ignoring case.
 
 ## Version history
 

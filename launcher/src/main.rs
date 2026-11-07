@@ -38,9 +38,19 @@ pub struct Settings {
     /// Seconds the music player's tracks fade into each other; `None` for the default (2), 0 for none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub music_crossfade: Option<f32>,
+    /// The music player's playlists.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub music_playlists: Vec<Playlist>,
     /// The `%APPDATA%\OpenCatbox` this portable home's settings, data and saves were brought in from (once).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub migrated_from: Option<PathBuf>,
+}
+
+/// A named list of tracks, by their `/bgm/` file names (the same in every language).
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
+pub struct Playlist {
+    pub name: String,
+    pub files: Vec<String>,
 }
 
 #[derive(Serialize)]

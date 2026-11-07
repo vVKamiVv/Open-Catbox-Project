@@ -2,6 +2,10 @@
 
 What changed in each release.
 
+## Unreleased
+
+- Launcher music player: tracks no longer loop forever (each loop plays twice, then the next track starts), and it has shuffle, repeat (list, one track or off) and playlists.
+
 ## v0.2.6 — 2026-11-07
 
 - System menu: long scene titles wrap between words instead of mid-word.
