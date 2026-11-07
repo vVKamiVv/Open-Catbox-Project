@@ -472,8 +472,8 @@ pub fn draw_key_name(
         builder,
         transform
             * Mat4::from_translation(at.extend(0.0))
-            * Mat4::from_scale(vec3(scale, scale, 1.0))
-            * Mat4::from_translation(vec3(OUTLINE, OUTLINE, 0.0)),
+            // the block's size includes its outline and it offsets itself by it when drawn
+            * Mat4::from_scale(vec3(scale, scale, 1.0)),
         FloatColor4::from_rgba(color.r, color.g, color.b, color.a),
         INK.with_alpha(color.a),
     );
