@@ -34,7 +34,6 @@ mod port_settings;
 mod render;
 mod scenario_select;
 mod savedata;
-mod time;
 mod title;
 mod title_demo;
 mod ui;

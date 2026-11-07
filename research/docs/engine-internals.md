@@ -1271,9 +1271,9 @@ no `.ips`. The port has no language setting of its own: the language is whatever
 applied over it (§3). Without one, those texts (the culprit game's testimonies and evidence, the system dialogs) stay
 empty. The PC tab draws its own labels in English, or in Japanese when the executable's texts are Japanese (§18).
 
-Note on the last asset folder: the doc comment of `locate_assets` describes `<data dir>/shin/assets`, but the code
-(inherited from shin) joins `../../..` to the data dir instead. Which was intended is **open**; neither the launcher
-nor the README relies on that folder.
+The last asset folder is `<data dir>/shin/assets` (`%APPDATA%\shinssets` on Windows), as `locate_assets`'s doc
+comment says; the code inherited from shin joined `../../..` to the data dir instead, which pointed outside it, and
+was fixed.
 
 ## 21. Port-only: the developer tools (**not in the original**)
 
@@ -1291,8 +1291,7 @@ All behind command-line flags (`shin --help`, `shin/src/cli.rs`); without them a
 | `--fullscreen` | borderless fullscreen for this run, not saved (§18) | `app.rs` |
 
 `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) sets the log level. A background thread checks every
-10 s for `parking_lot` deadlocks and logs their backtraces (`main.rs`). `shin/src/time.rs` (a clock copied from bevy)
-is compiled but not used.
+10 s for `parking_lot` deadlocks and logs their backtraces (`main.rs`).
 
 ## 22. Data formats at a glance
 

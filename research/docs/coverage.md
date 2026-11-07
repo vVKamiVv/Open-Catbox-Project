@@ -54,7 +54,6 @@ comments at the top of the named file.
 | `--capture-messages` (`capture.rs`) | EI §21; alignment-plan.md; reverse-engineering-guide.md; module doc | partial | documented |
 | Dev overlays and time control (`--dev`, `render/overlay.rs`) | EI §21; README | partial | documented |
 | Other command-line flags (`cli.rs`) | EI §21; `shin --help` | partial | documented |
-| `time.rs` (unused clock from bevy) | `time.rs` module doc; EI §21 | missing | documented |
 
 ## Engine crates
 
