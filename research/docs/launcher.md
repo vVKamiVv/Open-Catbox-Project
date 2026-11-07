@@ -259,6 +259,30 @@ folder of your own survive. Uninstalling then removes the shortcuts and the Inst
 (`<home>\webview`, and the older `%LOCALAPPDATA%\io.github.vvkamivv.opencatbox`) and the program folder if nothing else
 is in it. Saves are deleted only when the box is ticked.
 
+## Linux and macOS
+
+The same launcher runs on Linux and macOS; only installing and updating differ (`src/install/other.rs` in place of
+the Windows installer).
+
+- **Packages:** on Linux an AppImage, a `.deb` and an `.rpm`; on macOS a `.dmg` with the app (Apple Silicon and
+  Intel in one). `shin` is packed beside the launcher (Tauri's `externalBin`), and `find_shin` looks for it there
+  by its own name. Built by `.github/workflows/release-unix.yml` once a release is published, from
+  `bundle.linux.json` and `bundle.macos.json` (passed to `tauri build --config`, so plain builds need no copy of
+  shin).
+- **Home:** never portable (an AppImage is read-only, and writing into a signed app breaks its signature): the
+  user's data folder, `~/.local/share/OpenCatbox` (`$XDG_DATA_HOME`) or `~/Library/Application Support/OpenCatbox`.
+  The game's saves are under `shin` next to it, where the game looks by default.
+- **No installer screen and no Uninstall button:** the package installs and removes the app.
+- **Updates:** the updater plugin downloads and puts the new AppImage, package or app in place itself, then the
+  launcher restarts. `latest.json` has entries for `linux-x86_64` (and `-appimage`, `-deb`, `-rpm`) and
+  `darwin-aarch64`/`darwin-x86_64`, added by the release workflow next to Windows'.
+- **Movies:** the `.deb` and `.rpm` depend on GStreamer and recommend its H.264 plugin (`gstreamer1.0-libav`,
+  `gstreamer1-plugin-openh264`); see `linux-macos-port.md`.
+- **WebKitGTK:** the launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1` (unless already set), as the DMA-BUF renderer
+  leaves the window blank on NVIDIA drivers, virtual machines and WSL.
+- **macOS signing:** none (ad hoc only). The first start is blocked once; the player allows it in System Settings →
+  Privacy & Security → Open Anyway (README).
+
 ## Design
 
 The launcher's look (the night sea, the moon, the butterflies, the layout) was made with AI as a working

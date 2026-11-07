@@ -99,6 +99,36 @@ it anyway. Linux needs nothing like this.
 - **Testing:** CI can build and run the unit tests on both, but playing them through needs real Linux and macOS
   machines.
 
+## Status (2026-11-07)
+
+Done, in this order of the plan:
+
+1. **The game on Linux:** builds and passes every test on Ubuntu (CI on 22.04, and 24.04 in WSL). GStreamer is
+   always built there (`shin-video/src/h264_decoder/linux.rs`: GStreamer when it has an H.264 decoder, else ffmpeg,
+   else the movies are skipped). In WSL it decodes the game's `no81` and a B-frame movie in display order, renders
+   Episode 1's lines within 32 of the Windows captures everywhere (mean difference 0.06, software rendering), and
+   exits cleanly. Found and fixed on the way: a crash at every exit on Wayland (the surface outlived the display
+   connection), no sound device stopping the game (it now plays silently), GStreamer 1.20 reporting the end of a
+   movie as an error. Exclusive fullscreen is shown as borderless off Windows; loose asset folders match without
+   regard to case.
+2. **The game on macOS:** the VideoToolbox decoder (`video_toolbox.rs`, pictures put in display order); Cmd+Q and
+   Cmd+Ctrl+F. Built and tested by CI on GitHub's macOS runner (Apple Silicon), which decodes the B-frame movie.
+3. **The launcher everywhere:** builds and passes its tests on Linux and macOS. The installer is Windows-only
+   (`install/windows.rs`), the home is the user's data folder, updates go through the updater plugin. In WSL the
+   `.deb` installs with apt (dependencies resolved), the installed launcher finds the game data and lists the
+   music (215 tracks).
+4. **Packages and updates:** `release-unix.yml` builds the AppImage, `.deb`, `.rpm` and `.dmg` on a published release,
+   signs the update files and adds them to `latest.json`. Built in WSL: 94 MB, 16 MB, 16 MB.
+5. **macOS signing:** none, by decision; the README and the website say how to open the app the first time.
+
+Left:
+
+- **Playing it through on real machines.** WSL could not press Play in the launcher (WebKit gets no clicks through
+  WSLg) and renders in software; macOS has only been built and tested on CI. A first play on real Linux and macOS
+  computers is the next check.
+- **The release workflow's secrets** (`TAURI_SIGNING_PRIVATE_KEY`, `_PASSWORD`) must be added to the repository
+  before the first release with these packages.
+
 ## Decisions (2026-11-07)
 
 1. **Movies:** each system's own decoder: GStreamer on Linux (falling back to ffmpeg when no H.264 plugin is

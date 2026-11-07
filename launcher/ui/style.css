@@ -232,7 +232,10 @@ select {
 .transport .one-mark { display: none; position: absolute; top: 1px; right: 3px; font-size: 9px; font-family: var(--font-body); }
 .transport .mode.one .one-mark { display: block; }
 .volume { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.volume .volume-icon { color: var(--ink-dim); font-size: 14px; }
+/* drawn, not font glyphs: Linux fonts often lack the media symbols */
+.volume .volume-icon { width: 18px; height: 18px; flex: none; color: var(--ink-dim); fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.volume .volume-icon .fill, .transport .icon .fill { fill: currentColor; stroke: none; }
+.transport .icon svg { width: 14px; height: 14px; display: block; }
 .volume input[type="range"] { flex: 1; min-width: 0; accent-color: var(--crimson-bright); }
 .music-lists, .playlist-form { display: flex; gap: 6px; margin-bottom: 8px; }
 .music-lists select { flex: 1; min-width: 0; font-size: 15px; }

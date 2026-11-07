@@ -9,6 +9,11 @@ What changed in each release.
 - Wipes start on the frame they are called, as on the Switch, instead of one frame later.
 - Skipping no longer waits for movies to play out, as on the Switch.
 - Website, and issue forms for bugs, differences from the Switch version and ideas.
+- **Linux and macOS:** the game and the launcher run there too. Linux: an AppImage, a `.deb` and an `.rpm`, with movies
+  through GStreamer. macOS 11 or later (Apple Silicon and Intel): a `.dmg`, with movies through VideoToolbox; the app
+  is not signed by Apple, so it needs allowing once in System Settings (see the README).
+- A computer without a working sound output plays silently instead of the game stopping at the start.
+- When the system cannot decode the movies, they are skipped instead of the game stopping.
 
 ## v0.2.7 — 2026-11-07
 

@@ -18,8 +18,7 @@
 ---
 
 A native PC version of *Umineko no Naku Koro ni Saku ~Nekobako to Musou no Koukyoukyoku~*. Bring your own Switch
-copy of the game; no emulator needed. Windows for now; Linux and macOS are planned
-([the plan](research/docs/linux-macos-port.md)).
+copy of the game; no emulator needed. Windows, Linux and macOS.
 
 ## 🟥 Spoken in red
 
@@ -58,11 +57,32 @@ Full list in the [changelog](CHANGELOG.md).
 
 ### With the launcher
 
-1. Download `OpenCatbox-Setup.exe` from the [releases](https://github.com/vVKamiVv/Open-Catbox-Project/releases)
-   and run it.
+1. Download the launcher for your system from the [releases](https://github.com/vVKamiVv/Open-Catbox-Project/releases)
+   and install it (below).
 2. Pick your game dump (the base NSP, plus the 1.0.3 update for Japanese) and your `prod.keys`.
 3. Pick a language: **English**, **English (Catbox X)** (up to Episode 7) or **Japanese**.
 4. Press **Play**.
+
+**Windows:** run `OpenCatbox-Setup.exe`.
+
+**Linux:** one of
+- `OpenCatbox-x86_64.AppImage`, for any distribution: make it executable (`chmod +x`) and run it. Some systems need
+  FUSE for AppImages (`libfuse2t64` on Ubuntu 24.04).
+- `OpenCatbox-amd64.deb` for Debian and Ubuntu: `sudo apt install ./OpenCatbox-amd64.deb`
+- `OpenCatbox-x86_64.rpm` for Fedora: `sudo dnf install ./OpenCatbox-x86_64.rpm`
+
+The movies play through GStreamer, which needs its H.264 plugin. The `.deb` and `.rpm` bring it in; with the AppImage,
+install `gstreamer1.0-libav` (Debian, Ubuntu) or `gstreamer1-plugin-openh264` (Fedora). Without it the game skips
+its movies.
+
+**macOS** (11 or later, Apple Silicon or Intel): open `OpenCatbox-macOS.dmg` and drag **Open Catbox** into
+Applications. The app is not signed by Apple, so macOS stops it the first time:
+
+1. Open it, and click **Done** when macOS says it cannot check it.
+2. Open **System Settings → Privacy & Security**, scroll down to *"Open Catbox" was blocked*, and click
+   **Open Anyway**, then confirm.
+
+From then on it opens normally. (macOS 14 and older: Control-click the app, choose **Open**, then **Open**.)
 
 How the launcher works: [`launcher.md`](research/docs/launcher.md).
 

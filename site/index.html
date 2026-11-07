@@ -32,11 +32,12 @@
         <h1 class="title">Umineko<span class="sub">no Naku Koro ni</span>Saku</h1>
         <p class="tagline">The Symphony of Catbox and Dreams, played natively on PC.</p>
         <div class="actions">
-          <a class="btn play" href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-Setup.exe">Download</a>
+          <a class="btn play" id="download" href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-Setup.exe">Download</a>
           <a class="btn" href="https://github.com/vVKamiVv/Open-Catbox-Project/releases">All releases</a>
           <a class="btn" href="https://github.com/vVKamiVv/Open-Catbox-Project">Source code</a>
         </div>
         <p class="release" id="release">For Windows 10 and 11. Free and open source.</p>
+        <p class="release" id="packages" hidden></p>
       </section>
 
       <section class="wrap block">
@@ -97,11 +98,38 @@
           <div class="panel">
             <h3>You need</h3>
             <ul>
-              <li>Windows 10 or 11</li>
+              <li>Windows 10 or 11, Linux, or macOS 11 or later</li>
               <li>The base game NSP, dumped from your Switch</li>
               <li>Your console's <code>prod.keys</code></li>
               <li>For Japanese, also the 1.0.3 update NSP</li>
             </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="wrap block">
+        <h2 class="display">Linux and macOS</h2>
+        <div class="two">
+          <div class="panel">
+            <h3>macOS: the first time</h3>
+            <p class="dim">The app is not signed by Apple, so macOS stops it once.</p>
+            <ol class="steps">
+              <li>Drag <strong>Open Catbox</strong> from the .dmg into Applications and open it.</li>
+              <li>When macOS says it cannot check it, click <strong>Done</strong>.</li>
+              <li>In <strong>System Settings → Privacy &amp; Security</strong>, click <strong>Open Anyway</strong>
+                next to Open Catbox, then confirm.</li>
+            </ol>
+            <p class="dim">After that it opens normally.</p>
+          </div>
+          <div class="panel">
+            <h3>Linux</h3>
+            <ul>
+              <li><strong>AppImage:</strong> make it executable, then run it</li>
+              <li><strong>.deb:</strong> <code>sudo apt install ./OpenCatbox-amd64.deb</code></li>
+              <li><strong>.rpm:</strong> <code>sudo dnf install ./OpenCatbox-x86_64.rpm</code></li>
+            </ul>
+            <p class="dim">Movies need GStreamer's H.264 plugin. The .deb and .rpm bring it in; with the AppImage,
+              install <code>gstreamer1.0-libav</code> or <code>gstreamer1-plugin-openh264</code>.</p>
           </div>
         </div>
       </section>
@@ -128,13 +156,42 @@
 
   <script src="sky.js"></script>
   <script>
-    // the newest release's version and size, from GitHub's API (the default text stays if it cannot be reached)
+    // the newest release from GitHub's API: the download for this visitor's system, if the release has it, and every
+    // package it has (the default Windows link and text stay if it cannot be reached)
+    const PACKAGES = [
+      { file: "OpenCatbox-Setup.exe", label: "Windows", os: "windows" },
+      { file: "OpenCatbox-macOS.dmg", label: "macOS", os: "mac" },
+      { file: "OpenCatbox-x86_64.AppImage", label: "Linux AppImage", os: "linux" },
+      { file: "OpenCatbox-amd64.deb", label: ".deb (Debian, Ubuntu)" },
+      { file: "OpenCatbox-x86_64.rpm", label: ".rpm (Fedora)" },
+    ];
+    const ua = navigator.userAgent;
+    const os = /Mac OS X|Macintosh/.test(ua) ? "mac" : /Linux|X11/.test(ua) && !/Android/.test(ua) ? "linux" : "windows";
     fetch("https://api.github.com/repos/vVKamiVv/Open-Catbox-Project/releases/latest")
       .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
       .then((release) => {
-        const setup = release.assets.find((a) => a.name === "OpenCatbox-Setup.exe");
-        const size = setup ? ` · ${Math.round(setup.size / 1048576)} MB` : "";
-        document.getElementById("release").textContent = `${release.tag_name} for Windows 10 and 11${size}. Free and open source.`;
+        const has = (file) => release.assets.find((a) => a.name === file);
+        const available = PACKAGES.filter((p) => has(p.file));
+        const mine = available.find((p) => p.os === os) ?? available.find((p) => p.os === "windows");
+        if (!mine) return;
+        const asset = has(mine.file);
+        const button = document.getElementById("download");
+        button.href = asset.browser_download_url;
+        button.textContent = `Download for ${mine.label.replace(" AppImage", "")}`;
+        const size = ` · ${Math.round(asset.size / 1048576)} MB`;
+        document.getElementById("release").textContent = `${release.tag_name}${size}. Free and open source.`;
+        if (available.length > 1) {
+          const list = document.getElementById("packages");
+          list.append("Also: ");
+          available.filter((p) => p !== mine).forEach((p, i) => {
+            if (i) list.append(" · ");
+            const link = document.createElement("a");
+            link.href = has(p.file).browser_download_url;
+            link.textContent = p.label;
+            list.append(link);
+          });
+          list.hidden = false;
+        }
       })
       .catch(() => {});
   </script>
