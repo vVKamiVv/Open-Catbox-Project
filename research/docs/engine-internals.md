@@ -1271,7 +1271,7 @@ no `.ips`. The port has no language setting of its own: the language is whatever
 applied over it (§3). Without one, those texts (the culprit game's testimonies and evidence, the system dialogs) stay
 empty. The PC tab draws its own labels in English, or in Japanese when the executable's texts are Japanese (§18).
 
-The last asset folder is `<data dir>/shin/assets` (`%APPDATA%\shinssets` on Windows), as `locate_assets`'s doc
+The last asset folder is `<data dir>/shin/assets` (`%APPDATA%\shin\assets` on Windows), as `locate_assets`'s doc
 comment says; the code inherited from shin joined `../../..` to the data dir instead, which pointed outside it, and
 was fixed.
 
