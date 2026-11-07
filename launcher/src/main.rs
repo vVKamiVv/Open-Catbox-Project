@@ -7,6 +7,7 @@ mod history;
 mod home;
 mod install;
 mod langs;
+mod music;
 mod nx;
 mod setup;
 
@@ -347,6 +348,25 @@ async fn move_data_dir(app: AppHandle, target: PathBuf) -> Result<(), String> {
     store_settings(&settings)
 }
 
+/// The Music Box's tracks in `lang`, from the game data.
+#[tauri::command]
+async fn music_tracks(lang: String) -> Result<Vec<music::Track>, String> {
+    let data = data_dir(&load_settings());
+    tauri::async_runtime::spawn_blocking(move || music::tracks(&data, &lang))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// One track's loop points and Ogg Opus stream, as raw bytes (see `music::track`).
+#[tauri::command]
+async fn music_track(lang: String, file: String) -> Result<tauri::ipc::Response, String> {
+    let data = data_dir(&load_settings());
+    let bytes = tauri::async_runtime::spawn_blocking(move || music::track(&data, &lang, &file))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Replaces the game's save with a file the player picked (a Switch SAVEDATA), backing up the current one.
 #[tauri::command]
 fn import_save(file: PathBuf) -> Result<(), String> {
@@ -477,6 +497,8 @@ fn main() {
             launch,
             move_data_dir,
             import_save,
+            music_tracks,
+            music_track,
             install_program,
             uninstall_program,
             install_update

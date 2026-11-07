@@ -77,6 +77,7 @@ function render() {
   renderPicker();
   renderCards();
   renderSettings();
+  if (screen === "main") loadTracks();
 }
 
 // --- Play view ---
@@ -106,6 +107,136 @@ function renderPicker() {
   }
   $("#play").disabled = !selected;
 }
+
+// --- Music: the Music Box's tracks from the game data, looping where the game loops them ---
+
+const music = { lang: null, tracks: [], index: -1, ctx: null, gain: null, source: null, paused: false, token: 0 };
+const remembered = {
+  get(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch { /* private storage: not remembered */ } },
+};
+
+function showPlaylist(open) {
+  $("#playlist").hidden = !open;
+  $("#playlist-show").hidden = open;
+  remembered.set("playlist", open ? "open" : "closed");
+}
+
+async function loadTracks() {
+  const lang = selectedLanguage();
+  if (!state.data_ready || !lang || lang === music.lang) return;
+  music.lang = lang;
+  stopMusic();
+  music.index = -1;
+  try {
+    music.tracks = await invoke("music_tracks", { lang });
+    say($("#music-msg"), "");
+  } catch (e) {
+    music.tracks = [];
+    say($("#music-msg"), String(e), "error");
+  }
+  renderTracks();
+}
+
+function renderTracks() {
+  const list = $("#tracks");
+  list.replaceChildren(...music.tracks.map((track, i) => {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.textContent = track.title;
+    button.addEventListener("click", () => playTrack(i));
+    item.className = i === music.index ? "current" : "";
+    item.append(button);
+    return item;
+  }));
+  $("#now-title").textContent = music.tracks[music.index]?.title ?? "Pick a track";
+  $("#music-toggle").innerHTML = music.source && !music.paused ? "&#10074;&#10074;" : "&#9654;";
+}
+
+function stopMusic() {
+  if (!music.source) return;
+  music.source.onended = null;
+  music.source.stop();
+  music.source = null;
+}
+
+function pauseMusic() {
+  if (music.source && !music.paused) {
+    music.ctx.suspend();
+    music.paused = true;
+    renderTracks();
+  }
+}
+
+function setVolume() {
+  const value = Number($("#music-volume").value);
+  remembered.set("volume", String(value));
+  if (music.gain) music.gain.gain.value = (value / 100) ** 2;
+}
+
+async function playTrack(i) {
+  const count = music.tracks.length;
+  if (!count) return;
+  i = (i + count) % count;
+  const token = ++music.token;
+  const track = music.tracks[i];
+  music.index = i;
+  renderTracks();
+  try {
+    const bytes = await invoke("music_track", { lang: music.lang, file: track.file });
+    if (token !== music.token) return;
+    music.ctx ??= new AudioContext();
+    if (!music.gain) {
+      music.gain = music.ctx.createGain();
+      music.gain.connect(music.ctx.destination);
+      setVolume();
+    }
+    // 12 bytes of loop points in samples, then the Ogg Opus stream (see launcher/src/music.rs)
+    // the raw response arrives as an ArrayBuffer, a typed array or a plain array depending on the transport
+    const data = bytes instanceof ArrayBuffer ? new Uint8Array(bytes)
+      : ArrayBuffer.isView(bytes) ? new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      : Uint8Array.from(bytes);
+    const head = new DataView(data.buffer, data.byteOffset, 12);
+    const [loopStart, loopEnd, rate] = [0, 4, 8].map((offset) => head.getUint32(offset, true));
+    const buffer = await music.ctx.decodeAudioData(data.slice(12).buffer);
+    if (token !== music.token) return;
+    stopMusic();
+    const source = music.ctx.createBufferSource();
+    source.buffer = buffer;
+    if (track.looping && loopEnd > loopStart) {
+      source.loop = true;
+      source.loopStart = loopStart / rate;
+      source.loopEnd = loopEnd / rate;
+    }
+    source.onended = () => { if (music.source === source) { music.source = null; playTrack(music.index + 1); } };
+    source.connect(music.gain);
+    source.start();
+    music.source = source;
+    music.paused = false;
+    await music.ctx.resume();
+  } catch (e) {
+    say($("#music-msg"), String(e), "error");
+  }
+  renderTracks();
+}
+
+$("#music-toggle").addEventListener("click", () => {
+  if (!music.source) return playTrack(Math.max(music.index, 0));
+  if (music.paused) {
+    music.ctx.resume();
+    music.paused = false;
+    renderTracks();
+  } else {
+    pauseMusic();
+  }
+});
+$("#music-prev").addEventListener("click", () => playTrack(music.index - 1));
+$("#music-next").addEventListener("click", () => playTrack(music.index + 1));
+$("#music-volume").value = remembered.get("volume", "60");
+$("#music-volume").addEventListener("input", setVolume);
+$("#playlist-hide").addEventListener("click", () => showPlaylist(false));
+$("#playlist-show").addEventListener("click", () => showPlaylist(true));
+showPlaylist(remembered.get("playlist", "open") === "open");
 
 function installButton(lang, size = "") {
   const btn = document.createElement("button");
@@ -147,6 +278,7 @@ $("#play").addEventListener("click", async () => {
     $("#play").disabled = true;
     await invoke("launch", { lang });
     say(msg, "The game is starting…", "ok");
+    pauseMusic();
     setTimeout(() => say(msg, ""), 5000);
   } catch (e) {
     say(msg, String(e), "error");

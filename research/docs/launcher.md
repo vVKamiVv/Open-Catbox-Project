@@ -152,6 +152,18 @@ puts it), then, in builds from source, in `target\release\` of the checkout.
   `RUST_LOG=warn`; **Settings → Debug logging** raises shin's own crates to `debug`, which is what a bug report
   needs.
 
+## Music
+
+The Play view has a playlist on its right (it can be hidden; the choice and the volume are remembered in the
+page's local storage). It lists the Music Box's tracks in its order, titled by the BGM table's display names, from
+the selected language's script (`/main.snr` in its `patch.rom`, else `data.rom`). Choosing one reads
+`/bgm/<name>.nxa` from the same archives and hands the page its Opus frames repackaged as Ogg Opus (not
+re-encoded; `shin_core::format::audio::to_ogg_opus`, shared with `sdu audio remux`), after 12 bytes with the loop
+start, loop end (samples after the pre-skip, as the game seeks) and sample rate. The page decodes it with Web Audio
+and loops it between those points, as the game does, except for the tracks the Music Box plays once; at the end of
+those it moves to the next. Starting the game pauses it. Nothing of the game is in the launcher: it all comes from
+the data set up on this computer.
+
 ## Version history
 
 The **Version history** tab lists every release with its notes, the installed one marked. They come from this

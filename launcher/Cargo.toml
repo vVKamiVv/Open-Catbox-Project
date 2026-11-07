@@ -27,6 +27,8 @@ aes = "0.8"
 ctr = "0.9"
 xts-mode = "0.5"
 windows-registry = "0.6"
+# the game's own formats, for the music player (read from the player's game data)
+shin-core = { path = "../shin-core" }
 
 [features]
 # Release builds (scripts/release.ps1): shin.exe built in, read at compile time from the path in the

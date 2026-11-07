@@ -5,11 +5,13 @@
 //! The header specifies loop start and loop end points in samples. When looping is enabled and loop end is reached, the decoder seeks to the loop start.
 
 mod audio_source;
+mod ogg;
 
 use std::io::Read;
 
 use anyhow::{Result, bail};
 pub use audio_source::{AudioBuffer, AudioFrameSource, AudioSource};
+pub use ogg::to_ogg_opus;
 use binrw::{BinRead, BinWrite};
 use opus::Channels;
 

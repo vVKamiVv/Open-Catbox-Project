@@ -42,7 +42,7 @@ command, effect and transition the game uses is implemented.
 - **Rebindable controls** for keyboard, mouse and controller, with Xbox, PlayStation and Switch button prompts.
 - **Save from the galleries**: pictures, music, movies and character sprites.
 - **Any refresh rate**: 120, 144 and 240 Hz run at the right speed.
-- **A launcher** that sets everything up and updates itself.
+- **A launcher** that sets everything up, updates itself and plays the soundtrack from your game files.
 
 Full list in the [changelog](CHANGELOG.md).
 
