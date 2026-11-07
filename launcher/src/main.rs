@@ -494,6 +494,12 @@ fn main() {
         install::run_update(folder);
         return;
     }
+    // WebKitGTK's DMA-BUF renderer leaves the window blank on many systems (NVIDIA drivers, virtual machines,
+    // WSL); the older path draws everywhere. Set before any thread starts, unless the player chose otherwise
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())

@@ -96,7 +96,7 @@ impl Backend for OutputBackend {
                             if due > rendered {
                                 renderer.on_start_processing();
                                 for _ in rendered..due {
-                                    renderer.process();
+                                    let _ = renderer.process();
                                 }
                                 rendered = due;
                             }

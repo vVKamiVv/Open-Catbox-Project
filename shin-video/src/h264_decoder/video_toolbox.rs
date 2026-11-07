@@ -6,7 +6,7 @@
 //! its sample carried in (`sourceFrameRefCon`), as NV12 in video range: the layout the movie shader expects.
 
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     ffi::c_void,
     io::{Read, Seek},
     ptr::{null, null_mut},
@@ -31,6 +31,9 @@ use crate::{
 
 /// Pictures decoded ahead of the game (about 3 MB each at 1920x1080)
 const FRAMES_AHEAD: usize = 8;
+/// VideoToolbox gives pictures in decode order: up to this many wait to be put in display order (H.264 never reorders
+/// across more than its largest picture buffer, 16)
+const REORDER: usize = 16;
 
 /// VideoToolbox, or ffmpeg when it cannot start, or none
 pub enum AutoH264Decoder {
@@ -151,6 +154,8 @@ struct Session {
     format: CMFormatDescriptionRef,
     /// Boxed so its address, given to the callback, stays put
     ready: Box<Ready>,
+    /// Decoded pictures by presentation time, until no earlier one can come
+    reorder: BTreeMap<u64, (FrameTiming, Nv12Frame)>,
 }
 
 impl Session {
@@ -233,12 +238,13 @@ impl Session {
                 session,
                 format,
                 ready,
+                reorder: BTreeMap::new(),
             })
         }
     }
 
     fn run<S: Read + Seek>(
-        self,
+        mut self,
         mut track: Mp4TrackReader<S>,
         frames: &SyncSender<Picture>,
     ) -> Result<()> {
@@ -253,7 +259,7 @@ impl Session {
             };
             frame_number += 1;
             self.decode(&sample.bytes, timing, sample.start_time, timescale)?;
-            if !self.send_ready(frames) {
+            if !self.send_ready(frames, false) {
                 return Ok(());
             }
         }
@@ -267,7 +273,7 @@ impl Session {
                 "finishing the movie",
             )?;
         }
-        self.send_ready(frames);
+        self.send_ready(frames, true);
         debug!("VideoToolbox: the movie is decoded");
         Ok(())
     }
@@ -349,16 +355,33 @@ impl Session {
         }
     }
 
-    /// Sends the pictures the callback made; false when the game no longer wants them
-    fn send_ready(&self, frames: &SyncSender<Picture>) -> bool {
+    /// Sends the pictures the callback made, in display order: the earliest one once more than `REORDER` wait, all of
+    /// them at the end of the movie (`last`); false when the game no longer wants them
+    fn send_ready(&mut self, frames: &SyncSender<Picture>, last: bool) -> bool {
         let Ok(mut ready) = self.ready.lock() else {
             return false;
         };
         let pictures: Vec<Picture> = ready.drain(..).collect();
         drop(ready);
-        pictures
-            .into_iter()
-            .all(|picture| frames.send(picture).is_ok())
+        for picture in pictures {
+            match picture {
+                Ok((timing, frame)) => {
+                    self.reorder.insert(timing.start_time, (timing, frame));
+                }
+                Err(e) => {
+                    if frames.send(Err(e)).is_err() {
+                        return false;
+                    }
+                }
+            }
+        }
+        while self.reorder.len() > if last { 0 } else { REORDER } {
+            let (_, picture) = self.reorder.pop_first().unwrap();
+            if frames.send(Ok(picture)).is_err() {
+                return false;
+            }
+        }
+        true
     }
 }
 
