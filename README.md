@@ -10,28 +10,20 @@
 
 ---
 
-*Umineko no Naku Koro ni Saku ~Nekobako to Musou no Koukyoukyoku~* was only ever released on consoles. The Open
-Catbox Project is a PC engine for it: you bring your own Nintendo Switch copy of the game and a fan-made English
-translation, and the port plays them directly on your computer, with no emulator. Development and testing happen on
-Windows.
+A native PC version of *Umineko no Naku Koro ni Saku ~Nekobako to Musou no Koukyoukyoku~*. Bring your own Switch
+copy of the game; no emulator needed. Windows for now.
 
 ## 🟥 Spoken in red
-
-These are not theories. They hold, without exception:
 
 - $\color{red}{\textsf{No game data, keys or decompiled code are in this repository.}}$
 - $\color{red}{\textsf{You need to own the game to play it.}}$
 
 ## 📜 Rules of the gameboard
 
-1. **Faithful by construction.** Timings, constants, formulas and shaders are read out of the original game's
-   executable through reverse engineering rather than estimated by eye; where the code leaves a gap, the comments
-   say so. Screens are then compared side by side with the original running on an emulator.
-2. **Documented in the open.** Nobody had written down how this engine works. Everything learned goes into
-   [`research/`](research/): behaviour, data formats and original addresses, plus the scripts used to find them, so
-   anyone can check the work or build on it.
-3. **Built on [shin](https://github.com/DCNick3/shin).** DCNick3's open-source re-implementation of Entergram's
-   engine is the starting point; it is developed further here as an independent project. See [Credits](#-credits).
+1. **Faithful.** Timings, effects and menus are taken from the original game's code and checked side by side with
+   it.
+2. **Open.** Everything we learn about the engine is written down in [`research/`](research/).
+3. **Built on [shin](https://github.com/DCNick3/shin)** by DCNick3, developed further here as its own project.
 
 ## 🦋 The Golden Land so far
 
@@ -41,140 +33,92 @@ These are not theories. They hold, without exception:
 
 </div>
 
-The mean, over the 6 side-by-side comparisons with the original (running on an emulator) that have a per-pixel
-figure, of the share of pixels within 32/255 of the original's: blur 99.9 %, whirl wipe 99.6 %, ripple 99.3 %,
-Characters 100 %, Tips 99.9 %, the Tips episode list 99.4 % (a drifting background pattern caught at another
-moment). The formula, each comparison and the screens and effects compared without
-a per-pixel figure (glass, mosaic, dissolve, raster, transparent movies, every menu) are in the
-[accuracy notes](research/docs/alignment-plan.md#accuracy).
+Measured against the original game, screen by screen ([how](research/docs/alignment-plan.md#accuracy)). Every
+command, effect and transition the game uses is implemented.
 
-Separately, **every command, layer type, transition and layer effect the game's script uses is implemented**. The inventory comes from statically analysing the whole script
-([`engine-internals.md`](research/docs/engine-internals.md) §2 and §10).
+### Extras over the Switch version
 
-### What v0.2.0 brings on top of the original
+- **PC settings**: window mode and size, V-Sync, frame-rate cap, supersampling.
+- **Rebindable controls** for keyboard, mouse and controller, with Xbox, PlayStation and Switch button prompts.
+- **Save from the galleries**: pictures, music, movies and character sprites.
+- **Any refresh rate**: 120, 144 and 240 Hz run at the right speed.
+- **A launcher** that sets everything up and updates itself.
 
-- A **PC** tab in Config: window mode (windowed, borderless, fullscreen), window size, V-Sync, a frame-rate cap,
-  supersampling (1.5x / 2x), the button prompts and which controller button confirms.
-- **Controls**: every action can be rebound for keyboard, mouse and controller, and the on-screen button prompts
-  follow the device you play with (keyboard, Xbox, PlayStation or Switch pad).
-- **Save from the galleries**: pictures as full-size PNG, music as WAV, movies as MP4 and character sprites as
-  transparent PNG, into your Pictures, Music and Videos folders.
-- The same speed at any refresh rate: 120, 144 and 240 Hz screens no longer speed anything up.
-- A **launcher that installs itself**: one `OpenCatbox-Setup.exe`, no administrator rights, updates in place, and
-  uninstalls from Installed apps.
-
-What each of these does, exactly, is in [`engine-internals.md`](research/docs/engine-internals.md) §18-§19 and
-[`launcher.md`](research/docs/launcher.md); the full list of changes is in the [changelog](CHANGELOG.md).
+Full list in the [changelog](CHANGELOG.md).
 
 ## 🍰 Preparing the tea party
 
 ### With the launcher
 
-The **Open Catbox launcher** (`launcher/`) does the whole setup for you. Download `OpenCatbox-Setup.exe` from the
-[releases](https://github.com/vVKamiVv/Open-Catbox-Project/releases) and run it: it installs itself for your Windows
-user (no administrator rights), with Start menu and desktop shortcuts, and keeps itself up to date. Then:
+1. Download `OpenCatbox-Setup.exe` from the [releases](https://github.com/vVKamiVv/Open-Catbox-Project/releases)
+   and run it.
+2. Pick your game dump (the base NSP, plus the 1.0.3 update for Japanese) and your `prod.keys`.
+3. Pick a language: **English**, **English (Catbox X)** (up to Episode 7) or **Japanese**.
+4. Press **Play**.
 
-1. Point it at your own dump of the Switch release (the base NSP, title id `01006A300BA2C000`, and optionally the
-   1.0.3 update NSP for Japanese) and your console's `prod.keys`. It unpacks the game data on your computer and
-   checks it; nothing is uploaded anywhere.
-2. Pick a language: **English** (Catbox English by &Olga), **English, Catbox X** (Foxdear's revision, currently
-   up to Episode 7) or **Japanese**. The translations are downloaded from their authors when you choose them and
-   stay installed, so you can switch at any time.
-3. Press **Play**.
-
-How it works, step by step, is in [`research/docs/launcher.md`](research/docs/launcher.md).
+How the launcher works: [`launcher.md`](research/docs/launcher.md).
 
 > [!IMPORTANT]
-> **Wanted: a designer.** The launcher's look (the night sea, the moon, the butterflies, the layout) was made
-> entirely with AI, as a working placeholder. If you can design something worthy of the golden land, please do:
-> all of it lives in `launcher/ui/` (HTML, one CSS file with the colours and fonts as variables at the top, and a
-> canvas script for the sky). It must stay our own art: no images or logos from the game or the translations.
+> **Wanted: a designer.** The launcher's look was made with AI as a placeholder. If you'd like to design a better
+> one, everything is in `launcher/ui/`. It must be original art, with nothing taken from the game or the
+> translations.
 
 ### By hand
 
-You need:
-
-1. **The game**: the romfs file `data.rom` of your own dump of the Switch release (title id `01006A300BA2C000`), made
-   for example with [nxdumptool](https://github.com/DarkMatterCore/nxdumptool). Extract it from your base NSP into an
-   `assets` folder with a Switch extraction tool of your choice (the launcher does this natively, with no extra tools).
-   `assets/data.rom` should have sha256 `6d90eb0bacacf769a7e4634407622b047acd711c47debb28136d7bab3fd0e591`.
-2. **An English translation**: copy the `patch.rom` of either into the same `assets` folder; the port layers it
-   over `data.rom`, just like the console does. If the translation comes with an `exefs` folder (an `.ips` patch),
-   keep it next to the assets too, or pass `--exefs`: the culprit game's testimonies are read from it.
-   - [umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english) by andOlga and contributors (its
-     authors allow mirroring its downloads with a link back to that page, its canonical home).
-   - [Catbox X](https://github.com/Foxdear/umineko-catbox-X-english), Foxdear's revision of it, from its author's
-     releases.
-3. On Linux and macOS, **ffmpeg** on your `PATH`, for the movies. Windows decodes them itself (Media Foundation)
-   and only falls back to ffmpeg on editions without it (the "N" editions lacking the Media Feature Pack).
-
-Then build and run (requires [Rust](https://www.rust-lang.org/)):
+1. Extract `data.rom` from your base NSP (title id `01006A300BA2C000`) into an `assets` folder.
+2. Add a translation's `patch.rom` to the same folder, and its `exefs` folder if it has one:
+   [Catbox English](https://github.com/andOlga/umineko-catbox-english) or
+   [Catbox X](https://github.com/Foxdear/umineko-catbox-X-english).
+3. Build with [Rust](https://www.rust-lang.org/) and run:
 
 ```bash
 cargo build --release -p shin
 ```
 
-Point the engine at your `assets` folder with the `SHIN_ASSETS` environment variable, or place the folder next to
-the executable. Use the release build: the unoptimised debug build overflows the main thread's stack at startup.
-Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the engine is doing. Your Switch save
-(`SAVEDATA`) can be used too: see `--savedata` in `shin --help`.
+Put the `assets` folder next to `shin.exe`, or set `SHIN_ASSETS` to its path. On Linux and macOS, movies need
+**ffmpeg**. More options: `shin --help`.
 
 ## 🎮 Moving the pieces
 
 | Keyboard / mouse | Controller (Switch labels) | Does |
 |---|---|---|
-| Left click (on release), Space, Enter | A | Advance, choose |
-| Backspace, Escape, right click | B | Back; hide the text box; skip an event |
-| Hold the left button still in an event | Hold a touch | Skip the event |
+| Left click, Space, Enter | A | Advance, choose |
+| Backspace, Escape, right click | B | Back, hide the text box |
+| Hold the left button | Hold a touch | Skip an event |
 | Y | Y | System menu |
 | X | X | Backlog |
 | `-` / `=` | − / + | Previous / next chapter |
-| A / S | L / R | Auto mode / skip mode |
+| A / S | L / R | Auto / skip mode |
 | Hold left Ctrl | | Fast-forward |
-| Up arrow | Up | Roll back one line; move in menus |
-| Drag and flick | Touch | Scroll lists, turn pages, pan pictures |
-| Page Up / Page Down | Right stick | Scroll long texts (Tips, Characters, the culprit game) |
-| F5 or P (in the galleries also `-`) | ZR (in the galleries also −) | Save to the last used bookmark; in the galleries, save the item to your Pictures, Music or Videos folder |
-| F11 | | Fullscreen (borderless) on/off |
+| Up arrow | Up | Roll back a line |
+| Page Up / Page Down | Right stick | Scroll long texts |
+| F5 or P | ZR | Quick save; in a gallery, save the item |
+| F11 | | Fullscreen |
 
-Keys and buttons can be rebound in Config → PC → Controls (saved in `settings.json`), except menu movement and the
-mouse's left button.
-Controller buttons map by position, so on an Xbox pad B confirms and A goes back, as on the Switch; set Config → PC →
-**Confirm button** to Bottom to confirm with Xbox A / PlayStation ✕ instead. The on-screen button prompts follow the
-device you last used (keyboard, Xbox, PlayStation or Switch pad), or the "Button prompts" choice in the PC tab, and
-always show the button that is bound now.
-
-A tap leaves a ripple and a drag a trail of stars, as on the Switch's touch screen (setting "visual touch
-feedback"). Config has a PC tab for the window mode and size, V-Sync, a frame-rate cap, supersampling, the button
-prompts, the confirm button and the controls, saved in `settings.json` next to the save file. For working on the
-port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its animations) and time control (F6 pause,
-F7 one frame, F8/F9 slower/faster, F10 normal speed); the other developer flags are in `shin --help` and
-[`engine-internals.md`](research/docs/engine-internals.md) §21.
+Rebind keys in **Config → PC → Controls**. To confirm with Xbox A / PlayStation ✕, set **Confirm button** to Bottom.
 
 ## 🗝️ Inside the mansion
 
 | Path | Contents |
 |---|---|
-| `shin/` | The game engine (the executable keeps shin's name for now) |
-| `shin-core/` | Reading and writing the game's data formats |
-| `shin-render*`, `shin-audio`, `shin-video`, `shin-tasks`, `shin-window`, `shin-input`, `shin-primitives`, `shin-derive` | Rendering, audio, video, threading, windowing, input and shared building blocks |
-| `sdu/`, `shin-asm/` | Command-line tool to extract and convert game data (`.rom`, `.pic`, `.bup`, `.nxa`, `.snr`, `.fnt`, `.txa`), and an assembler/disassembler for the game's script bytecode |
-| `launcher/` | The Open Catbox launcher: setup from your dump, translations, installing and updating itself |
-| `research/` | Reverse-engineering notes, Ghidra scripts and the symbol map of the original executable; how the port is put together is in [`architecture.md`](research/docs/architecture.md) |
+| `shin/` | The game engine |
+| `shin-core/` | The game's data formats |
+| `shin-render*`, `shin-audio`, `shin-video`, `shin-tasks`, `shin-window`, `shin-input`, `shin-primitives`, `shin-derive` | Rendering, audio, video, threads, window, input |
+| `sdu/`, `shin-asm/` | Data extraction tool and script assembler |
+| `launcher/` | The launcher |
+| `research/` | Engine notes and reverse-engineering tools; start at [`architecture.md`](research/docs/architecture.md) |
 
 ## 🌹 Credits
 
-This project stands on the work of others, all named in [CREDITS.md](CREDITS.md):
+Full list in [CREDITS.md](CREDITS.md).
 
-- **[shin](https://github.com/DCNick3/shin)** by DCNick3 and its contributors: the engine this project grew from.
+- **[shin](https://github.com/DCNick3/shin)** by DCNick3 and contributors: the engine this grew from.
 - **[umineko-catbox-english](https://github.com/andOlga/umineko-catbox-english)** by andOlga and contributors, and
-  **[Catbox X](https://github.com/Foxdear/umineko-catbox-X-english)**, Foxdear's revision of it: the English
-  translations this port is made to play. Neither is part of this project: andOlga's may be mirrored with a link
-  back to its canonical page, as its README allows; Catbox X comes from its author's releases.
-- **07th Expansion** and **Entergram**, for the game itself.
+  **[Catbox X](https://github.com/Foxdear/umineko-catbox-X-english)** by Foxdear: the English translations.
+- **07th Expansion** and **Entergram**, for the game.
 
 ## ⚖️ License
 
-[Mozilla Public License 2.0](LICENSE), the same license as shin.
+[Mozilla Public License 2.0](LICENSE), like shin.
 
 Not affiliated with Entergram, 07th Expansion, the shin project or the translation teams.

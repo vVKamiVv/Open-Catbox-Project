@@ -1,35 +1,24 @@
 # Changelog
 
-What changed in each release of the Open Catbox Project. The launcher shows this list under **Version history**.
+What changed in each release.
 
 ## v0.2.0 — 2026-11-07
 
-- The launcher is now its own installer: one OpenCatbox-Setup.exe installs it for your user (no administrator
-  rights), with Start-menu and desktop shortcuts and an entry in Installed apps, and it uninstalls the same way.
-  Updates swap it in place. Launchers from v0.1.0 update to it on their own.
-- A new **PC** tab in Config: window mode (windowed, borderless, fullscreen), window size, V-Sync, a frame-rate
-  cap, supersampling (1.5x / 2x for smoother edges), button prompts and which controller button confirms.
-- **Controls**: rebind every action for keyboard, mouse and controller (Config > PC > Controls).
-- Button prompts follow what you play with: Xbox, PlayStation and Switch controllers, or the keyboard.
-- **Save from the galleries**: pictures as full-size PNG, music tracks as WAV, movies as MP4 and character sprites
-  as transparent PNG, into your Pictures, Music and Videos folders.
-- The game runs the same at any refresh rate: 120 and 144 Hz screens no longer speed anything up.
-- Accuracy against the original, measured at the Switch's own resolution: 99.7 %.
+- The launcher now installs itself: no administrator rights, with shortcuts and an uninstaller.
+- New **PC** tab in Config: window mode and size, V-Sync, frame-rate cap, supersampling, button prompts and the
+  confirm button.
+- **Controls**: rebind every action for keyboard, mouse and controller.
+- Button prompts match your device: Xbox, PlayStation, Switch or keyboard.
+- **Save from the galleries**: pictures, music, movies and character sprites.
+- Runs at the right speed on 120 and 144 Hz screens.
+- 99.7 % like the original.
 
 ## v0.1.0 — 2026-11-06
 
-- A native PC port of *Umineko no Naku Koro ni Saku*, played from your own Switch dump.
-- Every screen and menu: title, scenario select, saving and loading, settings, backlog, tips, characters and the
-  manual.
-- The galleries: Picture Box, Music Box, Movie Box and the Character Box.
-- Voices panned to the speaking character, music, sound effects, and movies, including the transparent ones.
-- The game's visual effects and screen transitions, each compared with the original.
-- Mouse and touch gestures, with the tap ripple, the star trail and hold-to-skip.
-- Controller support.
-- Movies decoded with Media Foundation on Windows.
-- The launcher: sets the game up from your dump by itself, installs Catbox English, Catbox X or the original
-  Japanese, and keeps itself up to date.
-- Developer tools behind `--dev`.
+- First release: the whole game, played from your own Switch dump.
+- Every menu, the galleries, voices, music, movies and visual effects.
+- Mouse, touch and controller support.
+- The launcher: sets up the game and the translations, and updates itself.
 
 ## Before the fork (upstream shin 0.8.1 and earlier)
 
