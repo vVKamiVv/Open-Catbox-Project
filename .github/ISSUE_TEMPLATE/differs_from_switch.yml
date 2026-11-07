@@ -1,0 +1,46 @@
+name: Differs from the Switch version
+description: Something looks, sounds or behaves differently than on the Switch.
+labels: ["accuracy"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The goal is to match the Switch version exactly, so these reports matter. A picture of each side makes
+        them much easier to fix. Please **never attach game files, keys or saves** you didn't make yourself.
+  - type: textarea
+    id: difference
+    attributes:
+      label: What is different?
+      description: What the Switch version does, and what this port does instead.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where in the game?
+      description: The episode and the line of text on screen, or the menu.
+    validations:
+      required: true
+  - type: textarea
+    id: pictures
+    attributes:
+      label: Screenshots or video of both
+      description: The Switch version (or an emulator) and this port, at the same moment.
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language
+      options:
+        - English (Catbox English)
+        - English (Catbox X)
+        - Japanese
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the launcher under Settings → Launcher.
+      placeholder: v0.2.7
+    validations:
+      required: true

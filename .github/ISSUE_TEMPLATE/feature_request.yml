@@ -1,0 +1,26 @@
+name: Idea
+description: Suggest something new for the port or the launcher.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The game itself stays as on the Switch; ideas for PC comforts (settings, controls, the launcher) are welcome.
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What you would like, and why it would help.
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - The game
+        - The launcher
+        - The website
+        - Other
+    validations:
+      required: true

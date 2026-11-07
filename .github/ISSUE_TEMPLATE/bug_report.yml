@@ -1,0 +1,73 @@
+name: Bug report
+description: Something is broken or crashes.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please **never attach game files, keys or saves** you didn't make yourself.
+        Mistakes in the English text belong to the translation teams (see the links on the "New issue" page).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What went wrong, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where in the game?
+      description: The episode and roughly where, or the line of text on screen. Steps to get there help a lot.
+      placeholder: "Episode 3, right after Beatrice's line \"...\""
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Language
+      options:
+        - English (Catbox English)
+        - English (Catbox X)
+        - Japanese
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the launcher under Settings → Launcher.
+      placeholder: v0.2.7
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options:
+        - Windows 11
+        - Windows 10
+        - Other (say which below)
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Turn on **Settings → Troubleshooting → Debug logging** in the launcher, make the problem happen again, then
+        attach `logs\shin.log` from your game data folder (Settings → Game data shows where it is).
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or video
+      description: Drag images or a short clip here if they help.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before sending
+      options:
+        - label: I play with my own copy of the game.
+          required: true
+        - label: I searched the existing issues and this one is new.
+          required: true
