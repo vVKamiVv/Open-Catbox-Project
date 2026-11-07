@@ -2,6 +2,13 @@
 
 What changed in each release.
 
+## v0.2.2 — 2026-11-07
+
+- **Exit** in the title menu.
+- The PC tab and Controls screen now match the game's lettering.
+- Launcher: import a save file from Settings.
+- Launcher: "The game is starting…" no longer stays on screen.
+
 ## v0.2.1 — 2026-11-07
 
 - The launcher keeps everything in its own folder: settings, game data and saves. Your existing setup moves in
