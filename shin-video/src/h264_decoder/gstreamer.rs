@@ -235,9 +235,13 @@ impl super::H264DecoderTrait for GStreamerH264Decoder {
         let sample = if let Some(sample) = self.saved_frame.take() {
             sample
         } else {
-            self.app_sink
-                .pull_sample()
-                .context("Failed to pull sample")?
+            match self.app_sink.pull_sample() {
+                Ok(sample) => sample,
+                // the end of the stream arrived while waiting for a picture (older GStreamer, e.g. 1.20, gets there
+                // after the check above more often)
+                Err(_) if self.app_sink.is_eos() => return Ok(None),
+                Err(e) => return Err(e).context("Failed to pull sample"),
+            }
         };
 
         let buffer = sample.buffer().unwrap();
