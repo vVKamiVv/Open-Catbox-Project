@@ -477,6 +477,7 @@ impl ShinApp for App {
 
         let mut write = false;
         let mut next = None;
+        let mut quit = false;
         match &mut self.scene {
             Scene::Adv(adv) => {
                 adv.update(&mut update_context, input, pointer);
@@ -505,6 +506,7 @@ impl ShinApp for App {
                     Some(TitleExit::MovieBox) => next = Some(Next::MovieBox),
                     Some(TitleExit::PictureBox) => next = Some(Next::PictureBox),
                     Some(TitleExit::CharacterBox) => next = Some(Next::CharacterBox),
+                    Some(TitleExit::Quit) => quit = true,
                     None => {}
                 }
             }
@@ -571,6 +573,12 @@ impl ShinApp for App {
             self.write_save();
         }
         let frames = update_context.delta_ticks.as_f32();
+        if quit {
+            // as closing the window: the save is written first
+            self.exiting();
+            context.event_loop.exit();
+            return;
+        }
         if let Some(next) = next {
             self.switch_scene(&mut pre_render_context, next);
         }

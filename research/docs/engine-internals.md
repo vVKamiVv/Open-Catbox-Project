@@ -1155,10 +1155,19 @@ below). Missing fields take their defaults. `--fullscreen` forces borderless ful
 writing it; F11 toggles windowed/borderless and is saved. The touch effects stay the save's own setting (v17, the
 Miscellaneous tab). Code: `shin/src/port_settings.rs`, applied by `shin-window` (`DisplaySettings`).
 
+**Exit.** The title menu ends with the port's Exit (`shin/src/title.rs`, item type 11): the menu art has no row for
+it, so "Exit" is drawn in Gelasio bold with the art's drop shadow, right-aligned with the art's labels, over the
+plate's last row; its description panel is Config's with the text left out (its edges and its plain lower half
+stretched) and the heading and text in Gelasio. Choosing it writes the save and closes the game, as closing the window
+does. With every item unlocked the list has 12 rows, which still fit: the original's layout moves the list up and the
+logo left.
+
 **The PC tab.** A fourth Config tab (`shin/src/adv/menu/config_menu.rs`): the tabs are recentred (left edges at
-`960 - 150 * 4 + 300 * page`), the PC tab is the first tab's art with its plain middle stretched and its label in
-the system font, and the items' labels are drawn in the system font (English, or Japanese when the executable's
-texts are Japanese). Window mode and supersampling are rows of the existing buttons with font labels, V-Sync uses the
+`960 - 150 * 4 + 300 * page`), the PC tab is the first tab's ends with mirrored strips of the parchment beside its
+lettering between them, and its label in Cinzel. The labels and option words are in Gelasio, bold and narrowed to the
+art's lettering, with its soft shadow, their capitals centred 46 px down the 88 px row as the art's are
+(`shin/src/ui/serif.rs`: rasterised with ab_glyph at twice the virtual size, fonts in `shin/fonts`, SIL OFL). Japanese,
+which these faces lack, uses the system font. Window mode and supersampling are rows of the existing buttons with text, V-Sync uses the
 art's Off/On, window size, frame cap and button prompts are one wide button stepped by left/right or by tapping its
 halves, and "Controls…" (A or a tap) opens the Controls screen. The PC tab is taller than the 666 px view, so its
 list is clipped and scrolls to the cursor. Sounds, keys, pad and touch behave as on the other tabs; Reset also
@@ -1177,7 +1186,7 @@ another action read in the same place (story or menus), keeps its defaults. Menu
 stick) and the `--dev` keys are fixed. The galleries' Save is the Save action; − still saves there too.
 
 **The Controls screen** (`config_menu/controls.rs`) replaces the Config window's list and tabs: column headers in
-the system font where the tabs are, one 88 px row per remappable action with its keyboard/mouse inputs (short names)
+Gelasio where the tabs are, one 88 px row per remappable action with its keyboard/mouse inputs (short names)
 and its controller buttons (glyphs in the pad style) in two stretched `button_on`/`button_off` cells. Up/down pick
 the row, left/right the cell, A or a tap waits for the new input (the game sees no input meanwhile and until it is
 released): a quick Escape or B binds it, held half a second it gives up, as do a click and 5 s without input. The
@@ -1193,7 +1202,7 @@ family from gilrs: vendor 0x057E Nintendo, 0x054C Sony, 0x045E Microsoft, else t
 Xbox). Switch pads use the game's own glyphs; Xbox and PlayStation glyphs (coloured A/B/X/Y circles; ✕ ○ □ △ on
 grey; LB/RB/LT/RT or L1/R1/L2/R2; menu/view or options/create; d-pads; LS/RS, L3/R3) are painted at startup into a
 96 px-per-cell atlas from distance fields, in the game's grey with a dark outline; the keyboard shows a key cap
-with the key's short name in the system font, or arrow caps for the d-pad glyphs. The buttons keep mapping by
+with the key's short name in Gelasio, or arrow caps for the d-pad glyphs. The buttons keep mapping by
 position, so a pad plays the same whatever the prompts say (Xbox B and PlayStation ○ confirm, as the Switch's A).
 
 **Confirm button.** The PC tab's "Confirm button" row is Right (the default, as on the Switch: the right face button

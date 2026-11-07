@@ -20,7 +20,8 @@ use shin_core::{
 };
 use shin_input::{ActionState, Pointer};
 use shin_render::{
-    ColorBlendType, RenderRequestBuilder, render_pass::RenderPass, render_texture::RenderTexture,
+    ColorBlendType, RenderRequestBuilder, gpu_texture::GpuTexture, render_pass::RenderPass,
+    render_texture::RenderTexture,
 };
 use tracing::{info, warn};
 
@@ -44,7 +45,11 @@ use crate::{
             minigame::{self, Sprite},
         },
     },
-    ui::{self, MenuInput},
+    render::PreRenderContext,
+    ui::{
+        self, MenuInput,
+        serif::{self, SerifText, UiText},
+    },
     update::{AdvUpdatable as _, AdvUpdateContext, UpdateContext},
 };
 
@@ -60,8 +65,10 @@ const MUSIC_BOX: u8 = 7;
 const MOVIE_BOX: u8 = 8;
 const MANUAL: u8 = 9;
 const CHARACTER_BOX: u8 = 10;
+/// The port's Exit, last: it has no row in `menu` nor a description panel, so both are drawn ([`ExitTexts`])
+const EXIT: u8 = 11;
 
-const DESCRIPTIONS: [&str; 11] = [
+const DESCRIPTIONS: [&str; 12] = [
     "text_start",
     "text_continue",
     "text_load",
@@ -73,6 +80,7 @@ const DESCRIPTIONS: [&str; 11] = [
     "text_movie",
     "text_manual",
     "text_bup",
+    "exit",
 ];
 
 /// The background, BGM and its volume by progress (`0x7100187796`): `/title/bg%02d.pic`, the BGM id, volume %
@@ -161,6 +169,8 @@ pub enum TitleExit {
     MovieBox,
     /// Continue or a bookmark from Load
     Load(GameDataEntry),
+    /// The port's Exit: the game closes
+    Quit,
 }
 
 pub struct Title {
@@ -196,6 +206,83 @@ pub struct Title {
     write_requested: bool,
     pointer_held: bool,
     pressed: Option<usize>,
+    /// Exit's label and description, made on the first update (they need the GPU)
+    exit_texts: Option<ExitTexts>,
+}
+
+/// The port's Exit item, in the art's lettering: Gelasio, as near the art's Georgia-like faces
+struct ExitTexts {
+    label: SerifText,
+    heading: UiText,
+    body: UiText,
+}
+
+impl ExitTexts {
+    /// The menu's bold white lettering with its dark drop shadow: capitals 43 tall
+    const LABEL: serif::Style = serif::Style {
+        face: serif::Face::Serif,
+        weight: 700.0,
+        size: 62.0,
+        squeeze: 1.0,
+        shadow: (glam::Vec2::new(3.0, 3.0), 0.7),
+    };
+    /// The description panels' heading (capitals 42 tall) and text (32), regular, without a shadow
+    const HEADING: serif::Style = serif::Style {
+        face: serif::Face::Serif,
+        weight: 400.0,
+        size: 61.0,
+        squeeze: 1.0,
+        shadow: (glam::Vec2::ZERO, 0.0),
+    };
+    const BODY: serif::Style = serif::Style {
+        size: 46.0,
+        ..Self::HEADING
+    };
+
+    fn new(ctx: &PreRenderContext, assets: &MenuAssets) -> Self {
+        let japanese = crate::adv::menu::config_menu::japanese();
+        let font = &assets.system_font;
+        let (heading, body) = if japanese {
+            ("終了", "ゲームを終了します。")
+        } else {
+            ("Exit", "Close the game.")
+        };
+        Self {
+            // the menu art is in English in both languages
+            label: SerifText::new(ctx.device, ctx.queue, "Exit", Self::LABEL),
+            heading: UiText::new(ctx, font, heading, Self::HEADING, 44.0),
+            body: UiText::new(ctx, font, body, Self::BODY, 36.0),
+        }
+    }
+
+    /// Right-aligned where the art's labels end (x 662 of the 704-wide row), capitals 38.5 down the 82-tall row
+    fn draw_label(&self, pass: &mut RenderPass, x: f32, y: f32) {
+        let left = x + 670.0 - self.label.size.x;
+        self.label
+            .draw(pass, ui::projection(), left, y + 38.5, FloatColor4::WHITE);
+    }
+
+    /// A description panel: an empty one built from Config's (its edges, and its plain lower half stretched), with
+    /// the heading and the text where the art has them
+    fn draw_description(&self, pass: &mut RenderPass, panel: &GpuTexture, alpha: f32) {
+        let projection = ui::projection();
+        let builder = ui::builder();
+        let (x, y) = (96.0, 448.0);
+        for (top, bottom, v0, v1) in [
+            (0.0, 20.0, 0.0, 20.0),
+            (20.0, 480.0, 300.0, 310.0),
+            (480.0, 500.0, 480.0, 500.0),
+        ] {
+            Sprite::new(panel, [x, y + top, x + 880.0, y + bottom])
+                .uv([0.0, v0 / 500.0, 1.0, v1 / 500.0])
+                .alpha(alpha)
+                .draw(pass, builder, projection);
+        }
+        let white = FloatColor4::WHITE.with_alpha(alpha);
+        let border = FloatColor4::BLACK.with_alpha(alpha);
+        self.heading.draw(pass, projection, x + 38.0, y + 52.0, white, border);
+        self.body.draw(pass, projection, x + 35.0, y + 139.0, white, border);
+    }
 }
 
 impl Title {
@@ -247,6 +334,7 @@ impl Title {
             }
         }
         types.push(MANUAL);
+        types.push(EXIT);
 
         // the list ends at y 1032 at most; a long list moves the logo to the left
         let end = 450.0 + ITEM_H * types.len() as f32;
@@ -344,6 +432,7 @@ impl Title {
             write_requested: false,
             pointer_held: false,
             pressed: None,
+            exit_texts: None,
         };
         if returning {
             title.show_items_now();
@@ -544,6 +633,10 @@ impl Title {
                 self.exit = Some(TitleExit::MovieBox);
                 self.state = State::Done;
             }
+            EXIT => {
+                self.exit = Some(TitleExit::Quit);
+                self.state = State::Done;
+            }
             _ => warn!("Title item {ty} has no screen in the port yet"),
         }
     }
@@ -620,6 +713,9 @@ impl Title {
         pointer: Pointer,
     ) {
         let frames = context.delta_ticks.as_f32();
+        if self.exit_texts.is_none() {
+            self.exit_texts = Some(ExitTexts::new(context.pre_render, &self.assets));
+        }
         let settings = self.global.settings;
         self.bgm.set_gain(settings.v0_bgmvol, 1.0);
         crate::audio::sys_se::set_setting_volume(settings.v3_sysvol);
@@ -796,16 +892,24 @@ impl Title {
             .draw(pass, builder, projection);
         Sprite::new(t("copyright"), [0.0, 952.0, 672.0, 1080.0]).draw(pass, builder, projection);
         if let Some(description) = self.description {
-            Sprite::new(t(description), [96.0, 448.0, 976.0, 948.0])
-                .alpha(self.description_alpha.value())
-                .draw(pass, builder, projection);
+            let alpha = self.description_alpha.value();
+            if description == DESCRIPTIONS[EXIT as usize] {
+                if let Some(texts) = &self.exit_texts {
+                    texts.draw_description(pass, t("text_config"), alpha);
+                }
+            } else {
+                Sprite::new(t(description), [96.0, 448.0, 976.0, 948.0])
+                    .alpha(alpha)
+                    .draw(pass, builder, projection);
+            }
         }
 
         // `0x710010cf90`
         for (i, item) in self.items.iter().enumerate() {
             let (x, y, a) = (item.x.value(), item.y.value(), item.alpha.value());
             // the plate's rows are read with the menu's height (902), as the original does
-            let v = ((i as u32 * 82) | 1) as f32 / 902.0;
+            // (the port's twelfth row, Exit, reuses the plate's last)
+            let v = ((i.min(10) as u32 * 82) | 1) as f32 / 902.0;
             let mut plate = Sprite::new(t("plate"), [x, y + 1.0, x + 704.0, y + 81.0]).uv([
                 0.0,
                 v,
@@ -814,10 +918,16 @@ impl Title {
             ]);
             plate.color = ui::lerp_color(BROWN, RED, item.highlight.value()).with_alpha(a);
             plate.draw(pass, builder, projection);
-            let v = item.ty as f32 * 82.0 / 902.0;
-            Sprite::new(t("menu"), [x, y, x + 704.0, y + 82.0])
-                .uv([0.0, v, 1.0, v + 82.0 / 902.0])
-                .draw(pass, builder, projection);
+            if item.ty == EXIT {
+                if let Some(texts) = &self.exit_texts {
+                    texts.draw_label(pass, x, y);
+                }
+            } else {
+                let v = item.ty as f32 * 82.0 / 902.0;
+                Sprite::new(t("menu"), [x, y, x + 704.0, y + 82.0])
+                    .uv([0.0, v, 1.0, v + 82.0 / 902.0])
+                    .draw(pass, builder, projection);
+            }
             let flash = item.flash.value();
             if flash > 0.0 {
                 ui::fill(

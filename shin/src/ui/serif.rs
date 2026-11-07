@@ -188,11 +188,6 @@ impl SerifText {
         sprite.color = color;
         sprite.draw(pass, ui::builder(), transform);
     }
-
-    /// Drawn centred on `center` (the capitals' middle)
-    pub fn draw_centered(&self, pass: &mut RenderPass, transform: Mat4, center: Vec2, color: FloatColor4) {
-        self.draw(pass, transform, center.x - self.size.x / 2.0, center.y, color);
-    }
 }
 
 /// A port text: in a serif face when it covers the text, else (Japanese) in the game's own font at `game_size`

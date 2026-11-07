@@ -34,6 +34,11 @@ use crate::{
 use shin_core::primitives::color::FloatColor4;
 
 const RESET_QUESTION: EngineText = EngineText(0x710015f87a, "Reset ALL settings to default?");
+
+/// Whether the game runs in Japanese: the executable's texts tell; the port's own texts follow them
+pub(crate) fn japanese() -> bool {
+    !RESET_QUESTION.get().is_ascii()
+}
 /// The notice of the standby setting
 const STANDBY_NOTICE: EngineText = EngineText(
     0x7100161d8e,
@@ -607,7 +612,7 @@ impl ConfigMenu {
         };
         let settings = cx.global.settings;
         // the executable's texts tell the language; the PC tab's texts follow it
-        let japanese = !RESET_QUESTION.get().is_ascii();
+        let japanese = japanese();
         let text = |t: Text, size: f32| {
             UiText::new(cx.pre_render, &assets.system_font, t.get(japanese), serif::Style::LABEL, size)
         };
