@@ -20,6 +20,7 @@
       <a class="brand" href="./"><svg class="brand-mark" viewBox="180 190 664 620" aria-hidden="true"><path id="w" d="M520 470C560 330 700 200 850 210C930 216 900 330 840 400C790 460 660 500 530 500ZM528 510C640 520 760 570 770 680C778 760 690 790 630 730C580 680 545 600 522 530Z"/><use href="#w" transform="translate(1024 0) scale(-1 1)"/><ellipse cx="512" cy="520" rx="15" ry="118"/></svg>Open Catbox</a>
       <nav class="nav" aria-label="Site">
         <a href="./" aria-current="page">Home</a>
+        <a href="downloads.html">Downloads</a>
         <a href="credits.html">Credits</a>
         <a href="https://github.com/vVKamiVv/Open-Catbox-Project/blob/master/CHANGELOG.md">Changelog</a>
         <a href="https://github.com/vVKamiVv/Open-Catbox-Project">GitHub</a>
@@ -33,11 +34,10 @@
         <p class="tagline">The Symphony of Catbox and Dreams, played natively on PC.</p>
         <div class="actions">
           <a class="btn play" id="download" href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-Setup.exe">Download</a>
-          <a class="btn" href="https://github.com/vVKamiVv/Open-Catbox-Project/releases">All releases</a>
+          <a class="btn" href="downloads.html">Other systems and versions</a>
           <a class="btn" href="https://github.com/vVKamiVv/Open-Catbox-Project">Source code</a>
         </div>
-        <p class="release" id="release">For Windows 10 and 11. Free and open source.</p>
-        <p class="release" id="packages" hidden></p>
+        <p class="release" id="release">For Windows, macOS and Linux. Free and open source.</p>
       </section>
 
       <section class="wrap block">
@@ -89,7 +89,7 @@
         <div class="two">
           <div class="panel">
             <ol class="steps">
-              <li>Download <code>OpenCatbox-Setup.exe</code> and run it.</li>
+              <li><a href="downloads.html">Download</a> the launcher for your system and open it.</li>
               <li>Pick your game dump and your <code>prod.keys</code>.</li>
               <li>Pick a language.</li>
               <li>Press <strong>Play</strong>.</li>
@@ -103,33 +103,6 @@
               <li>Your console's <code>prod.keys</code></li>
               <li>For Japanese, also the 1.0.3 update NSP</li>
             </ul>
-          </div>
-        </div>
-      </section>
-
-      <section class="wrap block">
-        <h2 class="display">Linux and macOS</h2>
-        <div class="two">
-          <div class="panel">
-            <h3>macOS: the first time</h3>
-            <p class="dim">The app is not signed by Apple, so macOS stops it once.</p>
-            <ol class="steps">
-              <li>Drag <strong>Open Catbox</strong> from the .dmg into Applications and open it.</li>
-              <li>When macOS says it cannot check it, click <strong>Done</strong>.</li>
-              <li>In <strong>System Settings → Privacy &amp; Security</strong>, click <strong>Open Anyway</strong>
-                next to Open Catbox, then confirm.</li>
-            </ol>
-            <p class="dim">After that it opens normally.</p>
-          </div>
-          <div class="panel">
-            <h3>Linux</h3>
-            <ul>
-              <li><strong>AppImage:</strong> make it executable, then run it</li>
-              <li><strong>.deb:</strong> <code>sudo apt install ./OpenCatbox-amd64.deb</code></li>
-              <li><strong>.rpm:</strong> <code>sudo dnf install ./OpenCatbox-x86_64.rpm</code></li>
-            </ul>
-            <p class="dim">Movies need GStreamer's H.264 plugin. The .deb and .rpm bring it in; with the AppImage,
-              install <code>gstreamer1.0-libav</code> or <code>gstreamer1-plugin-openh264</code>.</p>
           </div>
         </div>
       </section>
@@ -156,8 +129,8 @@
 
   <script src="sky.js"></script>
   <script>
-    // the newest release from GitHub's API: the download for this visitor's system, if the release has it, and every
-    // package it has (the default Windows link and text stay if it cannot be reached)
+    // the newest release from GitHub's API: the download for this visitor's system, if the release has it (the
+    // default Windows link and text stay if it cannot be reached; every package is on downloads.html)
     const PACKAGES = [
       { file: "OpenCatbox-Setup.exe", label: "Windows", os: "windows" },
       { file: "OpenCatbox-macOS.dmg", label: "macOS", os: "mac" },
@@ -180,18 +153,6 @@
         button.textContent = `Download for ${mine.label.replace(" AppImage", "")}`;
         const size = ` · ${Math.round(asset.size / 1048576)} MB`;
         document.getElementById("release").textContent = `${release.tag_name}${size}. Free and open source.`;
-        if (available.length > 1) {
-          const list = document.getElementById("packages");
-          list.append("Also: ");
-          available.filter((p) => p !== mine).forEach((p, i) => {
-            if (i) list.append(" · ");
-            const link = document.createElement("a");
-            link.href = has(p.file).browser_download_url;
-            link.textContent = p.label;
-            list.append(link);
-          });
-          list.hidden = false;
-        }
       })
       .catch(() => {});
   </script>

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Downloads · Open Catbox Project</title>
+  <meta name="description" content="Open Catbox for Windows, macOS and Linux (AppImage, .deb, .rpm), and every earlier version.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <p class="notice"><strong>Wanted: a designer.</strong> The look of this website and of the launcher was made with AI as
+    a placeholder. Anyone who knows how is free, and encouraged, to replace it
+    (<a href="https://github.com/vVKamiVv/Open-Catbox-Project/tree/master/site">site/</a>,
+    <a href="https://github.com/vVKamiVv/Open-Catbox-Project/tree/master/launcher/ui">launcher/ui/</a>).</p>
+
+  <div class="page">
+    <header class="wrap topbar">
+      <a class="brand" href="./"><svg class="brand-mark" viewBox="180 190 664 620" aria-hidden="true"><path id="w" d="M520 470C560 330 700 200 850 210C930 216 900 330 840 400C790 460 660 500 530 500ZM528 510C640 520 760 570 770 680C778 760 690 790 630 730C580 680 545 600 522 530Z"/><use href="#w" transform="translate(1024 0) scale(-1 1)"/><ellipse cx="512" cy="520" rx="15" ry="118"/></svg>Open Catbox</a>
+      <nav class="nav" aria-label="Site">
+        <a href="./">Home</a>
+        <a href="downloads.html" aria-current="page">Downloads</a>
+        <a href="credits.html">Credits</a>
+        <a href="https://github.com/vVKamiVv/Open-Catbox-Project/blob/master/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/vVKamiVv/Open-Catbox-Project">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="wrap hero short">
+        <p class="kicker">Downloads</p>
+        <h1 class="display" style="font-size: clamp(36px, 7vw, 56px)">Get Open Catbox</h1>
+        <p class="release" id="latest">The latest version. Free and open source.</p>
+        <p class="dim">No game data is included: you need your own Switch copy of the game.</p>
+      </section>
+
+      <!-- Links use the release's stable file names, so they work even when GitHub's API cannot be reached; the
+           script only adds the version, sizes and the earlier versions. -->
+      <section class="wrap block">
+        <div class="systems">
+          <div class="panel system" data-os="windows">
+            <p class="yours" hidden>Your system</p>
+            <h2 class="display">Windows</h2>
+            <p class="dim">Windows 10 or 11, 64-bit.</p>
+            <div class="buttons">
+              <a class="btn play" data-file="OpenCatbox-Setup.exe"
+                 href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-Setup.exe">Setup<span class="size"></span></a>
+            </div>
+            <ol class="steps">
+              <li>Run <code>OpenCatbox-Setup.exe</code>.</li>
+              <li>Pick your game dump, your <code>prod.keys</code> and a language.</li>
+              <li>Press <strong>Play</strong>.</li>
+            </ol>
+          </div>
+
+          <div class="panel system" data-os="mac">
+            <p class="yours" hidden>Your system</p>
+            <h2 class="display">macOS</h2>
+            <p class="dim">macOS 11 or later, Apple Silicon or Intel.</p>
+            <div class="buttons">
+              <a class="btn play" data-file="OpenCatbox-macOS.dmg"
+                 href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-macOS.dmg">.dmg<span class="size"></span></a>
+            </div>
+            <p class="dim">The app is not signed by Apple, so macOS stops it once:</p>
+            <ol class="steps">
+              <li>Drag <strong>Open Catbox</strong> into Applications and open it.</li>
+              <li>When macOS says it cannot check it, click <strong>Done</strong>.</li>
+              <li>In <strong>System Settings → Privacy &amp; Security</strong>, click <strong>Open Anyway</strong>,
+                then confirm.</li>
+            </ol>
+          </div>
+
+          <div class="panel system" data-os="linux">
+            <p class="yours" hidden>Your system</p>
+            <h2 class="display">Linux</h2>
+            <p class="dim">64-bit (x86_64).</p>
+            <div class="buttons">
+              <a class="btn play" data-file="OpenCatbox-x86_64.AppImage"
+                 href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-x86_64.AppImage">AppImage<span class="size"></span></a>
+              <a class="btn" data-file="OpenCatbox-amd64.deb"
+                 href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-amd64.deb">.deb<span class="size"></span></a>
+              <a class="btn" data-file="OpenCatbox-x86_64.rpm"
+                 href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-x86_64.rpm">.rpm<span class="size"></span></a>
+            </div>
+            <ul>
+              <li><strong>AppImage:</strong> make it executable, then run it.</li>
+              <li><strong>.deb</strong> (Debian, Ubuntu): <code>sudo apt install ./OpenCatbox-amd64.deb</code></li>
+              <li><strong>.rpm</strong> (Fedora): <code>sudo dnf install ./OpenCatbox-x86_64.rpm</code></li>
+            </ul>
+            <p class="dim">Movies need GStreamer's H.264 plugin. The .deb and .rpm bring it in; with the AppImage,
+              install <code>gstreamer1.0-libav</code> or <code>gstreamer1-plugin-openh264</code>.</p>
+          </div>
+        </div>
+        <p class="dim caution">Linux and macOS should work, but have not been tested as much as Windows. The macOS version
+          has not been tried on a real Mac yet. Problems are welcome as
+          <a href="https://github.com/vVKamiVv/Open-Catbox-Project/issues/new/choose">issues</a>.</p>
+      </section>
+
+      <section class="wrap block">
+        <h2 class="display">You also need</h2>
+        <div class="panel">
+          <ul class="plain">
+            <li>The base game NSP, dumped from your Switch</li>
+            <li>Your console's <code>prod.keys</code></li>
+            <li>For Japanese, also the 1.0.3 update NSP</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="wrap block">
+        <h2 class="display">Earlier versions</h2>
+        <div class="panel">
+          <p class="dim">The launcher updates itself, so you rarely need these.</p>
+          <ul class="versions" id="versions">
+            <li><a href="https://github.com/vVKamiVv/Open-Catbox-Project/releases">All releases on GitHub</a></li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      <p>Open Catbox Project · <a href="https://github.com/vVKamiVv/Open-Catbox-Project/blob/master/LICENSE">MPL 2.0</a>
+        · <a href="credits.html">Credits</a></p>
+      <p>Umineko no Naku Koro ni is by 07th Expansion; Saku is published by Entergram. Not affiliated with them, the
+        shin project or the translation teams.</p>
+    </footer>
+  </div>
+
+  <script src="sky.js"></script>
+  <script>
+    const ua = navigator.userAgent;
+    const os = /Mac OS X|Macintosh/.test(ua) ? "mac" : /Linux|X11/.test(ua) && !/Android/.test(ua) ? "linux" : "windows";
+    const panel = document.querySelector(`.system[data-os="${os}"]`);
+    panel.classList.add("mine");
+    panel.querySelector(".yours").hidden = false;
+
+    const mb = (bytes) => `${Math.max(1, Math.round(bytes / 1048576))} MB`;
+    const day = (iso) => new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    // the files a player downloads, not the updater's signatures, archives and lists
+    const playable = (name) => /\.(exe|dmg|AppImage|deb|rpm)$/.test(name);
+
+    fetch("https://api.github.com/repos/vVKamiVv/Open-Catbox-Project/releases")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((releases) => {
+        const [latest, ...older] = releases.filter((r) => !r.draft && !r.prerelease);
+        if (!latest) return;
+        document.getElementById("latest").textContent =
+          `${latest.tag_name}, released ${day(latest.published_at)}. Free and open source.`;
+        for (const button of document.querySelectorAll("[data-file]")) {
+          const asset = latest.assets.find((a) => a.name === button.dataset.file);
+          if (asset) button.querySelector(".size").textContent = ` · ${mb(asset.size)}`;
+        }
+
+        const list = document.getElementById("versions");
+        const all = list.lastElementChild;
+        for (const release of older) {
+          const item = document.createElement("li");
+          const notes = document.createElement("a");
+          notes.href = release.html_url;
+          notes.className = "tag";
+          notes.textContent = release.tag_name;
+          const date = document.createElement("span");
+          date.className = "dim";
+          date.textContent = day(release.published_at);
+          item.append(notes, date);
+          for (const asset of release.assets.filter((a) => playable(a.name))) {
+            const link = document.createElement("a");
+            link.href = asset.browser_download_url;
+            link.textContent = `${asset.name} · ${mb(asset.size)}`;
+            item.append(link);
+          }
+          list.insertBefore(item, all);
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
