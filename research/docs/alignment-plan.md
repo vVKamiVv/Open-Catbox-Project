@@ -118,14 +118,19 @@ for comparison i, and N = 6.
 
 | Comparison | Within 32 | Original captured at |
 |---|---|---|
-| Blur (property 66), Ep2 line 7652, the upper half (the blurred background) | 99.90 % | 3x, downscaled |
-| Whirl wipe, Ep2: line 11556 right after it | 99.60 % | 3x, downscaled |
+| Blur (property 66), Ep2 line 7652, the upper half (the blurred background) | 99.91 % | 3x, downscaled |
+| Whirl wipe, Ep2: line 11556 right after it | 99.77 % | 3x, downscaled |
 | Ripple with ghosting on the screen layer, Ep8 line 61681 | 99.30 % | 3x, downscaled |
 | Characters screen, Episode 1 | 100.00 % | 1x |
 | Tips screen, Episode 1 | 99.94 % | 1x |
 | Tips episode list on the title | 99.40 % | 1x; the header band's slowly drifting floral pattern was caught at a different moment |
 
-(99.9 + 99.6 + 99.3 + 100 + 99.94 + 99.4) / 6 = 99.69, shown as 99.7 %.
+(99.91 + 99.77 + 99.33 + 100 + 99.94 + 99.4) / 6 = 99.73, shown as 99.7 %. Last measured on 2026-11-07, with the
+port recaptured from the current build against the same originals (the whirl line rose from 99.60 %; the rest are
+unchanged). The story lines are compared at 960x540 (both sides resized; Eden window grabs cropped to the game
+view first), the menus at 1920x1080. The port's menus are grabbed with **Button prompts set to Switch**, since the
+original shows the Switch's buttons: with the prompts on Auto and the keyboard in use, the key help draws keys and
+Tips and Characters fall to about 99.8 %.
 
 Capture the original with Eden at **1x** (Umineko's per-game graphics setting; Eden numbers it 3), which renders the
 Switch's native 1920x1080, and take Eden's own screenshot (`eden_capture.py --shot` for menus, or the line capture).
