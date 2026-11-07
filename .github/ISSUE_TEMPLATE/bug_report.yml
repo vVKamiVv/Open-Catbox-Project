@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks for reporting! Please **never attach game files, keys or saves** you didn't make yourself.
-        Mistakes in the English text belong to the translation teams (see the links on the "New issue" page).
+        Mistakes in the Catbox X text go to Foxdear (see the link on the "New issue" page).
   - type: textarea
     id: what
     attributes:

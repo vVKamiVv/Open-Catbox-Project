@@ -1,8 +1,5 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Mistake in the Catbox English text
-    url: https://github.com/andOlga/umineko-catbox-english/issues
-    about: Typos and translation errors in Catbox English go to its own team.
   - name: Mistake in the Catbox X text
     url: https://github.com/Foxdear/umineko-catbox-X-english/issues
     about: Typos and translation errors in Catbox X go to Foxdear.
