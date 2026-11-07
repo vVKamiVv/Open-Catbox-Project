@@ -2,7 +2,7 @@
 
 What changed in each release.
 
-## Unreleased
+## v0.2.6 — 2026-11-07
 
 - System menu: long scene titles wrap between words instead of mid-word.
 - Down advances the story, as on the Switch.
