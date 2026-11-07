@@ -2,6 +2,20 @@
 
 What changed in each release of the Open Catbox Project. The launcher shows this list under **Version history**.
 
+## v0.2.0 — 2026-11-07
+
+- The launcher is now its own installer: one OpenCatbox-Setup.exe installs it for your user (no administrator
+  rights), with Start-menu and desktop shortcuts and an entry in Installed apps, and it uninstalls the same way.
+  Updates swap it in place. Launchers from v0.1.0 update to it on their own.
+- A new **PC** tab in Config: window mode (windowed, borderless, fullscreen), window size, V-Sync, a frame-rate
+  cap, supersampling (1.5x / 2x for smoother edges), button prompts and which controller button confirms.
+- **Controls**: rebind every action for keyboard, mouse and controller (Config > PC > Controls).
+- Button prompts follow what you play with: Xbox, PlayStation and Switch controllers, or the keyboard.
+- **Save from the galleries**: pictures as full-size PNG, music tracks as WAV, movies as MP4 and character sprites
+  as transparent PNG, into your Pictures, Music and Videos folders.
+- The game runs the same at any refresh rate: 120 and 144 Hz screens no longer speed anything up.
+- Accuracy against the original, measured at the Switch's own resolution: 99.7 %.
+
 ## v0.1.0 — 2026-11-06
 
 - A native PC port of *Umineko no Naku Koro ni Saku*, played from your own Switch dump.

@@ -431,9 +431,21 @@ fn draw_drawn(
         }
         Drawn::Key(name) => {
             let Some(atlas) = ATLAS.get() else { return };
-            sprite(atlas, cell_uv(KEY_CAP)).draw(pass, builder, transform);
             KEY_TEXTS.with_borrow(|texts| {
-                if let Some(text) = texts.get(&name) {
+                let text = texts.get(&name);
+                // a long name ("Space", "BkSp") widens its cap to the left instead of shrinking out of sight: the
+                // text keeps at least half the cap's height
+                let mut rect = rect;
+                if let Some(text) = text {
+                    let size = text.size();
+                    let height = rect[3] - rect[1];
+                    let needed = size.x * (height * 0.5 / size.y) / 0.84;
+                    rect[0] = rect[0].min(rect[2] - needed);
+                }
+                let mut cap = Sprite::new(atlas, rect).uv(cell_uv(KEY_CAP));
+                cap.color = color;
+                cap.draw(pass, builder, transform);
+                if let Some(text) = text {
                     draw_key_name(pass, builder, transform, text, rect, color);
                 }
             });
@@ -452,7 +464,7 @@ pub fn draw_key_name(
 ) {
     let size = text.size();
     let (w, h) = (x1 - x0, y1 - y0);
-    let scale = (w * 0.84 / size.x).min(h * 0.9 / size.y).min(w / 48.0);
+    let scale = (w * 0.84 / size.x).min(h * 0.9 / size.y).min(h / 48.0);
     let center = vec2((x0 + x1) / 2.0, (y0 + y1) / 2.0);
     let at = center - size * scale / 2.0;
     text.render(
