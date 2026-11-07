@@ -84,6 +84,7 @@ for builds from source) `%APPDATA%\OpenCatbox`.
 <home>/
   Open Catbox.exe, shin.exe
   launcher.json              the launcher's settings
+  music.json                 the music player's settings and playlists
   data/                      the game data (below); data_dir in launcher.json can point elsewhere
   saves/SAVEDATA             the game's saves, and its settings.json
   webview/                   the window's WebView2 data
@@ -159,26 +160,34 @@ page's local storage). It lists the Music Box's tracks in its order, titled by t
 the selected language's script (`/main.snr` in its `patch.rom`, else `data.rom`). Choosing one reads
 `/bgm/<name>.nxa` from the same archives and hands the page its Opus frames repackaged as Ogg Opus (not
 re-encoded; `shin_core::format::audio::to_ogg_opus`, shared with `sdu audio remux`), after 12 bytes with the loop
-start, loop end (samples after the pre-skip, as the game seeks) and sample rate. The page decodes it with Web Audio
-and loops it between those points, as the game does, except for the tracks the Music Box plays once. A looping
-track goes through its loop twice, then fades out over 4 seconds while the next one starts; a track played once
-moves on at its end. Starting the game pauses it. Nothing of the game is in the launcher: it all comes from
-the data set up on this computer.
+start, loop end (samples after the pre-skip, as the game seeks) and sample rate. The page decodes it with Web Audio.
+Nothing of the game is in the launcher: it all comes from the data set up on this computer.
+
+The player is apart from the rest of the launcher: its code is `ui/music.js` (the launcher's `app.js` only tells it
+the language, through `musicPlayer.setLanguage`, and that the game is starting, through `musicPlayer.gameStarted`),
+and its settings are its own file, `music.json` beside `launcher.json` (`music::Settings`, through the
+`music_settings` and `save_music_settings` commands). How a track plays is the player's rule, not the game's: the
+Music Box's play-once flag is not read. Every track has loop points (the play-once songs, and many looping tracks
+too, loop the whole file), so a track goes through its loop as many times as **Settings → Music → Times a track
+loops** says (once by default, then twice or 3 times), fading out over the last seconds (**Fade out at the end**:
+off, 2, 4 by default, or 8), and the next one starts. With **Keep playing when the game starts** off (the default),
+starting the game pauses it. Changing the language only renames the tracks: the files are the same in every
+language, so what is playing goes on. The first time, `music.json` takes the crossfade 0.2.6 kept in `launcher.json`
+(`music_crossfade`).
 
 A search box filters the list by title (each track keeps its number). A seek bar, separate from the volume, shows
 the position and length and jumps on release; Web Audio cannot move a playing source, so a seek restarts the
 decoded track at the new position, with its loop points. Changing tracks crossfades: the playing track fades out
 while the next fades in, each through its own gain, and a track played once starts the next one a crossfade before
-its end. The length is **Settings → Music → Crossfade between tracks** (Off, 1, 2, 3 or 5 seconds; 2 by default),
-stored as `music_crossfade` in `launcher.json`; from silence or a pause a track just starts.
+its end. The length is **Settings → Music → Crossfade between tracks** (Off, 1, 2, 3 or 5 seconds; 2 by default); from
+silence or a pause a track just starts.
 
 Shuffle and repeat sit beside the transport buttons; both are remembered in local storage. Repeat cycles through the
-list (the default; it starts over after the last track, reshuffled if shuffle is on), one track (a looping track
-loops forever, a track played once loops whole) and off (the music stops after the last track). Shuffle plays the
+list (the default; it starts over after the last track, reshuffled if shuffle is on), one track (it loops forever) and off (the music stops after the last track). Shuffle plays the
 list in a random order that starts with the chosen track. Previous starts the track over when it is more than 3
 seconds in. Playing a track queues the list it was chosen from: all tracks or a playlist.
 
-Playlists are stored in `launcher.json` as `music_playlists`, each a name and the `/bgm/` file names of its tracks
+Playlists are stored in `music.json`, each a name and the `/bgm/` file names of its tracks
 (the same in every language). The picker above the search box shows all tracks or one playlist, with New, Rename
 and Delete (Delete asks once more). In all tracks, each row's + adds it to a playlist or to a new one; in a
 playlist, × removes a row and rows can be dragged into a new order. Names must differ, ignoring case.
@@ -244,7 +253,7 @@ example while the game is running), nothing is half replaced: the launcher start
 
 **Uninstall.** From Installed apps, or **Settings → Uninstall…**. The Uninstall screen asks whether to **Also delete the
 game data, languages and saves** (off by default). If ticked, only known files are deleted (`data.rom`, the languages,
-the logs, `SAVEDATA*`, `settings.json`, `launcher.json`) and folders only when left empty, so other files in a data
+the logs, `SAVEDATA*`, `settings.json`, `launcher.json`, `music.json`) and folders only when left empty, so other files in a data
 folder of your own survive. Uninstalling then removes the shortcuts and the Installed apps entry, closes, and a hidden PowerShell then deletes
 `Open Catbox.exe` and `shin.exe` (a running program cannot delete itself), the web view's data
 (`<home>\webview`, and the older `%LOCALAPPDATA%\io.github.vvkamivv.opencatbox`) and the program folder if nothing else

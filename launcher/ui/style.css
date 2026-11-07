@@ -170,6 +170,7 @@ h3 { font-size: 15px; font-weight: 600; color: var(--gold); margin: 0 0 12px; te
 .group { padding: 18px 0; border-top: 1px solid rgba(226, 182, 90, 0.15); }
 .group:first-of-type { border-top: 0; }
 .field { display: flex; gap: 14px; align-items: center; }
+.group > .field + .field, .group > .field + .switch { margin-top: 10px; }
 select {
   font: inherit; font-size: 16px; color: var(--ink); background: var(--field-bg);
   border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 4px 8px;

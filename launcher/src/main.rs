@@ -35,22 +35,9 @@ pub struct Settings {
     pub fullscreen: bool,
     /// Game log at debug level for shin's own crates instead of warnings only.
     pub debug_logging: bool,
-    /// Seconds the music player's tracks fade into each other; `None` for the default (2), 0 for none.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub music_crossfade: Option<f32>,
-    /// The music player's playlists.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub music_playlists: Vec<Playlist>,
     /// The `%APPDATA%\OpenCatbox` this portable home's settings, data and saves were brought in from (once).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub migrated_from: Option<PathBuf>,
-}
-
-/// A named list of tracks, by their `/bgm/` file names (the same in every language).
-#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq)]
-pub struct Playlist {
-    pub name: String,
-    pub files: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -380,6 +367,17 @@ async fn music_track(lang: String, file: String) -> Result<tauri::ipc::Response,
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// The music player's own settings (`music.json`).
+#[tauri::command]
+fn music_settings() -> music::Settings {
+    music::Settings::load(&home::get().settings())
+}
+
+#[tauri::command]
+fn save_music_settings(settings: music::Settings) -> Result<(), String> {
+    settings.store(&home::get().settings())
+}
+
 /// Replaces the game's save with a file the player picked (a Switch SAVEDATA), backing up the current one.
 #[tauri::command]
 fn import_save(file: PathBuf) -> Result<(), String> {
@@ -512,6 +510,8 @@ fn main() {
             import_save,
             music_tracks,
             music_track,
+            music_settings,
+            save_music_settings,
             install_program,
             uninstall_program,
             install_update

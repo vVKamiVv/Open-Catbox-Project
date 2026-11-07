@@ -23,9 +23,11 @@ launcher/
     romfs.rs         IVFC level lookup, RomFS file table
     bktr.rs          update RomFS as a patch over the base: IndirectStorage + per-range CTR (AesCtrEx)
   src/langs.rs     translation downloads from the translators' GitHub releases
-  src/music.rs     the music player: the Music Box's tracks from the game data, as Ogg Opus for the page
+  src/music.rs     the music player: the Music Box's tracks from the game data, as Ogg Opus for the page; its settings
+                   (music.json)
   src/history.rs   the Version history tab: CHANGELOG.md embedded at build time, plus newer GitHub releases
-  ui/              index.html, style.css (design tokens at the top), app.js, sky.js (animated background)
+  ui/              index.html, style.css (design tokens at the top), app.js, music.js (the music player), sky.js
+                   (animated background)
   ui/fonts/        Cinzel and Cormorant Garamond (SIL OFL, licence files next to them)
   icon.svg         source of icons/ (`cargo tauri icon icon.svg`, then delete the mobile/Store sizes)
   capabilities/    what the window may call (dialogs, opening links, updater, exit)

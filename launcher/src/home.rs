@@ -367,7 +367,7 @@ pub fn delete_user_data(home: &Home, data: &Path) -> Result<(), String> {
                 "settings.json",
             ][..],
         ),
-        (&home.dir, &["launcher.json"][..]),
+        (&home.dir, &["launcher.json", "music.json"][..]),
     ] {
         for path in names.iter().map(|n| dir.join(n)).filter(|p| p.exists()) {
             let result = if path.is_dir() {
@@ -587,6 +587,7 @@ mod tests {
         put(&data.join("my notes.txt"), "keep");
         put(&home.savedata(), "save");
         put(&home.settings(), "{}");
+        put(&home.dir.join("music.json"), "{}");
         delete_user_data(&home, &data).unwrap();
         assert_eq!(
             fs::read_dir(&data).unwrap().count(),
@@ -595,6 +596,7 @@ mod tests {
         );
         assert!(!home.dir.join("saves").exists());
         assert!(!home.settings().exists());
+        assert!(!home.dir.join("music.json").exists());
         fs::remove_dir_all(root).unwrap();
     }
 
