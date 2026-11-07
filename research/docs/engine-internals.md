@@ -1135,6 +1135,13 @@ texture for it to sample (`shin/src/ui/touch_effect.rs`).
   (`0x710000f600`), with `decide` when a target is found (silent otherwise); else the overlay's slot 22 if it
   accepted. Over an option it drops the flash to 0 at 0.2 per frame; the option is not picked. No tap follows.
 - **Drag / cancel**: drop an option's flash the same way, or go to the overlay's slots 23 and 25.
+- **Flick** (`0x7100015f40`, not over an option): faster than 20 px a frame, by the angle of its velocity: within 30
+  degrees of rightward it hides the touch buttons with `page` when they are out (`+0x4f8`, the tween `+0x500` to 0
+  at 0.1), else opens the system menu as Y (`0x7100013320`); within 30 degrees of leftward it plays `page` and
+  slides the touch buttons in (`+0x500` to 1 at 0.1: 192 x 120 buttons from x `588 (1 - t)` past their places,
+  hidden again after 60 s); between 60 and 120 degrees (downward) it hides the window as B (`0x7100013720`). Each
+  needs the message window up, no event and nothing else busy. The port does the system menu and the hidden window;
+  the touch buttons are not done.
 
 The choice menu's press moves the cursor without a sound (old bar's highlight to 0 at 0.1 per frame, new to 1 at
 0.25); its tap plays `seldecide` and picks with the flash 0.7 then 0. The quiz overlay's press raises the flash to

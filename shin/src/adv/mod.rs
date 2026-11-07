@@ -780,6 +780,30 @@ impl Adv {
                 }
             }
         }
+        // a flick faster than 20 px a frame outside an event (`0x7100015f40`): within 30 degrees of rightward the system
+        // menu, between 60 and 120 (downward) the hidden window, as Y and B; the original's leftward flick slides in
+        // the touch buttons (`+0x500`), which the port does not have
+        // shortcut: the original's other busy checks (`+0x470`..`+0x478`, `+0x198`, `+0xe8`) are left to the tasks
+        let flick = gestures.iter().find_map(|g| match g {
+            Gesture::Flick(v) if v.length() > 20.0 => Some(*v),
+            _ => None,
+        });
+        let save = &self.vm_state.save;
+        if let Some(v) = flick
+            && save.system_enabled
+            && save.event.is_none()
+            && self.load_request.is_none()
+        {
+            let angle = v.y.atan2(v.x).to_degrees();
+            if angle.abs() < 30.0 {
+                self.open_system_menu(context);
+                return;
+            }
+            if angle > 60.0 && angle < 120.0 {
+                self.open_hidden_window();
+                return;
+            }
+        }
         if state[AppAction::RollBack].is_clicked_or_repeated && self.load_request.is_none() {
             self.roll_back(context);
             return;
