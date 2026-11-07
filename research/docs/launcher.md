@@ -68,7 +68,8 @@ The formats follow switchbrew.org (NCA, PFS0, RomFS, Ticket).
 - Keys are never written to disk, logged or shown: error messages name a missing key, never its value, and any
   run of 32 or more hex digits is replaced with `<redacted>` before an error reaches the window.
 - Nothing is uploaded. The launcher's only network traffic is reading the translations' GitHub releases and
-  downloading them, when you ask.
+  downloading them, when you ask, and checking this project's latest release for a launcher update (on start and
+  from Settings).
 
 ## Data layout
 
@@ -117,7 +118,8 @@ The launcher runs, from `shin.exe`'s own folder:
 shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs
 ```
 
-`shin.exe` is looked for next to the launcher, then in `target\release\` of a source checkout.
+`shin.exe` is looked for next to the launcher (where installing puts it), then, in builds from source, in
+`target\release\` of the checkout.
 
 ## Settings and logs
 
@@ -131,6 +133,50 @@ shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\
 
 The launcher is built for the Windows GUI subsystem, so it opens no console. `shin.exe` stays a console program for
 developers, but the launcher starts it with `CREATE_NO_WINDOW` and sends its output to the log instead.
+
+## Installing, updating, uninstalling
+
+A release is one file, `OpenCatbox-Setup.exe`: the launcher itself, with `shin.exe` inside. It installs for the
+current Windows user only, so it never asks for administrator rights, and it never opens a console window
+(the launcher is a GUI program; every helper it starts runs with `CREATE_NO_WINDOW`).
+
+**Install.** Run the Setup and the Install screen asks for a folder (default
+`%LOCALAPPDATA%\Programs\Open Catbox`; a folder you browse to gets an `Open Catbox` folder of its own inside) and for a
+Start menu and a desktop shortcut. **Install** then:
+
+1. writes `shin.exe` and a copy of the Setup named `Open Catbox.exe` into the folder, each to a `.part` file first,
+   swapped in whole;
+2. creates the chosen shortcuts (`Open Catbox.lnk`, through Windows' own shortcut object, so a desktop in OneDrive
+   works);
+3. adds Open Catbox to Installed apps: `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Open Catbox` with
+   `DisplayName`, `DisplayVersion`, `Publisher` (Open Catbox Project), `DisplayIcon`, `InstallLocation`,
+   `UninstallString` (`"<folder>\Open Catbox.exe" --uninstall`), `EstimatedSize`, `NoModify` and `NoRepair`;
+4. starts the installed copy and closes. The installed copy finds the game data and settings already set up
+   (`%APPDATA%\OpenCatbox`), and never shows the Install screen. Running the Setup again offers the registered folder,
+   which reinstalls over it.
+
+**Update.** On start, and from **Settings → Check for launcher updates**, the launcher reads
+`https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/latest.json`. If it names a newer version, a
+banner offers it. **Update now** downloads that version's `OpenCatbox-Setup.exe` and checks its signature (minisign,
+against the public key built into the launcher; a file that does not match is refused), saves it to a temporary folder,
+starts it as `OpenCatbox-Setup.exe --update <install folder>` and closes. The new Setup opens no window: it waits for the
+old launcher to exit (up to a minute), replaces `shin.exe` and `Open Catbox.exe`, points the shortcuts that exist at it,
+updates the version in Installed apps, starts the new launcher and has its temporary copy deleted. If it cannot (for
+example while the game is running), nothing is half replaced: the launcher starts again and says why in the banner.
+
+**From v0.1.0.** v0.1.0 was installed by an NSIS installer into `%LOCALAPPDATA%\Open Catbox`, and its updater starts
+whatever it downloads as an NSIS installer with `/P /UPDATE /R /ARGS`. The new Setup treats any such `/` argument as an
+update of the installation registered in Installed apps: it puts `Open Catbox.exe` and `shin.exe` into that folder,
+removes v0.1.0's `open-catbox-launcher.exe` and NSIS `uninstall.exe`, re-points the Start menu and desktop shortcuts,
+rewrites the Installed apps entry (uninstalling now goes through the launcher) and starts the new launcher. Nothing
+needs to be done by hand.
+
+**Uninstall.** From Installed apps, or **Settings → Uninstall…**. The Uninstall screen asks whether to also delete the
+game data and settings (off by default: they are kept for a new install unless you tick it). Uninstalling deletes those
+if asked, removes the shortcuts and the Installed apps entry, closes, and a hidden PowerShell then deletes
+`Open Catbox.exe` and `shin.exe` (a running program cannot delete itself), the web view's cache
+(`%LOCALAPPDATA%\io.github.vvkamivv.opencatbox`) and the program folder if nothing else is in it. Only files the
+launcher put there are deleted. Your saves (`%APPDATA%\shin\SAVEDATA`) are never touched.
 
 ## Design
 

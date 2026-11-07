@@ -9,6 +9,72 @@
 <body>
   <canvas id="sky" aria-hidden="true"></canvas>
 
+  <!-- Setup.exe, not installed yet: install the launcher itself -->
+  <section id="install" class="screen" hidden>
+    <div class="panel setup-panel narrow">
+      <p class="kicker">Open Catbox <span class="app-version"></span></p>
+      <h1 class="display">Install Open Catbox</h1>
+      <p class="lead">The launcher and the game engine go into a folder of yours, for this Windows user only.
+        No administrator rights are needed, and game data you already set up stays where it is.</p>
+
+      <div class="file-row">
+        <div class="file-label">Install folder <small>about 50 MB</small></div>
+        <output class="path set" id="install-dir"></output>
+        <button class="btn ghost" id="install-browse">Browse…</button>
+      </div>
+      <div class="checks">
+        <label class="switch">
+          <input type="checkbox" id="install-menu" checked>
+          <span class="switch-track" aria-hidden="true"></span>
+          Start menu shortcut
+        </label>
+        <label class="switch">
+          <input type="checkbox" id="install-desktop">
+          <span class="switch-track" aria-hidden="true"></span>
+          Desktop shortcut
+        </label>
+      </div>
+      <p class="note">Open Catbox is also added to Installed apps, where it can be uninstalled, and it keeps itself
+        up to date.</p>
+
+      <div id="install-progress" class="progress" hidden>
+        <div class="progress-label"></div>
+        <div class="bar"><span></span></div>
+      </div>
+      <div id="install-msg" class="message" role="status"></div>
+
+      <div class="actions">
+        <button id="install-start" class="btn primary">Install</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- --uninstall (Installed apps) or Settings → Uninstall -->
+  <section id="uninstall" class="screen" hidden>
+    <div class="panel setup-panel narrow">
+      <p class="kicker">Uninstall</p>
+      <h1 class="display">Leave the island?</h1>
+      <p class="lead">This removes Open Catbox from <span id="uninstall-dir" class="mono"></span>,
+        with its shortcuts and its entry in Installed apps.</p>
+
+      <div class="checks">
+        <label class="switch">
+          <input type="checkbox" id="uninstall-data">
+          <span class="switch-track" aria-hidden="true"></span>
+          Also delete the game data and settings
+        </label>
+      </div>
+      <p class="note">The game data is <span id="uninstall-data-dir" class="mono"></span>: data.rom and the installed
+        languages. Kept, it is ready for a new install. Your saves (%APPDATA%\shin) are always kept.</p>
+
+      <div id="uninstall-msg" class="message" role="status"></div>
+      <div class="actions">
+        <button id="uninstall-cancel" class="btn ghost">Cancel</button>
+        <button id="uninstall-start" class="btn primary">Uninstall</button>
+      </div>
+    </div>
+  </section>
+
   <!-- First run: extract the game data from the player's own dump -->
   <section id="setup" class="screen" hidden>
     <div class="panel setup-panel">
@@ -128,6 +194,7 @@
           <div class="field">
             <span>Open Catbox <span class="app-version"></span></span>
             <button class="btn ghost small" id="check-app-update">Check for launcher updates</button>
+            <button class="btn ghost small" id="open-uninstall" hidden>Uninstall…</button>
           </div>
           <div id="app-update-msg" class="message" role="status"></div>
         </section>

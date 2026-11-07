@@ -26,3 +26,9 @@ fs4 = "0.13"
 aes = "0.8"
 ctr = "0.9"
 xts-mode = "0.5"
+windows-registry = "0.6"
+
+[features]
+# Release builds (scripts/release.ps1): shin.exe built in, read at compile time from the path in the
+# OPEN_CATBOX_SHIN environment variable, and the front end served from the embedded files as `cargo tauri build` does.
+installer = ["tauri/custom-protocol"]

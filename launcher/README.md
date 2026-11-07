@@ -1,7 +1,7 @@
 # Open Catbox launcher
 
 A small Windows app that sets the game up from the player's own Switch dump, downloads the translations,
-and starts `shin.exe`. Built with [Tauri 2](https://tauri.app); the front end is plain HTML/CSS/JS in `ui/`
+and starts `shin.exe`. It installs, updates and uninstalls itself: a release is one `OpenCatbox-Setup.exe`. Built with [Tauri 2](https://tauri.app); the front end is plain HTML/CSS/JS in `ui/`
 (no npm, no bundler). Setup is fully native Rust: no external tools are needed or started.
 
 How it works, step by step (for players and contributors): [`research/docs/launcher.md`](../research/docs/launcher.md).
@@ -11,6 +11,7 @@ How it works, step by step (for players and contributors): [`research/docs/launc
 ```
 launcher/
   src/main.rs      Tauri commands: state, settings, setup, downloads, launching the game, moving the data folder
+  src/install.rs   installing the launcher itself: copy, shortcuts, Installed apps entry, update, uninstall
   src/setup.rs     first-run setup: finds the program NCAs, extracts and hash-checks data.rom, main, patch.rom
   src/nx/          Switch dump reader
     mod.rs           Storage trait, file regions, PFS0 (NSP / ExeFS) listing, streaming copy + SHA-256
@@ -22,7 +23,8 @@ launcher/
   ui/              index.html, style.css (design tokens at the top), app.js, sky.js (animated background)
   ui/fonts/        Cinzel and Cormorant Garamond (SIL OFL, licence files next to them)
   icon.svg         source of icons/ (`cargo tauri icon icon.svg`, then delete the mobile/Store sizes)
-  capabilities/    what the window may call (dialogs, opening links)
+  capabilities/    what the window may call (dialogs, opening links, updater, exit)
+  scripts/         release.ps1 (builds and signs a release), make-latest-json.ps1 (the updater's latest.json)
 ```
 
 ## Running from source
@@ -39,8 +41,10 @@ With the Tauri CLI (`cargo install tauri-cli --version "^2" --locked`), from thi
 
 ```
 cargo tauri dev      # build and run with the CLI's file watching
-cargo tauri build    # release build plus an NSIS installer in target/release/bundle/nsis/
 ```
+
+Builds from source never show the install screen: only a launcher built with the `installer` feature (by
+`scripts/release.ps1`, below) has `shin.exe` inside and can install itself.
 
 Debug the web view with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333`, then open
 `http://127.0.0.1:9333` in Chrome/Edge.
@@ -55,30 +59,39 @@ Unit tests cover the formats with synthetic data. The `real_dump` test in `setup
 dump (never committed): set `NX_BASE`, `NX_UPDATE`, `NX_KEYS`, `NX_TITLEKEYS` and `NX_OUT`, then
 `cargo test --release -p open-catbox-launcher -- --ignored --nocapture`.
 
-## Releases and updates
+## Installing, updating, uninstalling
 
-The launcher updates itself (`tauri-plugin-updater`): on start, and from **Settings → Check for launcher updates**,
-it reads `https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/latest.json`, and if that
-version is newer it offers to download the installer, check its signature against the public key in
-`tauri.conf.json`, install it (NSIS, passive) and restart. **Version history** shows `CHANGELOG.md` (embedded at
-build time) plus newer GitHub releases.
+How it works for players: [`research/docs/launcher.md`](../research/docs/launcher.md#installing-updating-uninstalling).
+In short, `OpenCatbox-Setup.exe` is the launcher itself with `shin.exe` embedded (`include_bytes!` of the file named by
+`OPEN_CATBOX_SHIN`, behind the `installer` feature). Not installed, it shows the Install screen and copies itself to
+`%LOCALAPPDATA%\Programs\Open Catbox\Open Catbox.exe` (folder of the player's choice) with `shin.exe` beside it,
+shortcuts and an HKCU Installed apps entry; no administrator rights. `--uninstall` shows the Uninstall screen,
+`--update <folder>` replaces an installation without a window and starts it.
+
+Updates use `tauri-plugin-updater` only to check `latest.json` and download the new Setup, whose minisign signature is
+checked against the public key in `tauri.conf.json`. The launcher then starts that Setup with `--update <its folder>`
+and exits. v0.1.0 (an NSIS install) runs whatever it downloads as an NSIS installer (`/P /UPDATE /R /ARGS`): the Setup
+treats any argument starting with `/` as an update of the registered installation, takes over v0.1.0's folder and
+entry, re-points its shortcuts and removes its NSIS uninstaller.
+
+## Releases
 
 To make a release `X.Y.Z`:
 
-1. Set the version in `Cargo.toml` and `tauri.conf.json`, and add a `## vX.Y.Z — <date>` section to the root
-   `CHANGELOG.md`.
-2. Build `shin.exe` (`cargo build --release -p shin`), then build the installer signed with the updater key, from
-   this folder:
+1. Set the version in `Cargo.toml` (the only place: `tauri.conf.json` has none, so Tauri uses Cargo's) and add a
+   `## vX.Y.Z — <date>` section to the root `CHANGELOG.md`.
+2. From the repository root:
 
    ```powershell
-   $env:TAURI_SIGNING_PRIVATE_KEY = Get-Content -Raw "$env:USERPROFILE\.open-catbox\updater.key"
-   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = Get-Content -Raw "$env:USERPROFILE\.open-catbox\updater.key.password"
-   cargo tauri build
+   .\launcher\scripts\release.ps1 -OutDir release
    ```
 
-3. `.\scripts\make-latest-json.ps1 -Version X.Y.Z -NotesFile ..\CHANGELOG.md -OutDir <folder>` copies the
-   installer and its `.sig` as `OpenCatbox_X.Y.Z_x64-setup.exe(.sig)` and writes `latest.json`.
-4. Create the GitHub release `vX.Y.Z` and upload those three files.
+   It builds `shin.exe`, then the launcher with it inside (dist profile, static C runtime, build paths remapped, into
+   `target\installer`), stops if either binary holds this PC's user name or checkout path, signs the Setup with
+   `cargo tauri signer sign` and the key in `%USERPROFILE%\.open-catbox\updater.key` (+ `.password`), and writes
+   `OpenCatbox-Setup.exe`, `OpenCatbox-Setup.exe.sig`, `latest.json` and `SHA256SUMS.txt`. Needs the Tauri CLI
+   (`cargo install tauri-cli --version "^2" --locked`).
+3. Create the GitHub release `vX.Y.Z` and upload those four files.
 
 The private key never goes into the repository; without it (and its password) no update can be published.
 
@@ -86,7 +99,9 @@ The private key never goes into the repository; without it (and its password) no
 
 | What | Where |
 | --- | --- |
-| `shin.exe` | next to the launcher (release builds), then `target\release\shin.exe` of the source checkout |
+| launcher | `%LOCALAPPDATA%\Programs\Open Catbox\Open Catbox.exe` (or the folder chosen at install; v0.1.0: `%LOCALAPPDATA%\Open Catbox`) |
+| `shin.exe` | next to the launcher (release builds), then `target\release\shin.exe` of the source checkout (other builds) |
+| Installed apps entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Open Catbox` |
 | settings | `%APPDATA%\OpenCatbox\launcher.json` |
 | game data | `%APPDATA%\OpenCatbox\data` (can be moved in Settings) |
 | game log | `<data>\logs\shin.log` |
@@ -95,5 +110,5 @@ The private key never goes into the repository; without it (and its password) no
 
 - Linux and macOS: the Rust side is portable, but the `shin.exe` path, the no-console flag and packaging are
   Windows-only so far.
-- Code signing of the launcher and installer.
+- Code signing (Authenticode) of the Setup, so SmartScreen stops warning about it.
 - The fullscreen setting is saved but not passed to the game yet (it has no flag; F11 toggles in game).

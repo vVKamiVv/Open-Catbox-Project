@@ -4,10 +4,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod history;
+mod install;
 mod langs;
 mod nx;
 mod setup;
 
+use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -15,7 +17,9 @@ use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-/// The workspace root, for finding shin.exe when running from a source checkout.
+/// The workspace root, for finding shin.exe when running from a source checkout. Not in release builds, which
+/// must not carry this PC's paths.
+#[cfg(not(feature = "installer"))]
 fn repo_root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap()
 }
@@ -37,6 +41,22 @@ struct State {
     data_ready: bool,
     languages: std::collections::HashMap<String, Option<String>>,
     shin: Option<PathBuf>,
+    program: Program,
+}
+
+/// The launcher's own installation (see `install.rs`).
+#[derive(Serialize)]
+struct Program {
+    /// This is the installed copy, `Open Catbox.exe`.
+    installed: bool,
+    /// Not installed, but able to install itself (a release build with shin.exe inside).
+    can_install: bool,
+    /// Where it is installed, or would be.
+    folder: PathBuf,
+    /// Started with `--uninstall` (from Installed apps).
+    uninstall: bool,
+    /// Started by an update that could not finish, with the reason.
+    update_error: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -87,10 +107,15 @@ fn exe_dir() -> PathBuf {
 fn find_shin() -> Option<PathBuf> {
     // a debug launcher sits in target/debug next to a debug shin.exe, which overflows its stack at startup
     let beside = (!cfg!(debug_assertions)).then(|| exe_dir().join("shin.exe"));
-    beside
+    #[cfg(not(feature = "installer"))]
+    let beside = beside
         .into_iter()
-        .chain([repo_root().join("target").join("release").join("shin.exe")])
-        .find(|p| p.is_file())
+        .chain([repo_root().join("target").join("release").join("shin.exe")]);
+    beside.into_iter().find(|p| p.is_file())
+}
+
+fn start_mode() -> install::Mode {
+    install::mode(&std::env::args_os().skip(1).collect::<Vec<OsString>>())
 }
 
 fn emit(app: &AppHandle, task: &str, label: &str, fraction: f64) {
@@ -112,7 +137,24 @@ fn get_state(app: AppHandle) -> State {
         .iter()
         .map(|id| (id.to_string(), langs::installed(&data, id)))
         .collect();
+    let installed = install::is_installed();
+    let mode = start_mode();
+    let program = Program {
+        installed,
+        can_install: install::SHIN.is_some(),
+        folder: if installed {
+            exe_dir()
+        } else {
+            install::default_folder()
+        },
+        uninstall: mode == install::Mode::Uninstall,
+        update_error: match mode {
+            install::Mode::UpdateFailed(e) => Some(e),
+            _ => None,
+        },
+    };
     State {
+        program,
         data_ready: data.join("data.rom").is_file(),
         shin: find_shin(),
         languages,
@@ -271,7 +313,98 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Installs the launcher (this program) and starts the installed copy, which takes over from here.
+#[tauri::command]
+async fn install_program(
+    app: AppHandle,
+    folder: PathBuf,
+    menu: bool,
+    desktop: bool,
+) -> Result<(), String> {
+    let choices = install::Choices {
+        folder,
+        menu,
+        desktop,
+    };
+    let handle = app.clone();
+    let exe = tauri::async_runtime::spawn_blocking(move || {
+        install::install(&choices, &|label, f| emit(&handle, "install", label, f))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    install::start(&exe, &[])?;
+    app.exit(0);
+    Ok(())
+}
+
+/// Removes the installed launcher (once it has exited) and, if asked, the game data and settings.
+#[tauri::command]
+async fn uninstall_program(app: AppHandle, delete_data: bool) -> Result<(), String> {
+    if !install::is_installed() {
+        return Err("Only the installed Open Catbox can uninstall itself.".into());
+    }
+    let data = if delete_data {
+        vec![data_dir(&app, &load_settings(&app)), base_dir(&app)]
+    } else {
+        vec![]
+    };
+    // the web view's cache, %LOCALAPPDATA%\<identifier>
+    let webview = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || install::uninstall(&exe_dir(), &data, &webview))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Downloads the new version through the updater, which checks its signature, and starts it to replace this one:
+/// the download is the new Setup, run with `--update <folder>`. It waits for this launcher to exit.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("You have the latest version.")?;
+    let mut done = 0;
+    let bytes = update
+        .download(
+            |chunk, total| {
+                done += chunk;
+                if let Some(total) = total {
+                    emit(
+                        &app,
+                        "app-update",
+                        "Downloading",
+                        done as f64 / total.max(1) as f64,
+                    );
+                }
+            },
+            || {},
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let dir = std::env::temp_dir().join(format!("OpenCatbox-update-{}", update.version));
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let setup = dir.join("OpenCatbox-Setup.exe");
+    fs::write(&setup, bytes).map_err(|e| format!("Cannot save the update: {e}"))?;
+    // not installed (e.g. Setup run directly): the new Setup shows its install screen instead
+    let args: Vec<OsString> = if install::is_installed() {
+        vec!["--update".into(), exe_dir().into()]
+    } else {
+        vec![]
+    };
+    install::start(&setup, &args)?;
+    app.exit(0);
+    Ok(())
+}
+
 fn main() {
+    if let install::Mode::Update(folder) = start_mode() {
+        install::run_update(folder);
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -285,7 +418,10 @@ fn main() {
             check_updates,
             version_history,
             launch,
-            move_data_dir
+            move_data_dir,
+            install_program,
+            uninstall_program,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running the launcher");

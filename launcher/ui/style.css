@@ -64,7 +64,7 @@ small { font-size: 0.8em; color: var(--ink-dim); font-weight: 500; }
 
 /* 4. Layout */
 .screen { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
-#setup { align-items: center; justify-content: safe center; padding: 20px var(--pad); overflow-y: auto; }
+#setup, #install, #uninstall { align-items: center; justify-content: safe center; padding: 20px var(--pad); overflow-y: auto; }
 .topbar {
   height: var(--topbar-h); flex: none;
   display: flex; align-items: center; justify-content: space-between;
@@ -207,6 +207,8 @@ select {
 .setup-panel { width: 940px; max-width: 100%; padding: 24px var(--pad); }
 .setup-panel .actions { margin-top: 8px; }
 .setup-panel .display { font-size: 32px; }
+.setup-panel.narrow { width: 760px; }
+.checks { display: grid; gap: 12px; margin: 8px 0 4px; }
 
 #view-play { align-items: center; }
 .hero { max-width: 560px; margin-left: 24px; }

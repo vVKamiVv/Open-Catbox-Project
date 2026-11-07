@@ -41,9 +41,9 @@ permissions:
 #
 # Open Catbox: disabled for releases. Pushing a version tag no longer starts it (nor do pull
 # requests); it only runs when started by hand (workflow_dispatch). Releases are the launcher's
-# NSIS installer, built and signed locally with `cargo tauri build` and published with the
-# latest.json from launcher/scripts/make-latest-json.ps1, so this cargo-dist release must not
-# create a competing GitHub release for the same tag.
+# self-installing OpenCatbox-Setup.exe (shin.exe inside), built and signed locally with
+# launcher/scripts/release.ps1 together with the updater's latest.json, so this cargo-dist
+# release must not create a competing GitHub release for the same tag.
 on:
   workflow_dispatch:
 

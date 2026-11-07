@@ -33,6 +33,8 @@ const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 let state = null;
 let showSetup = false;
+let showUninstall = false;
+let installDir = null; // chosen on the install screen
 const picks = { base: null, update: null, prodKeys: null, titleKeys: null };
 const downloads = {}; // id -> fraction while downloading
 const latest = {}; // id -> latest release tag, after "check for updates"
@@ -55,9 +57,17 @@ function selectedLanguage() {
 }
 
 function render() {
-  const setupVisible = showSetup || !state.data_ready;
-  $("#setup").hidden = !setupVisible;
-  $("#main").hidden = setupVisible;
+  const program = state.program;
+  const screen = program.uninstall || showUninstall ? "uninstall"
+    : program.can_install && !program.installed ? "install"
+    : showSetup || !state.data_ready ? "setup" : "main";
+  $$(".screen").forEach((s) => (s.hidden = s.id !== screen));
+  installDir ??= program.folder;
+  $("#install-dir").textContent = installDir;
+  $("#install-dir").title = installDir;
+  $("#uninstall-dir").textContent = program.folder;
+  $("#uninstall-data-dir").textContent = state.data_dir;
+  $("#open-uninstall").hidden = !program.installed;
   $("#setup-data").textContent = state.data_dir;
   $("#setup-cancel").hidden = !state.data_ready;
   renderPicker();
@@ -244,6 +254,7 @@ async function checkAppUpdate(manual) {
     $("#update-title").textContent = `Open Catbox ${update.version}`;
     $("#update-notes").textContent = update.body ?? "";
     $("#update-banner").hidden = false;
+    $("#update-now").hidden = false;
     if (manual) say(msg, `Version ${update.version} is available.`, "ok");
   } catch (e) {
     if (manual) say(msg, `Could not check for updates (offline, or no release published yet).\n${e}`, "error");
@@ -261,25 +272,63 @@ $("#update-later").addEventListener("click", () => { $("#update-banner").hidden 
 $("#update-now").addEventListener("click", async () => {
   const buttons = $$("#update-banner button");
   buttons.forEach((b) => (b.disabled = true));
-  const bar = $("#update-progress");
   const msg = $("#update-msg");
-  bar.hidden = false;
-  let total = 0, done = 0;
+  $("#update-progress").hidden = false;
   say(msg, "Downloading…");
   try {
-    await pendingUpdate.downloadAndInstall((ev) => {
-      if (ev.event === "Started") total = ev.data.contentLength ?? 0;
-      if (ev.event === "Progress") {
-        done += ev.data.chunkLength;
-        if (total) $("span", bar).style.width = `${Math.min(100, (done / total) * 100)}%`;
-      }
-      if (ev.event === "Finished") say(msg, "Installing…");
-    });
-    // on Windows the installer closes the launcher and starts it again; elsewhere relaunch here
-    await processApi.relaunch();
+    // downloads and checks the new version, starts it and closes this launcher; the new one opens by itself
+    await invoke("install_update");
   } catch (e) {
     say(msg, `The update failed: ${e}`, "error");
     buttons.forEach((b) => (b.disabled = false));
+  }
+});
+
+// --- Installing and uninstalling the launcher ---
+
+$("#install-browse").addEventListener("click", async () => {
+  const picked = await dialog.open({ directory: true, title: "Choose where to install Open Catbox" });
+  if (!picked) return;
+  // always a folder of its own, so uninstalling never has to touch anything else
+  installDir = /[\\/]Open Catbox$/i.test(picked) ? picked : `${picked.replace(/[\\/]+$/, "")}\\Open Catbox`;
+  render();
+});
+
+$("#install-start").addEventListener("click", async () => {
+  const controls = $$("#install button, #install input");
+  controls.forEach((c) => (c.disabled = true));
+  $("#install-progress").hidden = false;
+  say($("#install-msg"), "");
+  try {
+    // on success the installed copy starts and this window closes
+    await invoke("install_program", { folder: installDir, menu: $("#install-menu").checked, desktop: $("#install-desktop").checked });
+  } catch (e) {
+    $("#install-progress").hidden = true;
+    say($("#install-msg"), String(e), "error");
+    controls.forEach((c) => (c.disabled = false));
+  }
+});
+
+$("#open-uninstall").addEventListener("click", () => { showUninstall = true; render(); });
+
+$("#uninstall-cancel").addEventListener("click", () => {
+  if (state.program.uninstall) processApi.exit(0); // opened from Installed apps just for this
+  showUninstall = false;
+  render();
+});
+
+$("#uninstall-start").addEventListener("click", async () => {
+  const controls = $$("#uninstall button, #uninstall input");
+  controls.forEach((c) => (c.disabled = true));
+  const msg = $("#uninstall-msg");
+  say(msg, "Uninstalling…");
+  try {
+    await invoke("uninstall_program", { deleteData: $("#uninstall-data").checked });
+    say(msg, "Open Catbox has been removed. Farewell.", "ok");
+    setTimeout(() => processApi.exit(0), 2000);
+  } catch (e) {
+    say(msg, String(e), "error");
+    controls.forEach((c) => (c.disabled = false));
   }
 });
 
@@ -375,6 +424,16 @@ $("#setup-start").addEventListener("click", async () => {
 
 listen("progress", ({ payload }) => {
   const percent = `${Math.round(payload.fraction * 100)}%`;
+  if (payload.task === "install") {
+    $("#install-progress .progress-label").textContent = `${payload.label}…`;
+    $("#install-progress .bar span").style.width = percent;
+    return;
+  }
+  if (payload.task === "app-update") {
+    $("#update-progress span").style.width = percent;
+    say($("#update-msg"), payload.fraction >= 1 ? "Installing… the launcher restarts by itself." : `Downloading… ${percent}`);
+    return;
+  }
   if (payload.task === "setup") {
     $("#setup-progress .progress-label").textContent = `${payload.label}… ${percent}`;
     $("#setup-progress .bar span").style.width = percent;
@@ -397,6 +456,13 @@ document.addEventListener("click", (e) => {
   if (a) { e.preventDefault(); opener.openUrl(a.href); }
 });
 
-refresh();
 window.__TAURI__.app.getVersion().then((v) => $$(".app-version").forEach((n) => (n.textContent = `v${v}`)));
-checkAppUpdate(false);
+refresh().then(() => {
+  if (state.program.update_error) {
+    $("#update-title").textContent = "The update did not finish";
+    say($("#update-msg"), state.program.update_error, "error");
+    $("#update-now").hidden = true;
+    $("#update-banner").hidden = false;
+  }
+  if (!state.program.uninstall) checkAppUpdate(false);
+});
