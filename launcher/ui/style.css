@@ -161,6 +161,8 @@ h3 { font-size: 15px; font-weight: 600; color: var(--gold); margin: 0 0 12px; te
 .message.error { color: var(--error); }
 .message.ok { color: var(--ok); }
 .message.warn { color: var(--gold-light); }
+/* Version history's two message lines take no room while empty */
+#history-update-msg:empty, #history-msg:empty { display: none; }
 
 .actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 18px; }
 .actions.start { justify-content: flex-start; margin-top: 4px; }
@@ -217,8 +219,17 @@ select {
 .playlist .display { font-size: 22px; margin: 0; }
 .playlist-show { align-self: flex-start; margin-left: auto; }
 .now-title { margin: 10px 0 8px; color: var(--gold-light); min-height: 1.3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seek { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.seek input[type="range"] { flex: 1; accent-color: var(--gold); }
+.seek .time { font-size: 15px; color: var(--ink-dim); min-width: 2.6em; font-variant-numeric: tabular-nums; }
+.seek .time:last-child { text-align: right; }
 .transport { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
-.transport input[type="range"] { flex: 1; accent-color: var(--crimson-bright); }
+.transport .volume-icon { margin-left: 8px; color: var(--ink-dim); font-size: 14px; }
+.transport input[type="range"] { flex: 1; min-width: 0; accent-color: var(--crimson-bright); }
+.music-search {
+  font: inherit; font-size: 15px; color: var(--ink); background: var(--field-bg); margin-bottom: 10px;
+  border: 1px solid var(--panel-border); border-radius: var(--radius); padding: 5px 8px;
+}
 .tracks { flex: 1; min-height: 0; overflow-y: auto; margin: 0; padding: 0 0 0 2.4em; color: var(--ink-faint); }
 .tracks button {
   width: 100%; text-align: left; padding: 3px 6px; border: 0; background: none; color: var(--ink-dim);

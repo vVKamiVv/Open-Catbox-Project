@@ -110,11 +110,20 @@ function renderPicker() {
 
 // --- Music: the Music Box's tracks from the game data, looping where the game loops them ---
 
-const music = { lang: null, tracks: [], index: -1, ctx: null, gain: null, source: null, paused: false, token: 0 };
+// source: the playing track; fade: its own gain, for crossfades; buffer and loop: the decoded track, to seek in it;
+// startedAt and offset: the audio clock when the source started and the position it started from (the clock stands
+// still while paused); ends: when a once-only track ends, on the same clock
+const music = {
+  lang: null, tracks: [], index: -1, ctx: null, gain: null, source: null, fade: null, buffer: null, loop: null,
+  startedAt: 0, offset: 0, ends: null, timer: null, paused: false, token: 0, seeking: false,
+};
 const remembered = {
   get(key, fallback) { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } },
   set(key, value) { try { localStorage.setItem(key, value); } catch { /* private storage: not remembered */ } },
 };
+
+// seconds over which one track fades into the next (Settings > Music)
+const crossfadeSeconds = () => state?.settings?.music_crossfade ?? 2;
 
 function showPlaylist(open) {
   $("#playlist").hidden = !open;
@@ -127,7 +136,7 @@ async function loadTracks() {
   if (!state.data_ready || !lang || lang === music.lang) return;
   music.lang = lang;
   stopMusic();
-  music.index = -1;
+  Object.assign(music, { index: -1, buffer: null });
   try {
     music.tracks = await invoke("music_tracks", { lang });
     say($("#music-msg"), "");
@@ -140,8 +149,11 @@ async function loadTracks() {
 
 function renderTracks() {
   const list = $("#tracks");
-  list.replaceChildren(...music.tracks.map((track, i) => {
+  const query = $("#music-search").value.trim().toLowerCase();
+  const shown = music.tracks.map((track, i) => [track, i]).filter(([track]) => track.title.toLowerCase().includes(query));
+  list.replaceChildren(...shown.map(([track, i]) => {
     const item = document.createElement("li");
+    item.value = i + 1; // keeps the track's number while searching
     const button = document.createElement("button");
     button.textContent = track.title;
     button.addEventListener("click", () => playTrack(i));
@@ -151,17 +163,86 @@ function renderTracks() {
   }));
   $("#now-title").textContent = music.tracks[music.index]?.title ?? "Pick a track";
   $("#music-toggle").innerHTML = music.source && !music.paused ? "&#10074;&#10074;" : "&#9654;";
+  renderPosition();
 }
 
-function stopMusic() {
+const clock = (seconds) => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+
+// Where the playing track is, in seconds; a looping track wraps back to its loop start
+function position() {
+  if (!music.source) return music.offset;
+  let t = music.offset + music.ctx.currentTime - music.startedAt;
+  const loop = music.loop;
+  if (loop && t >= loop.end) t = loop.start + ((t - loop.start) % (loop.end - loop.start));
+  return Math.min(t, music.buffer.duration);
+}
+
+function renderPosition() {
+  const seek = $("#music-seek");
+  const length = music.buffer?.duration ?? 0;
+  seek.disabled = !music.buffer;
+  if (!music.seeking) {
+    seek.value = length ? Math.round((position() / length) * 1000) : 0;
+    $("#music-time").textContent = clock(length ? position() : 0);
+  }
+  $("#music-length").textContent = clock(length);
+}
+setInterval(() => { if (music.source && !music.paused) renderPosition(); }, 250);
+
+// Stops the playing track, fading it out over `fade` seconds
+function stopMusic(fade = 0) {
+  clearTimeout(music.timer);
   if (!music.source) return;
-  music.source.onended = null;
-  music.source.stop();
+  const { source, fade: gain } = music;
+  source.onended = null;
+  const now = music.ctx.currentTime;
+  if (fade > 0) {
+    gain.gain.setValueAtTime(gain.gain.value, now);
+    gain.gain.linearRampToValueAtTime(0, now + fade);
+    source.stop(now + fade);
+  } else {
+    source.stop();
+  }
   music.source = null;
+}
+
+// Plays the decoded track from `offset` seconds, fading in over `fade` seconds
+function startSource(offset, fade) {
+  const source = music.ctx.createBufferSource();
+  source.buffer = music.buffer;
+  if (music.loop) {
+    source.loop = true;
+    source.loopStart = music.loop.start;
+    source.loopEnd = music.loop.end;
+  }
+  const gain = music.ctx.createGain();
+  const now = music.ctx.currentTime;
+  if (fade > 0) {
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(1, now + fade);
+  }
+  gain.connect(music.gain);
+  source.connect(gain);
+  source.onended = () => { if (music.source === source) { music.source = null; playTrack(music.index + 1); } };
+  source.start(now, offset);
+  Object.assign(music, {
+    source, fade: gain, startedAt: now, offset, ends: music.loop ? null : now + music.buffer.duration - offset,
+  });
+  scheduleNext();
+}
+
+// A once-only track starts the next one a crossfade before its end
+function scheduleNext() {
+  clearTimeout(music.timer);
+  if (music.ends === null || !music.source || music.paused) return;
+  const source = music.source;
+  const wait = Math.max(0, music.ends - crossfadeSeconds() - music.ctx.currentTime);
+  music.timer = setTimeout(() => { if (music.source === source && !music.paused) playTrack(music.index + 1); }, wait * 1000);
 }
 
 function pauseMusic() {
   if (music.source && !music.paused) {
+    clearTimeout(music.timer);
     music.ctx.suspend();
     music.paused = true;
     renderTracks();
@@ -200,23 +281,27 @@ async function playTrack(i) {
     const [loopStart, loopEnd, rate] = [0, 4, 8].map((offset) => head.getUint32(offset, true));
     const buffer = await music.ctx.decodeAudioData(data.slice(12).buffer);
     if (token !== music.token) return;
-    stopMusic();
-    const source = music.ctx.createBufferSource();
-    source.buffer = buffer;
-    if (track.looping && loopEnd > loopStart) {
-      source.loop = true;
-      source.loopStart = loopStart / rate;
-      source.loopEnd = loopEnd / rate;
-    }
-    source.onended = () => { if (music.source === source) { music.source = null; playTrack(music.index + 1); } };
-    source.connect(music.gain);
-    source.start();
-    music.source = source;
+    // a track that is playing fades out while this one fades in; from silence or a pause it just starts
+    const fade = music.source && !music.paused ? crossfadeSeconds() : 0;
+    stopMusic(fade);
+    music.buffer = buffer;
+    music.loop = track.looping && loopEnd > loopStart ? { start: loopStart / rate, end: loopEnd / rate } : null;
     music.paused = false;
+    startSource(0, fade);
     await music.ctx.resume();
   } catch (e) {
     say($("#music-msg"), String(e), "error");
   }
+  renderTracks();
+}
+
+// Moves the playing (or paused) track to `seconds`
+function seekTo(seconds) {
+  if (!music.buffer) return;
+  const paused = music.paused;
+  stopMusic();
+  music.paused = paused;
+  startSource(Math.min(seconds, music.buffer.duration - 0.05), 0);
   renderTracks();
 }
 
@@ -225,6 +310,7 @@ $("#music-toggle").addEventListener("click", () => {
   if (music.paused) {
     music.ctx.resume();
     music.paused = false;
+    scheduleNext();
     renderTracks();
   } else {
     pauseMusic();
@@ -234,6 +320,20 @@ $("#music-prev").addEventListener("click", () => playTrack(music.index - 1));
 $("#music-next").addEventListener("click", () => playTrack(music.index + 1));
 $("#music-volume").value = remembered.get("volume", "60");
 $("#music-volume").addEventListener("input", setVolume);
+$("#music-search").addEventListener("input", renderTracks);
+// dragging shows the time under the thumb; letting go jumps there
+$("#music-seek").addEventListener("input", (e) => {
+  music.seeking = true;
+  $("#music-time").textContent = clock((e.target.value / 1000) * (music.buffer?.duration ?? 0));
+});
+$("#music-seek").addEventListener("change", (e) => {
+  music.seeking = false;
+  seekTo((e.target.value / 1000) * (music.buffer?.duration ?? 0));
+});
+$("#music-crossfade").addEventListener("change", (e) => {
+  state.settings.music_crossfade = Number(e.target.value);
+  saveSettings();
+});
 $("#playlist-hide").addEventListener("click", () => showPlaylist(false));
 $("#playlist-show").addEventListener("click", () => showPlaylist(true));
 showPlaylist(remembered.get("playlist", "open") === "open");
@@ -347,6 +447,7 @@ function renderSettings() {
   dataDir.classList.add("set");
   $("#fullscreen").checked = state.settings.fullscreen;
   $("#debug-logging").checked = state.settings.debug_logging;
+  $("#music-crossfade").value = String(state.settings.music_crossfade ?? 2);
 }
 
 async function saveSettings() {
@@ -389,9 +490,10 @@ $("#import-save").addEventListener("click", async () => {
 
 let pendingUpdate = null;
 
-// manual: say "up to date" or the error; on start a failure (offline, no release yet) stays silent
-async function checkAppUpdate(manual) {
-  const msg = $("#app-update-msg");
+// manual: say "up to date" or the error in `msg`; an automatic check's failure (offline, no release yet) stays silent
+let lastUpdateCheck = 0;
+async function checkAppUpdate(manual, msg = $("#app-update-msg")) {
+  lastUpdateCheck = Date.now();
   if (manual) say(msg, "Checking…");
   try {
     const update = await updater.check();
@@ -412,11 +514,20 @@ async function checkAppUpdate(manual) {
   }
 }
 
-$("#check-app-update").addEventListener("click", async (e) => {
-  e.target.disabled = true;
-  await checkAppUpdate(true);
-  e.target.disabled = false;
-});
+for (const [button, msg] of [["#check-app-update", "#app-update-msg"], ["#history-check-update", "#history-update-msg"]]) {
+  $(button).addEventListener("click", async (e) => {
+    e.target.disabled = true;
+    await checkAppUpdate(true, $(msg));
+    e.target.disabled = false;
+  });
+}
+
+// while the launcher stays open: again every hour, and when its window comes back into focus after 10 minutes
+const autoCheck = () => {
+  if (!state?.program?.uninstall && !pendingUpdate && Date.now() - lastUpdateCheck > 10 * 60 * 1000) checkAppUpdate(false);
+};
+window.addEventListener("focus", autoCheck);
+setInterval(autoCheck, 60 * 60 * 1000);
 
 $("#update-later").addEventListener("click", () => { $("#update-banner").hidden = true; });
 

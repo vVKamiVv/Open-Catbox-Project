@@ -12,6 +12,8 @@ What changed in each release.
 - The speaker's name box is the right width again.
 - In Tips, Config and the backlog, text fades out under the window's edge as on the Switch.
 - The mouse cursor hides after 3 seconds without moving.
+- Launcher music player: a search box, a seek bar, and crossfades between tracks (set the length in Settings).
+- The launcher checks for updates while it stays open, and Version history has a Check for updates button.
 
 ## v0.2.5 — 2026-11-07
 

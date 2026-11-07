@@ -176,12 +176,19 @@
           <button class="btn ghost small" id="playlist-hide">Hide</button>
         </div>
         <p class="now-title" id="now-title">Pick a track</p>
+        <div class="seek">
+          <span class="time" id="music-time">0:00</span>
+          <input type="range" id="music-seek" min="0" max="1000" value="0" step="1" aria-label="Position in the track" disabled>
+          <span class="time" id="music-length">0:00</span>
+        </div>
         <div class="transport">
           <button class="btn ghost small" id="music-prev" aria-label="Previous track">&#9198;</button>
           <button class="btn ghost small" id="music-toggle" aria-label="Play or pause">&#9654;</button>
           <button class="btn ghost small" id="music-next" aria-label="Next track">&#9197;</button>
+          <span class="volume-icon" aria-hidden="true">&#128264;</span>
           <input type="range" id="music-volume" min="0" max="100" value="60" aria-label="Volume">
         </div>
+        <input type="search" class="music-search" id="music-search" placeholder="Search" aria-label="Search the tracks">
         <ol class="tracks" id="tracks"></ol>
         <div id="music-msg" class="message" role="status"></div>
       </aside>
@@ -226,6 +233,20 @@
         </section>
 
         <section class="group">
+          <h3>Music</h3>
+          <div class="field">
+            <label for="music-crossfade">Crossfade between tracks</label>
+            <select id="music-crossfade">
+              <option value="0">Off</option>
+              <option value="1">1 second</option>
+              <option value="2">2 seconds</option>
+              <option value="3">3 seconds</option>
+              <option value="5">5 seconds</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="group">
           <h3>Launcher</h3>
           <div class="field">
             <span>Open Catbox <span class="app-version"></span></span>
@@ -249,7 +270,11 @@
 
     <div class="view" id="view-history" hidden>
       <div class="panel scroll">
-        <h2 class="display">Version history</h2>
+        <div class="panel-head">
+          <h2 class="display">Version history</h2>
+          <button class="btn ghost small" id="history-check-update">Check for updates</button>
+        </div>
+        <div id="history-update-msg" class="message" role="status"></div>
         <div id="history-msg" class="message" role="status"></div>
         <div id="history-list" class="history"></div>
       </div>

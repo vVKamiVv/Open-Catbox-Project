@@ -72,8 +72,8 @@ The formats follow switchbrew.org (NCA, PFS0, RomFS, Ticket).
 - Keys are never written to disk, logged or shown: error messages name a missing key, never its value, and any
   run of 32 or more hex digits is replaced with `<redacted>` before an error reaches the window.
 - Nothing is uploaded. The launcher's only network traffic is reading the translations' GitHub releases and
-  downloading them, when you ask, checking this project's latest release for a launcher update (on start and
-  from Settings), and listing this project's releases when the Version history tab is first opened.
+  downloading them, when you ask, checking this project's latest release for a launcher update (on start, while it
+  stays open, and from its buttons), and listing this project's releases when the Version history tab is first opened.
 
 ## Data layout
 
@@ -164,6 +164,13 @@ and loops it between those points, as the game does, except for the tracks the M
 those it moves to the next. Starting the game pauses it. Nothing of the game is in the launcher: it all comes from
 the data set up on this computer.
 
+A search box filters the list by title (each track keeps its number). A seek bar, separate from the volume, shows
+the position and length and jumps on release; Web Audio cannot move a playing source, so a seek restarts the
+decoded track at the new position, with its loop points. Changing tracks crossfades: the playing track fades out
+while the next fades in, each through its own gain, and a track played once starts the next one a crossfade before
+its end. The length is **Settings → Music → Crossfade between tracks** (Off, 1, 2, 3 or 5 seconds; 2 by default),
+stored as `music_crossfade` in `launcher.json`; from silence or a pause a track just starts.
+
 ## Version history
 
 The **Version history** tab lists every release with its notes, the installed one marked. They come from this
@@ -211,7 +218,9 @@ Start menu and a desktop shortcut. **Install** then:
    `%APPDATA%` (above), and never shows the Install screen. Running the Setup again offers the registered folder,
    which reinstalls over it.
 
-**Update.** On start, and from **Settings → Check for updates**, the launcher reads
+**Update.** On start, again every hour while it stays open and when its window regains focus (at most every 10
+minutes, and not once an update is offered), and from **Check for updates** in Settings or Version history, the
+launcher reads
 `https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/latest.json`. If it names a newer version, a
 banner offers it. **Update now** downloads that version's `OpenCatbox-Setup.exe` and checks its signature (minisign,
 against the public key built into the launcher; a file that does not match is refused), saves it to a temporary folder,

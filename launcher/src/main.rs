@@ -35,6 +35,9 @@ pub struct Settings {
     pub fullscreen: bool,
     /// Game log at debug level for shin's own crates instead of warnings only.
     pub debug_logging: bool,
+    /// Seconds the music player's tracks fade into each other; `None` for the default (2), 0 for none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub music_crossfade: Option<f32>,
     /// The `%APPDATA%\OpenCatbox` this portable home's settings, data and saves were brought in from (once).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub migrated_from: Option<PathBuf>,
