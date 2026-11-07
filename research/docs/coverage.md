@@ -110,8 +110,7 @@ comments at the top of the named file.
 
 ## Not implemented, and documented as such
 
-The original's layers that Umineko never loads (Animation, Effect, FocusLine), the six unused wipers, the touch
-screen's on-screen buttons, and the nine commands the script never uses: EI §2 and §10, audit/layers.md.
+The original's layers that Umineko never loads (Animation, Effect, FocusLine), the six unused wipers, and the nine commands the script never uses: EI §2 and §10, audit/layers.md.
 
 ## Still open
 

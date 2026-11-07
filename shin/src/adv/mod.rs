@@ -11,6 +11,7 @@
 pub mod assets;
 mod command;
 pub mod hud;
+pub mod touch_buttons;
 pub mod menu;
 mod restore;
 pub(crate) mod unlocks;
@@ -127,6 +128,8 @@ pub struct Adv {
     select_pointer: PointerTracker,
     /// The story's touch input, with long presses (the ADV listener `0x71000154f0`..`0x7100015dd0`)
     gestures: GestureRecognizer,
+    /// What the current touch went down on among the touch buttons (`ADV+0x8f0`): none, or the panel's
+    panel_touch: Option<touch_buttons::Hit>,
     fast_forward_to_bp: Option<BreakpointObserver>,
     /// Set by `EXIT`; the script then stops running while the screen keeps updating
     script_exited: bool,
@@ -197,6 +200,7 @@ impl Adv {
             current_command: None,
             select_pointer: PointerTracker::default(),
             gestures: GestureRecognizer::new(true),
+            panel_touch: None,
             fast_forward_to_bp: None,
             script_exited: false,
             capture: None,
@@ -368,6 +372,7 @@ impl Adv {
     fn open_system_menu(&mut self, context: &mut UpdateContext) {
         play_sys_se(&self.adv_state.audio_manager, context.asset_server, "page", Default::default());
         self.adv_state.skip_auto = 0;
+        self.adv_state.hud.touch_buttons.hide();
         // `0x7100013a70`
         self.adv_state.capture_backdrop(context.pre_render);
         minigame::tween_now(&mut self.adv_state.backdrop_alpha, 1.0, 0.1);
@@ -414,6 +419,7 @@ impl Adv {
         };
         play_sys_se(&audio, context.asset_server, "page", Default::default());
         self.adv_state.skip_auto = 0;
+        self.adv_state.hud.touch_buttons.hide();
         // `0x7100013a70`, as for the system menu
         self.adv_state.capture_backdrop(context.pre_render);
         minigame::tween_now(&mut self.adv_state.backdrop_alpha, 1.0, 0.1);
@@ -466,9 +472,33 @@ impl Adv {
         }
     }
 
+    /// A tap on an enabled touch button (`0x71000157d0`): auto and skip toggle with `son` or `cancel`, the backlog
+    /// opens with `decide` (then its own `page`), the chapter buttons ask as - and + do
+    // shortcut: the original opens the backlog from a task the tap queues; here it opens at once
+    fn touch_button(&mut self, context: &mut UpdateContext, index: usize) {
+        use touch_buttons::{TouchButton, TouchButtons};
+        let audio = self.adv_state.audio_manager.clone();
+        debug!("Touch button {:?}", TouchButtons::action(index));
+        match TouchButtons::action(index) {
+            button @ (TouchButton::Auto | TouchButton::Skip) => {
+                let bit = if button == TouchButton::Auto { AUTO } else { SKIP };
+                self.adv_state.skip_auto ^= bit;
+                let on = self.adv_state.skip_auto & bit != 0;
+                play_sys_se(&audio, context.asset_server, if on { "son" } else { "cancel" }, Default::default());
+            }
+            TouchButton::Backlog => {
+                play_sys_se(&audio, context.asset_server, "decide", Default::default());
+                self.open_backlog(context);
+            }
+            TouchButton::PreviousChapter => self.open_jump_prev(context),
+            TouchButton::NextChapter => self.open_jump_next(context),
+        }
+    }
+
     /// B (`0x7100013720`): hides the message window and the banners until the next press
     fn open_hidden_window(&mut self) {
         self.adv_state.skip_auto = 0;
+        self.adv_state.hud.touch_buttons.hide();
         self.hide_interface(true);
         self.tasks.push(Box::new(HiddenWindow::default()));
     }
@@ -737,6 +767,39 @@ impl Adv {
             return;
         }
 
+        // the touch buttons (`0x71000154f0`..`0x7100015dd0`): a touch that goes down on them is theirs: a press
+        // highlights an enabled one, a tap flashes it and acts, a drag or a long press lets it go
+        for gesture in gestures {
+            let buttons = &mut self.adv_state.hud.touch_buttons;
+            match *gesture {
+                Gesture::Down(point) => self.panel_touch = buttons.hit(point),
+                Gesture::Press => {
+                    if let Some(touch_buttons::Hit::Button(k)) = self.panel_touch {
+                        buttons.press(k);
+                    }
+                }
+                Gesture::Drag(..) | Gesture::LongPress => {
+                    if let Some(touch_buttons::Hit::Button(k)) = self.panel_touch {
+                        buttons.release(k);
+                        self.panel_touch = Some(touch_buttons::Hit::Disabled);
+                    }
+                }
+                Gesture::Tap(_) => {
+                    if let Some(hit) = self.panel_touch.take() {
+                        if let touch_buttons::Hit::Button(k) = hit {
+                            buttons.flash(k);
+                            self.touch_button(context, k);
+                        }
+                        return;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if self.panel_touch.is_some() && gestures.contains(&Gesture::LongPress) {
+            return;
+        }
+
         // a long press inside an event skips it, like B (`0x7100015c00`); a hold elsewhere does nothing
         let save = &self.vm_state.save;
         if gestures.contains(&Gesture::LongPress)
@@ -780,26 +843,39 @@ impl Adv {
                 }
             }
         }
-        // a flick faster than 20 px a frame outside an event (`0x7100015f40`): within 30 degrees of rightward the system
-        // menu, between 60 and 120 (downward) the hidden window, as Y and B; the original's leftward flick slides in
-        // the touch buttons (`+0x500`), which the port does not have
+        // a flick faster than 20 px a frame not begun on the touch buttons (`0x7100015f40`): within 30 degrees of
+        // rightward it slides the touch buttons out when they are in, else opens the system menu as Y; within 30 of
+        // leftward it slides them in; between 60 and 120 (downward) it hides the window as B
         // shortcut: the original's other busy checks (`+0x470`..`+0x478`, `+0x198`, `+0xe8`) are left to the tasks
         let flick = gestures.iter().find_map(|g| match g {
             Gesture::Flick(v) if v.length() > 20.0 => Some(*v),
             _ => None,
         });
-        let save = &self.vm_state.save;
         if let Some(v) = flick
-            && save.system_enabled
-            && save.event.is_none()
+            && self.panel_touch.is_none()
             && self.load_request.is_none()
         {
             let angle = v.y.atan2(v.x).to_degrees();
+            let save = &self.vm_state.save;
+            let (system, story) = (save.system_enabled, save.system_enabled && save.event.is_none());
+            let audio = self.adv_state.audio_manager.clone();
             if angle.abs() < 30.0 {
-                self.open_system_menu(context);
-                return;
-            }
-            if angle > 60.0 && angle < 120.0 {
+                if self.adv_state.hud.touch_buttons.flick_hides() {
+                    play_sys_se(&audio, context.asset_server, "page", Default::default());
+                    self.adv_state.hud.touch_buttons.hide();
+                    return;
+                }
+                if story {
+                    self.open_system_menu(context);
+                    return;
+                }
+            } else if angle.abs() > 150.0 {
+                if system {
+                    play_sys_se(&audio, context.asset_server, "page", Default::default());
+                    self.adv_state.hud.touch_buttons.show();
+                    return;
+                }
+            } else if angle > 60.0 && angle < 120.0 && story {
                 self.open_hidden_window();
                 return;
             }
@@ -1038,6 +1114,21 @@ impl Adv {
         self.adv_state
             .hud
             .update(context.delta_ticks.as_f32(), modes, &audio, context.asset_server);
+
+        // `0x7100010fb0`: auto and skip work while the system does; the backlog also needs no event and nothing busy,
+        // the chapter buttons nothing busy. The auto-hide clock runs only while auto or skip does, and a touch restarts it
+        let save = &self.vm_state.save;
+        let idle = self.tasks.is_empty()
+            && self.adv_state.select_layer.is_none()
+            && !matches!(self.current_command, Some(ExecutingCommand::QUIZ(_)))
+            && self.load_request.is_none();
+        let system = save.system_enabled;
+        let enabled = [system, system, idle && system && save.event.is_none(), idle && system, idle && system];
+        let running = self.is_auto() || self.adv_state.skipping;
+        self.adv_state
+            .hud
+            .touch_buttons
+            .update(context.delta_ticks.as_f32(), enabled, running, pointer.held);
 
         // `0x7100014f50`: a finished line is marked read (by the script's id - 1)
         if let Some(id) = self.adv_state.message_layer_mut().take_finished() {

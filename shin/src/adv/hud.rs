@@ -200,6 +200,8 @@ pub struct AdvHud {
     modes: HudModes,
     /// The banners' hidden flags (`0x7100064230`, `0x710009e150`), set while the interface is hidden
     hidden: bool,
+    /// The touch buttons a leftward flick slides in, drawn just before the hint as the original does
+    pub touch_buttons: super::touch_buttons::TouchButtons,
 }
 
 impl AdvHud {
@@ -218,6 +220,7 @@ impl AdvHud {
             clock: 0.0,
             modes: HudModes::default(),
             hidden: false,
+            touch_buttons: Default::default(),
         }
     }
 
@@ -421,6 +424,8 @@ impl AdvHud {
                 .alpha(self.notify_alpha.value());
             sprite.draw(pass, builder, projection);
         }
+
+        self.touch_buttons.render(pass, self.textures.get("navi"));
 
         let hint = self.hint_alpha.value();
         if self.hint_alpha.running() && hint > 0.0 {

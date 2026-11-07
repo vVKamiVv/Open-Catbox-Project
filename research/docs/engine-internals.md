@@ -70,7 +70,7 @@ its Accuracy section gives the port's measured likeness to the original.
 | Script commands | 61 | all 49 that Umineko uses | SHOWCHARS (1 use, Episode 5) opens the Characters screen and waits for it, as the original; compared with Eden. TROPHY does nothing, as on the Switch. The commands Umineko never uses (TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET) finish at once. SYSCALL 0 does not fade the touch screen's buttons, which the port does not draw |
 | Layer types | 10 | 7, all that Umineko loads | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's texts come from the player's executable (§3) |
 | Wipers | 11 | 5, all that Umineko uses (Whirl and Glass compared with the original, §7) | Ripple, Scanline, Scroll, Turn, Wave, Zoom (none used by Umineko) |
-| Systems | all menus and modes | all: adventure screen, saving and loading (§14), every scene and menu (§15), voices (§16), touch gestures and the touch effect (§17) | the touch screen's on-screen buttons |
+| Systems | all menus and modes | all: adventure screen, saving and loading (§14), every scene and menu (§15), voices (§16), touch gestures and the touch effect (§17) | – |
 
 - The engine's own C++ namespace is **`shin`** (from RTTI), the same name the open-source reimplementation chose.
 - Game logic runs from a compiled bytecode scenario, `main.snr`. Layers (pictures, sprites, movies, effects) are created
@@ -1123,25 +1123,40 @@ texture for it to sample (`shin/src/ui/touch_effect.rs`).
 
 **The ADV listener** (`0x71000154f0`..`0x7100015dd0`, a recognizer with long presses):
 
-- **Down** (`0x71000154f0`): hit-tests the choice menu (`ADV+0x8f0`, the option index + 1, or -1); with no hit and
+- **Down** (`0x71000154f0`): hit-tests the touch buttons (`0x7100015130`, `ADV+0x8f0`: the button + 1, 0 for a
+  disabled one, or -1; only while they are all the way in); with no hit and
   no menu, overlay, pause or hide in the way, forwards the point to the overlay layer's slot 18 and remembers
   whether it accepted (`ADV+0x8f4`).
-- **Press** (`0x7100015670`): over an option, only while the menu is fully shown and the option selectable, raises
-  its flash to 0.7 at 0.2 per frame; else to the overlay's slot 20 if it accepted.
+- **Press** (`0x7100015670`): over an enabled touch button, while they are all the way in, raises its highlight to
+  0.7 at 0.2 per frame; else to the overlay's slot 20 if it accepted.
 - **Tap** (`0x71000157d0`): inside an event with the system enabled, shows the event-skip hint with row 2 of its
   strip (`ADV+0x49c = 1`, v 0.5..0.75; the buttons' hint uses row 0, or row 1 by a system flag `0x71000fc1f0`), once
-  per showing; otherwise advances the text (or picks the option, or goes to the overlay's slot 21).
+  per showing; otherwise advances the text (or goes to the overlay's slot 21). On an enabled touch button it
+  flashes the highlight (0.7, then 0, at 0.2 per frame) and acts: auto or skip toggles (`son` on, `cancel` off),
+  the backlog opens (`decide`, then the backlog's own `page`, from a queued task), or the previous or next chapter
+  is asked as - and + do (`0x7100012f80`, `0x7100012c80`).
 - **Long press** (`0x7100015c00`, 1.15 s still): inside an event with the system enabled, the event skip of B
   (`0x710000f600`), with `decide` when a target is found (silent otherwise); else the overlay's slot 22 if it
-  accepted. Over an option it drops the flash to 0 at 0.2 per frame; the option is not picked. No tap follows.
-- **Drag / cancel**: drop an option's flash the same way, or go to the overlay's slots 23 and 25.
-- **Flick** (`0x7100015f40`, not over an option): faster than 20 px a frame, by the angle of its velocity: within 30
+  accepted. Over a touch button it drops the highlight to 0 at 0.2 per frame and does nothing. No tap follows.
+- **Drag / cancel**: drop a touch button's highlight the same way (the touch stays the buttons', `+0x8f0 = 0`), or
+  go to the overlay's slots 23 and 25.
+- **Flick** (`0x7100015f40`, not on the touch buttons): faster than 20 px a frame, by the angle of its velocity: within 30
   degrees of rightward it hides the touch buttons with `page` when they are out (`+0x4f8`, the tween `+0x500` to 0
   at 0.1), else opens the system menu as Y (`0x7100013320`); within 30 degrees of leftward it plays `page` and
   slides the touch buttons in (`+0x500` to 1 at 0.1: 192 x 120 buttons from x `588 (1 - t)` past their places,
   hidden again after 60 s); between 60 and 120 degrees (downward) it hides the window as B (`0x7100013720`). Each
-  needs the message window up, no event and nothing else busy. The port does the system menu and the hidden window;
-  the touch buttons are not done.
+  needs the message window up, no event and nothing else busy (the leftward one only the system enabled).
+
+**The touch buttons** (`navi` in `/adv.txa`, 128 x 400, one 80 px row each, drawn 192 x 120): auto (1332, 160),
+skip (1524, 160), backlog (1716, 160), previous chapter (1428, 292), next chapter (1620, 292) (set up at
+`0x7100019580`), entries at `ADV+0x558` (0xb8 apart: the action, enabled, an enabled fade, a highlight). The ADV's
+update (`0x7100010fb0`) enables auto and skip while the system is enabled, the backlog also with no event and
+nothing busy, the chapter buttons with nothing busy (`0x7100011de0`: the fade to 1 at 0.25, or to 0 at 0.1 with the
+highlight to 0 at 0.2). They are drawn before the event hint (`0x71000125a0`), grey at `0.5 + 0.5 fade` with the
+highlight added in white. They slide out (without a sound) when the system menu, the backlog or the hidden window
+opens, on SYSCALL 0, and after 60 s of auto or skip without a touch (the clock restarts every frame neither runs,
+and on every touch). In the port: `shin/src/adv/touch_buttons.rs`; the backlog opens at once rather than from a
+queued task.
 
 The choice menu's press moves the cursor without a sound (old bar's highlight to 0 at 0.1 per frame, new to 1 at
 0.25); its tap plays `seldecide` and picks with the flash 0.7 then 0. The quiz overlay's press raises the flash to
