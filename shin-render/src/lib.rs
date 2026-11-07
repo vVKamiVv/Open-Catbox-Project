@@ -483,17 +483,25 @@ impl DepthStencilState {
 }
 
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Sequence)]
+/// The original's eight blend states (set up by `0x71000ce600`). A layer's blend type picks one through a lookup
+/// table: `0x7100226840` = {2, 3, 4} for straight colour (tile and movie direct draws), `0x7100226d58` = {5, 6, 7}
+/// for premultiplied colour (picture blocks and effect composites)
 pub enum ColorBlendType {
+    /// Writes no colour (stencil and mask passes)
     NoColor,
     #[default]
     Opaque,
-    // I don't understand the meaning of each of these (yet)
+    /// State 2: layer blend type 1, straight alpha
     Layer1,
+    /// State 3: layer blend type 2, straight alpha
     Layer2,
+    /// State 4: layer blend type 3, straight alpha
     Layer3,
-    // those do the same thing as above, but operate on premultiplied alpha (QUESTION: is it on the input or output or both?)
+    /// State 5: layer blend type 1, premultiplied alpha
     LayerPremultiplied1,
+    /// State 6: layer blend type 2, premultiplied alpha
     LayerPremultiplied2,
+    /// State 7: layer blend type 3, premultiplied alpha
     LayerPremultiplied3,
 }
 

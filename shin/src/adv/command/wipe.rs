@@ -18,6 +18,23 @@ pub struct WIPE {
     token: Option<command::token::WIPE>,
     flags: WipeFlags,
     state: WipeState,
+    /// The first look at the loader, in the WIPE's own frame, may wait for it
+    first_poll: bool,
+}
+
+/// `0x71000064b0`, state 0: the original gives its wipe loader up to 5 ms of the WIPE's frame, so the wipe usually
+/// starts on that frame instead of the next one
+fn poll_within(task: &mut AsyncTask<AnyWiper>, limit: std::time::Duration) -> Option<AnyWiper> {
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(wiper) = task.poll_naive() {
+            return Some(wiper);
+        }
+        if start.elapsed() >= limit {
+            return None;
+        }
+        std::thread::yield_now();
+    }
 }
 
 impl StartableCommand for command::runtime::WIPE {
@@ -65,13 +82,12 @@ impl StartableCommand for command::runtime::WIPE {
             adv_state.allow_running_animations = false;
         }
 
-        // TODO: optimistically block for 5ms as the game does
-
         Yield(
             WIPE {
                 token: Some(self.token),
                 flags: self.flags,
                 state: WipeState::WaitingForWipeLoader { load_task },
+                first_poll: true,
             }
             .into(),
         )
@@ -98,7 +114,12 @@ impl UpdatableCommand for WIPE {
                 |state| match state {
                     WipeState::WaitingForWipeLoader { load_task } => match load_task {
                         Some(mut load_task) => {
-                            if let Some(wiper) = load_task.poll_naive() {
+                            let loaded = if std::mem::take(&mut self.first_poll) {
+                                poll_within(&mut load_task, std::time::Duration::from_millis(5))
+                            } else {
+                                load_task.poll_naive()
+                            };
+                            if let Some(wiper) = loaded {
                                 adv_state.screen_layer_mut().apply_transition(Some(wiper));
                                 adv_state.allow_running_animations = true;
 

@@ -40,9 +40,9 @@ impl StartableCommand for command::runtime::SEPLAY {
 
         let audio = context
             .asset_server
-            // TODO: sync - bad!!
+            // loaded at once; the original streams it in the background (status bit 1 while loading), which only saves a hitch
             .load_sync(se_info.path())
-            .expect("Failed to load BGM track");
+            .expect("Failed to load SE");
 
         adv_state.se_player.play(
             self.se_slot,

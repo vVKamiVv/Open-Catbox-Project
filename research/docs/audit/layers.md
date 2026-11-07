@@ -97,16 +97,17 @@ argument, WIPE uses types 0, 1, 8 and 9 only, and LAYERLOAD types 4, 5, 7 and fl
 
 ## 3. Structural
 
-- **One container implementation instead of three.** `LayerGroup`, `PageLayer` and `ScreenLayer` still each
+- **One container implementation instead of three.** Done since: `layer/stack.rs` (alignment-plan structural 5). Before: `LayerGroup`, `PageLayer` and `ScreenLayer` still each
   re-implement the same "pre-render children, run the effect chain, composite or draw directly" logic. Their earlier
   drift (double transform, clear colours, returned pass) was fixed in each one by hand. The original shares
   `NewDrawableLayer::preRender` (`0x71000762e0`) and the composite `0x7100078af0`; each container only supplies slot 16
   (indirect: clear colour, child iteration, returned pass) and slot 9 (direct). A shared container type that always
   passes the parent transform and fills with (0,0,0,0) would stop them drifting again. Not done.
-- **One property table.** Property roles are still spread over `LayerProperty` names, `initial_value()`, and reads in
+- **One property table.** Done since: the defaults are checked against the original's table (alignment-plan
+  structural 6). Before: Property roles are still spread over `LayerProperty` names, `initial_value()`, and reads in
   `properties.rs` and the layers (prop 27 in bustup and rain). The wobble slots now have a test; a single table (id →
   role, default, scale, wobbler slot) is not done.
-- **Blend ids as in the original.** `ColorBlendType` still uses its own names rather than the eight NVN ids from
+- **Blend ids as in the original.** Done since: documented on `ColorBlendType`. Before: `ColorBlendType` still uses its own names rather than the eight NVN ids from
   `0x71000ce600` and the two lookup tables (`0x7100226840` straight, `0x7100226d58` premultiplied). The values now
   match; this is only naming.
 
@@ -114,9 +115,11 @@ argument, WIPE uses types 0, 1, 8 and 9 only, and LAYERLOAD types 4, 5, 7 and fl
 
 - Bustup lip-sync: answered in code. The level (0–2, −1 when silent) comes from a state machine over the voice's peaks
   (`voice_player.rs::lipsync_levels`); the eye frames run up to the last eye block and back (`0x7100035350`).
-- Original default property values (RenderPosition, wobble biases 47/51/55): the `Layer::Properties` initialiser was not
+- Original default property values: answered. `Layer::Properties` (`0x7100073740`) loads them from the table at
+  `0x7100170e08` (`0x7100073c60`); all 90 match `initial_value`. Before: the `Layer::Properties` initialiser was not
   located (vtable `0x71001d9a80` is only referenced through `adrp/add`).
-- Dissolve seed source (layer `+0x58`) and the wobbler's random seed (`+0` of each wobbler).
+- Dissolve seed source (layer `+0x58`). The wobbler's seed is answered: each of a layer's six wobblers gets its own
+  from `shin::randomSeed` (`0x71000c7220`), as the port now does (`random::random_seed`).
 - Ghosting colour uniform: assumed (α, α, α, α) like shin; the decompiler lost the registers (`0x71000762e0` tail).
 - Back layer group: exact trigger and lifetime in the original ADV render path.
 - Which Umineko movies use the transparent mode (movie area).

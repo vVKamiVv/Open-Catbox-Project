@@ -16,7 +16,7 @@ use shin_render::{
     shaders::types::{
         buffer::VertexSource,
         texture::{DepthStencilTarget, TextureTarget},
-        vertices::{MaskVertex, PosTexVertex, PosVertex},
+        vertices::{MaskVertex, PosTexVertex},
     },
 };
 
@@ -29,6 +29,7 @@ use crate::{
         },
         properties::LayerProperties,
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
+        stack::{FULLSCREEN_TRIANGLE, LayerStack, needs_offscreen_pass},
     },
     render::{PreRenderContext, VIRTUAL_CANVAS_SIZE_VEC, top_left_projection_matrix},
     update::{AdvUpdatable, AdvUpdateContext},
@@ -43,20 +44,11 @@ struct LayerItem<T> {
     pub layer: T,
 }
 
-#[derive(Clone, Copy)]
-struct LayerRenderItem {
-    // TODO: maybe we should make the layers actually shareable with `Arc`s, yknow...
-    pub layer_index: usize,
-    pub stencil_ref_relative: u8,
-}
-
 #[derive(RenderClone)]
 pub struct LayerGroup<T = UserLayer> {
     #[render_clone(needs_render)]
     layers: Vec<LayerItem<T>>,
-
-    stencil_bump: u8,
-    layers_to_render: Vec<LayerRenderItem>,
+    stack: LayerStack,
 
     #[render_clone(needs_render)]
     new_drawable_state: NewDrawableLayerState,
@@ -70,8 +62,7 @@ impl<T> LayerGroup<T> {
     pub fn new(label: Option<String>) -> Self {
         Self {
             layers: vec![],
-            stencil_bump: 0,
-            layers_to_render: vec![],
+            stack: LayerStack::new(0),
             new_drawable_state: NewDrawableLayerState::new(),
             mask_texture: None,
             mask_flags: MaskFlags::empty(),
@@ -303,17 +294,7 @@ fn prepare_mask_for_onscreen(
             .build(
                 RenderProgramWithArguments::Clear {
                     vertices: VertexSource::VertexData {
-                        vertices: &[
-                            PosVertex {
-                                position: vec3(-1.0, 1.0, 0.0),
-                            },
-                            PosVertex {
-                                position: vec3(3.0, 1.0, 0.0),
-                            },
-                            PosVertex {
-                                position: vec3(-1.0, -3.0, 0.0),
-                            },
-                        ],
+                        vertices: &FULLSCREEN_TRIANGLE,
                     },
                     color: FloatColor4::BLACK,
                 },
@@ -345,17 +326,7 @@ fn finish_mask_for_onscreen(pass: &mut RenderPass) {
             .build(
                 RenderProgramWithArguments::Clear {
                     vertices: VertexSource::VertexData {
-                        vertices: &[
-                            PosVertex {
-                                position: vec3(-1.0, 1.0, 0.0),
-                            },
-                            PosVertex {
-                                position: vec3(3.0, 1.0, 0.0),
-                            },
-                            PosVertex {
-                                position: vec3(-1.0, -3.0, 0.0),
-                            },
-                        ],
+                        vertices: &FULLSCREEN_TRIANGLE,
                     },
                     color: FloatColor4::BLACK,
                 },
@@ -371,19 +342,13 @@ struct LayerGroupNewDrawableNeedsSeparatePassDelegate {
 
 impl NewDrawableLayerNeedsSeparatePass for LayerGroupNewDrawableNeedsSeparatePassDelegate {
     fn needs_separate_pass(&self, props: &LayerProperties) -> bool {
-        if self.has_mask_texture {
-            return true;
-        }
-
-        props.get_clip_mode() != DrawableClipMode::None
-            || props.is_fragment_shader_nontrivial()
-            || props.is_blending_nontrivial()
+        self.has_mask_texture || needs_offscreen_pass(props)
     }
 }
 
 struct LayerGroupNewDrawableDelegate<'a, T> {
     layers: &'a [LayerItem<T>],
-    layers_to_render: Vec<LayerRenderItem>,
+    stack: &'a mut LayerStack,
     mask_texture: &'a Option<Arc<MaskTexture>>,
     mask_flags: MaskFlags,
 }
@@ -411,6 +376,7 @@ where
         transform: &TransformParams,
     ) -> PassKind {
         let mut pass = context.begin_pass(target, Some(depth_stencil), "LayerGroup/indirect");
+        let layers = self.layers;
 
         if !props.is_visible() {
             pass.clear(Some(UnormColor::TRANSPARENT), None, None);
@@ -423,25 +389,11 @@ where
                 pass.clear(Some(UnormColor::TRANSPARENT), Some(0), None);
             }
 
-            for render_item in self.layers_to_render.iter().rev() {
-                self.layers[render_item.layer_index].layer.render(
-                    &mut pass,
-                    &self_transform,
-                    render_item.stencil_ref_relative,
-                    PassKind::Opaque,
-                );
-            }
-            for render_item in &self.layers_to_render {
-                self.layers[render_item.layer_index].layer.render(
-                    &mut pass,
-                    &self_transform,
-                    render_item.stencil_ref_relative,
-                    PassKind::Transparent,
-                );
-            }
+            self.stack
+                .render_offscreen(&mut pass, &self_transform, |i, pass, t, s, k| {
+                    layers[i].layer.render(pass, t, s, k)
+                });
         }
-
-        self.layers_to_render.clear();
 
         // it's very sus that it does that, considering you can apply alpha and stuff...
         // but I guess that's just how planes are...
@@ -497,7 +449,7 @@ where
     }
 
     fn get_stencil_bump(&self) -> u8 {
-        self.stencil_bump
+        self.stack.stencil_bump()
     }
 
     fn pre_render(&mut self, context: &mut PreRenderContext, transform: &TransformParams) {
@@ -543,24 +495,13 @@ where
             // This is not necessary for umineko
         }
 
-        self.layers_to_render.clear();
-        let mut layers_to_render = std::mem::take(&mut self.layers_to_render);
-
-        let mut stencil_value = 1;
-        for &index in &layers {
-            layers_to_render.push(LayerRenderItem {
-                layer_index: index,
-                stencil_ref_relative: stencil_value,
-            });
-
-            stencil_value += self.layers[index].layer.get_stencil_bump();
-        }
-
-        self.stencil_bump = stencil_value;
+        let items = &self.layers;
+        self.stack
+            .arrange(layers, |i| items[i].layer.get_stencil_bump());
 
         let mut delegate = LayerGroupNewDrawableDelegate {
             layers: &self.layers,
-            layers_to_render,
+            stack: &mut self.stack,
             mask_texture: &self.mask_texture,
             mask_flags: self.mask_flags,
         };
@@ -569,8 +510,6 @@ where
         // this is because the `render_drawable_indirect` will apply the transform itself
         self.new_drawable_state
             .pre_render(context, &self.props, &mut delegate, transform);
-
-        self.layers_to_render = delegate.layers_to_render;
     }
 
     #[tracing::instrument(skip_all)]
@@ -625,75 +564,13 @@ where
             }
         ));
 
-        match pass_kind {
-            PassKind::Opaque => {
-                for &LayerRenderItem {
-                    layer_index,
-                    stencil_ref_relative,
-                } in self.layers_to_render.iter().rev()
-                {
-                    self.layers[layer_index].layer.render(
-                        pass,
-                        &self_transform,
-                        stencil_ref + stencil_ref_relative,
-                        pass_kind,
-                    )
-                }
-
-                let vertices = &[
-                    PosVertex {
-                        position: vec3(-1.0, 1.0, 0.0),
-                    },
-                    PosVertex {
-                        position: vec3(3.0, 1.0, 0.0),
-                    },
-                    PosVertex {
-                        position: vec3(-1.0, -3.0, 0.0),
-                    },
-                ];
-
-                pass.push_debug("clear");
-                pass.run(
-                    RenderRequestBuilder::new()
-                        .depth_stencil(DepthStencilState {
-                            depth: Default::default(),
-                            stencil: StencilState {
-                                pipeline: StencilPipelineState {
-                                    function: StencilFunction::Greater,
-                                    stencil_fail_operation: StencilOperation::Keep,
-                                    depth_fail_operation: StencilOperation::Keep,
-                                    pass_operation: StencilOperation::Replace,
-                                    stencil_read_mask: StencilMask::All,
-                                    stencil_write_mask: StencilMask::All,
-                                },
-                                stencil_reference: stencil_ref,
-                            },
-                        })
-                        .build(
-                            RenderProgramWithArguments::Clear {
-                                vertices: VertexSource::VertexData { vertices },
-                                color: FloatColor4::TRANSPARENT,
-                            },
-                            DrawPrimitive::Triangles,
-                        ),
-                );
-                pass.pop_debug();
-            }
-            PassKind::Transparent => {
-                for &LayerRenderItem {
-                    layer_index,
-                    stencil_ref_relative,
-                } in &self.layers_to_render
-                {
-                    self.layers[layer_index].layer.render(
-                        pass,
-                        &self_transform,
-                        stencil_ref + stencil_ref_relative,
-                        pass_kind,
-                    )
-                }
-            }
-        }
+        self.stack.render(
+            pass,
+            &self_transform,
+            stencil_ref,
+            pass_kind,
+            |i, pass, t, s, k| self.layers[i].layer.render(pass, t, s, k),
+        );
 
         pass.pop_debug();
     }

@@ -131,7 +131,8 @@ impl std::ops::Mul<Volume> for Volume {
 
 impl FromNumber for Volume {
     fn from_number(number: i32) -> Self {
-        Self((number as f32 / 1000.0).clamp(0.0, 1.0)) // TODO: warn if out of range
+        // clamped as the original does (`0x71000f2580`); the script passes up to 10000
+        Self((number as f32 / 1000.0).clamp(0.0, 1.0))
     }
 }
 
@@ -155,7 +156,8 @@ impl Eq for Pan {}
 
 impl FromNumber for Pan {
     fn from_number(number: i32) -> Self {
-        Self((number as f32 / 1000.0).clamp(-1.0, 1.0)) // TODO: warn if out of range
+        // clamped as the original does (`0x71000f2580`)
+        Self((number as f32 / 1000.0).clamp(-1.0, 1.0))
     }
 }
 

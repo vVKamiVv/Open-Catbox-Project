@@ -6,21 +6,20 @@
 use std::{collections::VecDeque, sync::Arc};
 
 use glam::{Mat4, vec3};
-use shin_core::{
-    layout::LayoutParams, primitives::color::FloatColor4,
-    vm::command::types::MessageTextLayout,
-};
+use shin_core::{layout::LayoutParams, primitives::color::FloatColor4};
 use shin_render::{ColorBlendType, RenderRequestBuilder, render_pass::RenderPass};
 
 use crate::{
     asset::{font::GpuFontLazy, system::AssetServer, texture_archive::NamedTextures},
     audio::play_sys_se,
-    layer::{text_block::TextBlock, user::minigame::Sprite},
+    layer::{
+        text_block::{TextBlock, object_layout},
+        user::minigame::Sprite,
+    },
     render::{PreRenderContext, top_left_projection_matrix},
 };
 
-/// A text object's outline mode 1: a 3 px outline inside 3 px of padding (`0x7100101360`)
-pub(crate) const OUTLINE: f32 = 3.0;
+pub(crate) use crate::layer::text_block::OUTLINE;
 
 /// One step of the original's tweener (`0x71000bb620`)
 #[derive(Debug, Clone, Copy)]
@@ -125,21 +124,12 @@ fn stop_hold(value: f32, frames: f32) -> Step {
     }
 }
 
-/// The layout of a HUD text object: `width` wide with mode-1 padding, `size`, justified, room for rubi
+/// The layout of the HUD's and the menus' text objects ([`object_layout`]) with the port's word wrap, so long
+/// English titles break between words
 pub(crate) fn text_layout(width: f32, size: f32) -> LayoutParams {
     LayoutParams {
-        layout_width: width - 2.0 * OUTLINE,
-        text_alignment: MessageTextLayout::Justify,
-        line_padding_above: 0.0,
-        line_padding_below: 0.0,
-        line_padding_between: 0.0,
-        rubi_size: size * 0.4,
-        text_size: size,
-        base_font_horizontal_scale: 1.0,
-        follow_kinsoku_shori_rules: true,
-        always_leave_space_for_rubi: true,
-        perform_soft_breaks: true,
         word_wrap: true,
+        ..object_layout(width, size)
     }
 }
 

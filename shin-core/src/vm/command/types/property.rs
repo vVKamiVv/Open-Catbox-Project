@@ -134,6 +134,8 @@ pub enum LayerProperty {
 impl LayerProperty {
     // pub const COUNT: usize = <LayerProperty as Enum>::Array::LENGTH;
 
+    /// The default each property starts from: the original's table of 90 at `0x7100170e08`, which
+    /// `Layer::Properties` (`0x7100073740`) loads into its tweeners (`0x7100073c60`)
     pub fn initial_value(self) -> i32 {
         use LayerProperty::*;
         match self {
@@ -154,7 +156,6 @@ impl LayerProperty {
             ShaderParamZ => 1000,
             ShaderParamW => 1000,
             WobbleAlphaBias => 1000,
-            // shortcut: the original's defaults were not located; the scale biases default to 1 (x1000) by meaning
             WobbleScaleXBias => 1000,
             WobbleScaleYBias => 1000,
             GhostingZoom => 1000,
@@ -174,7 +175,28 @@ impl FromNumber for LayerProperty {
 
 #[cfg(test)]
 mod wobble_slot_tests {
+    use enum_map::Enum;
+
     use super::LayerProperty;
+
+    #[test]
+    fn initial_values_are_the_originals_table() {
+        // the non-zero entries of the table at `0x7100170e08`; every other property starts at 0
+        #[rustfmt::skip]
+        let table = [
+            (2, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (12, 1000), (13, 1000),
+            (14, 1000), (15, 1000), (22, 1), (27, 1), (28, 1000), (29, 1000), (30, 1000), (31, 1000),
+            (43, 1000), (51, 1000), (55, 1000), (57, 1000), (73, 1000), (75, 1000),
+        ];
+        assert!(
+            LayerProperty::from_usize(89) == LayerProperty::UnconditionallyInheritedTranslationY
+        );
+        for id in 0..90 {
+            let expected = table.iter().find(|(i, _)| *i == id).map_or(0, |(_, v)| *v);
+            let property = LayerProperty::from_usize(id as usize);
+            assert_eq!(property.initial_value(), expected, "{property:?}");
+        }
+    }
 
     #[test]
     fn wobble_slots_follow_the_original() {

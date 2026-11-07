@@ -134,9 +134,7 @@ impl NewDrawableLayerState {
             target_pass: PassKind::Transparent,
             // shortcut: the original reads its seed from the layer (+0x58), whose source is not identified yet;
             // any per-layer value gives the same kind of picture
-            dissolve_seed: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(1, |d| d.subsec_nanos()),
+            dissolve_seed: crate::random::random_seed(),
             ripple_phase: 0.0,
             raster_phase: Vec2::ZERO,
             ghosting_ticks: 0.0,

@@ -12,7 +12,6 @@ impl StartableCommand for command::runtime::MSGSET {
     /// Whether the line has been read before
     type StateInfo = bool;
     fn apply_state(&self, state: &mut VmState) -> bool {
-        // TODO: think about async messages (those where you would use MSGWAIT)
         state.messagebox_state.text = Some(self.text.clone());
         state.messagebox_state.messagebox_shown = true;
 
@@ -90,8 +89,7 @@ impl UpdatableCommand for MSGSET {
         _scenario: &Arc<Scenario>,
         _vm_state: &mut VmState,
         adv_state: &mut AdvState,
-        // TODO: I think we __should__ somehow to react to fast-forwarding here
-        // rn it's kludged in the ADV update function though
+        // as the original (`0x71000052e0`): the wait only asks the message layer, which skipping advances itself
         _is_fast_forwarding: bool,
     ) -> Option<CommandResult> {
         if adv_state

@@ -28,5 +28,5 @@ pub struct AudioSettings {
     pub loop_start: Option<u32>,
     pub volume: Volume,
     pub pan: Pan,
-    // TODO: support play speed (needs research)
+    // no play speed: every SEPLAY in Umineko passes 1000
 }

@@ -18,7 +18,8 @@ use crate::{
         page_layer::PageLayer,
         properties::LayerProperties,
         render_layer,
-        render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
+        render_params::{DrawableClipParams, DrawableParams, TransformParams},
+        stack::needs_offscreen_pass,
     },
     render::{PreRenderContext, render_texture_holder::RenderTextureHolder},
     update::{AdvUpdatable, AdvUpdateContext},
@@ -312,9 +313,7 @@ struct ScreenLayerNewDrawableDelegate<'a> {
 
 impl NewDrawableLayerNeedsSeparatePass for ScreenLayerNewDrawableDelegate<'_> {
     fn needs_separate_pass(&self, props: &LayerProperties) -> bool {
-        props.get_clip_mode() != DrawableClipMode::None
-            || props.is_fragment_shader_nontrivial()
-            || props.is_blending_nontrivial()
+        needs_offscreen_pass(props)
     }
 }
 

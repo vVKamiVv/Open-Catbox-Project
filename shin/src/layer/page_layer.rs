@@ -1,18 +1,12 @@
-use glam::vec3;
 use shin_core::{
-    primitives::color::{FloatColor4, UnormColor},
+    primitives::color::UnormColor,
     vm::command::types::{PLANES_COUNT, PlaneId},
 };
 use shin_derive::RenderClone;
 use shin_render::{
-    DepthStencilState, DrawPrimitive, PassKind, RenderProgramWithArguments, RenderRequestBuilder,
-    StencilFunction, StencilMask, StencilOperation, StencilPipelineState, StencilState,
+    PassKind,
     render_pass::RenderPass,
-    shaders::types::{
-        buffer::VertexSource,
-        texture::{DepthStencilTarget, TextureTarget},
-        vertices::PosVertex,
-    },
+    shaders::types::texture::{DepthStencilTarget, TextureTarget},
 };
 
 use crate::{
@@ -20,26 +14,19 @@ use crate::{
         DrawableLayer, Layer, LayerGroup, NewDrawableLayer,
         new_drawable_layer::{NewDrawableLayerNeedsSeparatePass, NewDrawableLayerState},
         properties::LayerProperties,
-        render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
+        render_params::{DrawableClipParams, DrawableParams, TransformParams},
+        stack::{LayerStack, needs_offscreen_pass},
     },
     render::PreRenderContext,
     update::{AdvUpdatable, AdvUpdateContext},
 };
 
-#[derive(Clone, Copy)]
-struct LayerRenderItem {
-    pub layer_index: PlaneId,
-    pub stencil_ref_relative: u8,
-}
-
+/// The page: the four planes, each a [`LayerGroup`], drawn from the lowest one that covers the screen up
 #[derive(RenderClone)]
 pub struct PageLayer {
     #[render_clone(needs_render)]
     planes: Vec<LayerGroup>,
-
-    stencil_bump: u8,
-    needs_force_blending: bool,
-    layers_to_render: Vec<LayerRenderItem>,
+    stack: LayerStack,
 
     #[render_clone(needs_render)]
     new_drawable_state: NewDrawableLayerState,
@@ -56,9 +43,7 @@ impl PageLayer {
             planes: (0..plane_count)
                 .map(|i| LayerGroup::new(Some(format!("PageLayer/Plane{}", i))))
                 .collect(),
-            stencil_bump: 1,
-            needs_force_blending: false,
-            layers_to_render: vec![],
+            stack: LayerStack::new(1),
             new_drawable_state: NewDrawableLayerState::new(),
             props: LayerProperties::new(),
         }
@@ -72,24 +57,15 @@ impl PageLayer {
         &mut self.planes[index.raw() as usize]
     }
 }
-struct PageLayerNewDrawableSeparatePassDelegate;
-
-impl NewDrawableLayerNeedsSeparatePass for PageLayerNewDrawableSeparatePassDelegate {
-    fn needs_separate_pass(&self, properties: &LayerProperties) -> bool {
-        properties.get_clip_mode() != DrawableClipMode::None
-            || properties.is_fragment_shader_nontrivial()
-            || properties.is_blending_nontrivial()
-    }
-}
 
 struct PageLayerNewDrawableDelegate<'a> {
     planes: &'a [LayerGroup],
-    layers_to_render: Vec<LayerRenderItem>,
+    stack: &'a mut LayerStack,
 }
 
 impl NewDrawableLayerNeedsSeparatePass for PageLayerNewDrawableDelegate<'_> {
-    fn needs_separate_pass(&self, properties: &LayerProperties) -> bool {
-        PageLayerNewDrawableSeparatePassDelegate.needs_separate_pass(properties)
+    fn needs_separate_pass(&self, props: &LayerProperties) -> bool {
+        needs_offscreen_pass(props)
     }
 }
 
@@ -104,36 +80,22 @@ impl NewDrawableLayer for PageLayerNewDrawableDelegate<'_> {
         transform: &TransformParams,
     ) -> PassKind {
         let mut pass = context.begin_pass(target, Some(depth_stencil), "PageLayer/indirect");
+        let planes = self.planes;
 
         if !props.is_visible() {
             pass.clear(Some(UnormColor::TRANSPARENT), None, None);
         } else {
             let self_transform = props.get_composed_transform_params(transform);
-
             pass.clear(Some(UnormColor::TRANSPARENT), Some(0), None);
-
-            for render_item in self.layers_to_render.iter().rev() {
-                self.planes[render_item.layer_index.raw() as usize].render(
-                    &mut pass,
-                    &self_transform,
-                    render_item.stencil_ref_relative,
-                    PassKind::Opaque,
-                );
-            }
-            for render_item in &self.layers_to_render {
-                self.planes[render_item.layer_index.raw() as usize].render(
-                    &mut pass,
-                    &self_transform,
-                    render_item.stencil_ref_relative,
-                    PassKind::Transparent,
-                );
-            }
+            self.stack
+                .render_offscreen(&mut pass, &self_transform, |i, pass, t, s, k| {
+                    planes[i].render(pass, t, s, k)
+                });
         }
-
-        self.layers_to_render.clear();
 
         PassKind::Opaque
     }
+
     fn render_drawable_direct(
         &self,
         _pass: &mut RenderPass,
@@ -169,54 +131,35 @@ impl Layer for PageLayer {
     }
 
     fn get_stencil_bump(&self) -> u8 {
-        self.stencil_bump
+        self.stack.stencil_bump()
     }
 
     fn pre_render(&mut self, context: &mut PreRenderContext, transform: &TransformParams) {
-        let props = &self.props;
-        let self_transform = props.get_composed_transform_params(transform);
+        let self_transform = self.props.get_composed_transform_params(transform);
 
-        let mut layer_stack = Vec::new();
-
-        for index in 0..self.planes.len() {
-            let layer_group = &mut self.planes[index];
-
-            layer_group.pre_render(context, &self_transform);
-            if layer_group.needs_rendering() {
-                // if a layer is rendered opaquely, we won't be able to see anything below it
-                if layer_group.is_rendered_opaquely() {
-                    layer_stack.clear();
+        // the planes with something to draw, from the topmost one drawn opaquely up: nothing below it shows
+        let mut shown = Vec::new();
+        for (index, plane) in self.planes.iter_mut().enumerate() {
+            plane.pre_render(context, &self_transform);
+            if plane.needs_rendering() {
+                if plane.is_rendered_opaquely() {
+                    shown.clear();
                 }
-
-                layer_stack.push(index);
+                shown.push(index);
             }
         }
 
-        self.layers_to_render.clear();
-        let mut layers_to_render = std::mem::take(&mut self.layers_to_render);
-        self.needs_force_blending = props.is_blending_nontrivial();
-        let mut stencil_value = 1;
-
-        for index in layer_stack {
-            layers_to_render.push(LayerRenderItem {
-                layer_index: PlaneId::new(index as _),
-                stencil_ref_relative: stencil_value,
-            });
-
-            stencil_value += self.planes[index].get_stencil_bump();
-        }
-        self.stencil_bump = stencil_value;
+        let planes = &self.planes;
+        self.stack.arrange(shown, |i| planes[i].get_stencil_bump());
 
         let mut delegate = PageLayerNewDrawableDelegate {
             planes: &self.planes,
-            layers_to_render,
+            stack: &mut self.stack,
         };
 
         // the parent's transform: the indirect render composes this layer's own (`0x710009f360`)
         self.new_drawable_state
             .pre_render(context, &self.props, &mut delegate, transform);
-
-        self.layers_to_render = delegate.layers_to_render;
     }
 
     #[tracing::instrument(skip_all)]
@@ -244,85 +187,20 @@ impl Layer for PageLayer {
 
         let self_transform = props.get_composed_transform_params(transform);
 
-        pass.push_debug(&format!("PageLayer/{}", match pass_kind {
-            PassKind::Opaque => {
-                "opaque"
+        pass.push_debug(&format!(
+            "PageLayer/{}",
+            match pass_kind {
+                PassKind::Opaque => "opaque",
+                PassKind::Transparent => "transparent",
             }
-            PassKind::Transparent => {
-                "transparent"
-            }
-        }));
-
-        match pass_kind {
-            PassKind::Opaque => {
-                for &LayerRenderItem {
-                    layer_index,
-                    stencil_ref_relative,
-                } in self.layers_to_render.iter().rev()
-                {
-                    self.planes[layer_index.raw() as usize].render(
-                        pass,
-                        &self_transform,
-                        stencil_ref + stencil_ref_relative,
-                        pass_kind,
-                    )
-                }
-
-                let vertices = &[
-                    PosVertex {
-                        position: vec3(-1.0, 1.0, 0.0),
-                    },
-                    PosVertex {
-                        position: vec3(3.0, 1.0, 0.0),
-                    },
-                    PosVertex {
-                        position: vec3(-1.0, -3.0, 0.0),
-                    },
-                ];
-
-                pass.push_debug("clear");
-                pass.run(
-                    RenderRequestBuilder::new()
-                        .depth_stencil(DepthStencilState {
-                            depth: Default::default(),
-                            stencil: StencilState {
-                                pipeline: StencilPipelineState {
-                                    function: StencilFunction::Greater,
-                                    stencil_fail_operation: StencilOperation::Keep,
-                                    depth_fail_operation: StencilOperation::Keep,
-                                    pass_operation: StencilOperation::Replace,
-                                    stencil_read_mask: StencilMask::All,
-                                    stencil_write_mask: StencilMask::All,
-                                },
-                                stencil_reference: stencil_ref,
-                            },
-                        })
-                        .build(
-                            RenderProgramWithArguments::Clear {
-                                vertices: VertexSource::VertexData { vertices },
-                                color: FloatColor4::TRANSPARENT,
-                            },
-                            DrawPrimitive::Triangles,
-                        ),
-                );
-                pass.pop_debug();
-            }
-            PassKind::Transparent => {
-                for &LayerRenderItem {
-                    layer_index,
-                    stencil_ref_relative,
-                } in &self.layers_to_render
-                {
-                    self.planes[layer_index.raw() as usize].render(
-                        pass,
-                        &self_transform,
-                        stencil_ref + stencil_ref_relative,
-                        pass_kind,
-                    )
-                }
-            }
-        }
-
+        ));
+        self.stack.render(
+            pass,
+            &self_transform,
+            stencil_ref,
+            pass_kind,
+            |i, pass, t, s, k| self.planes[i].render(pass, t, s, k),
+        );
         pass.pop_debug();
     }
 }

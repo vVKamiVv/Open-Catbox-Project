@@ -36,6 +36,9 @@ struct VideoPlayerInner {
     video_decoder: Exclusive<H264Decoder>,
     video_texture: VideoFrameTexture,
     pending_frame: Option<(FrameTiming, Nv12Frame)>,
+    /// A frame has reached the texture: after the last one it stays up, as the original shows the movie's last
+    /// frame (its linked still) once a movie that does not repeat has ended
+    shown: bool,
 }
 
 pub struct VideoPlayerHandle {
@@ -67,7 +70,6 @@ impl VideoPlayerHandle {
                 .context("Getting H264 frame size")?,
         );
 
-        // TODO: with an audio track, the timer should follow its playback
         let audio_handle = if let Some(track) = mp4.audio_track {
             let frame_source = AacFrameSource::new(track).context("Initializing AacFrameSource")?;
             Some(audio_manager.play(AudioData {
@@ -95,6 +97,7 @@ impl VideoPlayerHandle {
             video_decoder: Exclusive::new(video_decoder),
             video_texture,
             pending_frame,
+            shown: false,
         };
 
         Ok(VideoPlayerHandle {
@@ -168,6 +171,7 @@ impl VideoPlayerHandle {
                         timing.frame_number, timing.start_time
                     );
                     this.video_texture.write_data_nv12(queue, frame);
+                    this.shown = true;
                     // the loop will not enter again, so the pending frame will now be displayed
                 } else {
                     skipped_frames += 1;
@@ -191,9 +195,9 @@ impl VideoPlayerHandle {
     pub fn get_frame(&self) -> Option<VideoPlayerFrameHandle> {
         let read_guard = self.inner.read();
 
-        // TODO: actually, this will eat the last frame of the video
-        // we need to provide another mechanism for determining how long to display the last frame
-        read_guard.pending_frame.as_ref()?;
+        if read_guard.pending_frame.is_none() && !read_guard.shown {
+            return None;
+        }
 
         Some(VideoPlayerFrameHandle { guard: read_guard })
     }

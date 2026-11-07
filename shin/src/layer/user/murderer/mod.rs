@@ -389,7 +389,7 @@ impl NewDrawableLayer for MurdererLayerImpl {
                     &self.assets.fonts.system_font,
                     wanted,
                     check::text_layout(),
-                    check::TEXT_OUTLINE,
+                    crate::layer::text_block::OUTLINE,
                 )
             });
             self.shared.text_height = block.as_ref().map_or(0.0, |block| block.size().y);

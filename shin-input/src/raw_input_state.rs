@@ -291,8 +291,7 @@ pub struct RawInputState {
     pub gamepads: GamepadsState,
     /// The device a button was last pressed on
     pub last_device: InputDevice,
-    // TODO: touchscreen
-    // need to figure out how exactly the game handles it first though
+    // winit's touch events are not read: the game's gestures run on the mouse pointer (engine-internals §15)
 }
 
 impl RawInputState {

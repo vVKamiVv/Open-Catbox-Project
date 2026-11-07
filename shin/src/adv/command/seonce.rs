@@ -71,7 +71,7 @@ impl UpdatableCommand for SEONCE {
                 let se_info = scenario.info_tables().se_info(self.se_id);
                 let audio = context
                     .asset_server
-                    // TODO: sync - bad!! (same as SEPLAY)
+                    // loaded at once; the original streams it in the background (status bit 1 while loading), which only saves a hitch
                     .load_sync(se_info.path())
                     .expect("Failed to load SE");
                 let slot = adv_state.se_player.play_once(audio, self.volume, self.pan);

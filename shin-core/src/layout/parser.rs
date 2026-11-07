@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_real1() {
-        // TODO: why is this not fixed up again?
+        // raw text: the fix-ups are applied when a string is decoded, not by `parse`
         let message = "@r@v00/awase6042_o.@|@y｢｢@c900.@[謹啓､謹ﾝで申ｼ上げﾙ｡@k@v00/awase6043_o.どﾁﾗﾓ破ﾗﾚﾃｲﾅｲﾓﾉﾄ知ﾘ給ｴ@]@c.｣｣";
         let commands = parse(message);
 

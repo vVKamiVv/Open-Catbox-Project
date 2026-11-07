@@ -10,6 +10,7 @@ use shin_core::{
         commands::Command,
     },
     primitives::color::FloatColor4,
+    vm::command::types::MessageTextLayout,
 };
 use shin_render::{
     DrawPrimitive, RenderProgramWithArguments, RenderRequestBuilder,
@@ -27,6 +28,29 @@ use crate::{
 };
 
 const VERTICES_PER_CHARACTER: usize = 4;
+
+/// A text object's outline mode 1: a 3 px outline inside 3 px of padding (`0x7100101360`)
+pub const OUTLINE: f32 = 3.0;
+
+/// A text object's layout as `TextObject::layout` builds it (`0x7100101360`): `width` less the outline's padding on
+/// both sides, `size`, justified, no line padding, and room for rubi above every line at 0.4 x `size`. Word wrap is
+/// the port's own option, off here (see `adv::hud::text_layout`)
+pub fn object_layout(width: f32, size: f32) -> LayoutParams {
+    LayoutParams {
+        layout_width: width - 2.0 * OUTLINE,
+        text_alignment: MessageTextLayout::Justify,
+        line_padding_above: 0.0,
+        line_padding_below: 0.0,
+        line_padding_between: 0.0,
+        rubi_size: size * 0.4,
+        text_size: size,
+        base_font_horizontal_scale: 1.0,
+        follow_kinsoku_shori_rules: true,
+        always_leave_space_for_rubi: true,
+        perform_soft_breaks: true,
+        word_wrap: false,
+    }
+}
 
 pub struct TextBlock {
     chars: Vec<Char>,
@@ -203,5 +227,22 @@ impl TextBlock {
                 DrawPrimitive::TrianglesStrip,
             ));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn object_layout_is_the_culprit_games_check_text() {
+        // the Check text's layout before it used the shared builder: 1024 wide, size 32, rubi 12.8
+        let layout = object_layout(1030.0, 32.0);
+        assert_eq!(layout.layout_width, 1024.0);
+        assert_eq!(layout.rubi_size, 32.0 * 0.4);
+        assert_eq!(layout.text_alignment, MessageTextLayout::Justify);
+        assert!(
+            layout.always_leave_space_for_rubi && layout.perform_soft_breaks && !layout.word_wrap
+        );
     }
 }

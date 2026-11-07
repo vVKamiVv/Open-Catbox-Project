@@ -369,7 +369,7 @@ pub struct LayerbankState {
     pub plane: PlaneId,
     pub layer_id: LayerId,
     pub layer_load_counter: u32,
-    // TODO: there are some fields which don't seem used?
+    // the original also keeps a quiz's answer here (`+0x3f84` answered, `+0x3f88` the answer), see QUIZ
     pub params: UntypedNumberArray,
     pub properties: LayerPropertiesState,
     pub is_interation_completed: bool,

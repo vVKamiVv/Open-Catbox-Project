@@ -219,7 +219,7 @@ impl NewDrawableLayer for MovieLayerImpl {
 
 impl NewDrawableLayerFastForward for MovieLayerImpl {
     fn fast_forward(&mut self) {
-        // TODO: fast forward the movie
+        // the original (`0x71000c33d0`) may end a movie that does not repeat here; unchecked, see alignment-plan.md
     }
 }
 

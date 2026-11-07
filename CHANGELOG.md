@@ -2,6 +2,13 @@
 
 What changed in each release.
 
+## Unreleased
+
+- A movie that has ended keeps its last frame on screen, as on the Switch, instead of going blank.
+- Random screen shakes move independently left-right and up-down again, instead of along a diagonal.
+- Wipes start on the frame they are called, as on the Switch, instead of one frame later.
+- Website, and issue forms for bugs, differences from the Switch version and ideas.
+
 ## v0.2.7 — 2026-11-07
 
 - Launcher music player: tracks no longer loop forever, and it has shuffle, repeat (list, one track or off) and playlists.

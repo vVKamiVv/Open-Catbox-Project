@@ -21,11 +21,11 @@ pub mod render_params;
 #[expect(unused)]
 mod root_layer_group;
 mod screen_layer;
+mod stack;
 pub mod user;
 mod wobbler;
 
 use derive_more::From;
-use glam::vec3;
 pub use layer_group::LayerGroup;
 pub use new_drawable_layer::{NewDrawableLayer, NewDrawableLayerWrapper};
 pub(crate) use new_drawable_layer::effect_passes::{apply_backdrop_blur, apply_region_blur};
@@ -34,12 +34,7 @@ pub use properties::{LayerProperties, LayerPropertiesState, TweenWaitFlags};
 pub use root_layer_group::RootLayerGroup;
 pub use screen_layer::ScreenLayer;
 use shin_core::primitives::color::FloatColor4;
-use shin_render::{
-    DepthStencilState, DrawPrimitive, PassKind, RenderProgramWithArguments, RenderRequestBuilder,
-    StencilFunction, StencilOperation, StencilPipelineState, StencilState,
-    render_pass::RenderPass,
-    shaders::types::{buffer::VertexSource, vertices::PosVertex},
-};
+use shin_render::{PassKind, render_pass::RenderPass};
 
 use crate::{
     layer::{render_params::TransformParams, user::UserLayer},
@@ -182,43 +177,7 @@ impl AnyLayerMut<'_> {
 pub fn render_layers_default_cb(
     color: FloatColor4,
 ) -> impl Fn(&mut RenderPass, &TransformParams, u8) {
-    move |pass, _transform, stencil_ref| {
-        let vertices = &[
-            PosVertex {
-                position: vec3(-1.0, 1.0, 0.0),
-            },
-            PosVertex {
-                position: vec3(3.0, 1.0, 0.0),
-            },
-            PosVertex {
-                position: vec3(-1.0, -3.0, 0.0),
-            },
-        ];
-
-        pass.run(
-            RenderRequestBuilder::new()
-                .depth_stencil(DepthStencilState {
-                    depth: Default::default(),
-                    stencil: StencilState {
-                        pipeline: StencilPipelineState {
-                            function: StencilFunction::Greater,
-                            stencil_fail_operation: StencilOperation::Keep,
-                            depth_fail_operation: StencilOperation::Keep,
-                            pass_operation: StencilOperation::Replace,
-                            ..Default::default()
-                        },
-                        stencil_reference: stencil_ref,
-                    },
-                })
-                .build(
-                    RenderProgramWithArguments::Clear {
-                        vertices: VertexSource::VertexData { vertices },
-                        color,
-                    },
-                    DrawPrimitive::Triangles,
-                ),
-        );
-    }
+    move |pass, _transform, stencil_ref| stack::fill_uncovered(pass, stencil_ref, color)
 }
 
 #[tracing::instrument(skip_all)]
@@ -226,7 +185,6 @@ pub fn render_layers_default_cb(
 pub fn render_layers_with_bg<F>(
     pass: &mut RenderPass,
     transform: &TransformParams,
-    // TODO: maybe use AnyLayer here?
     layers: &[&dyn Layer],
     render_bg_cb: F,
     is_render_bg_cb_noop: bool,

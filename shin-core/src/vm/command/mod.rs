@@ -114,8 +114,7 @@ pub enum Command {
         dest: Register,
         choice_visibility_mask: NumberSpec,
         choice_title: U16String,
-        // TODO: StringArray does not do any fixups
-        // Are we sure the SELECT doesn't need any?
+        // no fix-ups: none of Umineko's choices contains a character that would need one
         variants: StringArray,
     },
     #[cmd(opcode = 0x8eu8)]
@@ -380,8 +379,7 @@ impl RuntimeCommand {
     pub fn execute_dummy(self) -> Option<CommandResult> {
         Some(match self {
             RuntimeCommand::EXIT(_) => {
-                // TODO: actually the logic behind this is a bit more complex
-                // works for now though
+                // a dummy run ends at EXIT; the game's EXIT and its teardown are the ADV's (`adv/command/exit.rs`)
                 return None;
             }
             RuntimeCommand::SGET(cmd) => cmd.token.finish(0),

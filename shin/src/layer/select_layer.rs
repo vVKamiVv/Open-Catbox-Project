@@ -11,7 +11,6 @@ use shin_core::{
     layout::LayoutParams,
     primitives::color::FloatColor4,
     time::{Easing, Ticks, Tween, Tweener},
-    vm::command::types::MessageTextLayout,
 };
 use shin_render::{
     ColorBlendType, RenderRequestBuilder, gpu_texture::GpuTexture, quad_vertices::QuadVertices,
@@ -21,7 +20,8 @@ use shin_render::{
 use crate::{
     adv::assets::AdvFonts,
     layer::{
-        message_layer::MessageboxTextures, text_block::TextBlock,
+        message_layer::MessageboxTextures,
+        text_block::{OUTLINE, TextBlock, object_layout},
         user::minigame::{PointerTarget, at_rate, tween_now},
     },
     random::MinStdRand,
@@ -47,8 +47,6 @@ const TEXT_CENTRE_X: f32 = 960.0;
 const TEXT_TOP: f32 = 8.0;
 const TEXT_LAYOUT_WIDTH: f32 = 1000.0;
 const TEXT_SIZE: f32 = 48.0;
-/// The text object's outline mode 1: 3 px, which also takes 2 x 3 px off the layout width (`0x7100101360`)
-const TEXT_OUTLINE: f32 = 3.0;
 
 /// Where bars slide in from and out to, and the stagger between bars (frames)
 const SLIDE_IN_FROM: f32 = -300.0;
@@ -152,18 +150,10 @@ impl SelectLayer {
         seen: u32,
     ) -> Self {
         let layout = LayoutParams {
-            layout_width: TEXT_LAYOUT_WIDTH - 2.0 * TEXT_OUTLINE,
-            text_alignment: MessageTextLayout::Justify,
-            line_padding_above: 0.0,
-            line_padding_below: 0.0,
             line_padding_between: 4.0,
             rubi_size: 20.0,
-            text_size: TEXT_SIZE,
-            base_font_horizontal_scale: 1.0,
-            follow_kinsoku_shori_rules: true,
             always_leave_space_for_rubi: false,
-            perform_soft_breaks: true,
-            word_wrap: false,
+            ..object_layout(TEXT_LAYOUT_WIDTH, TEXT_SIZE)
         };
 
         let mut choices = (0..)
@@ -171,7 +161,7 @@ impl SelectLayer {
             .filter(|&(variant, _)| variant < 32 && visible & (1 << variant) != 0)
             .take(MAX_CHOICES)
             .map(|(variant, text)| {
-                let text = TextBlock::new(ctx, &fonts.medium_font, text, layout, TEXT_OUTLINE);
+                let text = TextBlock::new(ctx, &fonts.medium_font, text, layout, OUTLINE);
                 let height = text.size().y + BAR_PADDING;
                 Choice {
                     variant,
@@ -192,9 +182,7 @@ impl SelectLayer {
             .collect::<Vec<_>>();
 
         if visible & SHUFFLE_BIT != 0 {
-            let seed = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(1, |d| d.subsec_nanos());
+            let seed = crate::random::random_seed();
             let mut random = MinStdRand::new(seed);
             let count = choices.len();
             for i in 0..count.saturating_sub(1) {

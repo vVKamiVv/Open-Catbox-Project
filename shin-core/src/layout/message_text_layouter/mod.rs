@@ -267,8 +267,7 @@ impl<Font: FontMetrics> MessageTextLayouterImpl<Font> {
             (&self.font_normal, CharFontType::Regular)
         };
 
-        // TODO: what to do when a nonexistent codepoint is encountered?
-        // The original impl seems to ignore it and use uninitialized values (bad)
+        // cannot fail for the game's text: it is Shift-JIS (all in the BMP) and the font maps every BMP codepoint
         let glyph_info = font.get_glyph_info(codepoint).unwrap();
 
         let scale = self.params.text_size / (font.get_ascent() + font.get_descent()) as f32

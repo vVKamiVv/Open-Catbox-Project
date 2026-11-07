@@ -30,7 +30,7 @@ impl StartableCommand for command::runtime::BGMPLAY {
 
         let audio = context
             .asset_server
-            // TODO: sync - bad!!
+            // loaded at once; the original streams it in the background (status bit 1 while loading), which only saves a hitch
             .load_sync(bgm_info.path())
             .expect("Failed to load BGM track");
 

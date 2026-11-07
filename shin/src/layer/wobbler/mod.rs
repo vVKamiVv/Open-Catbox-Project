@@ -34,7 +34,6 @@ pub enum WobbleMode {
 #[derive(Debug, Clone)]
 pub struct Wobbler {
     mode: WobbleMode,
-    #[allow(unused)]
     seed: i32,
     period: Ticks,
     /// Time, measured in periods
@@ -44,7 +43,8 @@ impl Wobbler {
     pub fn new() -> Self {
         Self {
             mode: WobbleMode::Disabled,
-            seed: 0, // TODO: initialize to a non-zero seed
+            // each wobbler its own seed (`0x71000c7220`), so a layer's random X and Y shakes are independent
+            seed: crate::random::random_seed() as i32,
             period: Ticks::ZERO,
             time: 0.0,
         }

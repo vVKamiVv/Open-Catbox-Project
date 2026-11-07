@@ -37,27 +37,41 @@ both codebases. In the table, "Audit found" is what the audit saw then, not the 
 | 13 | **Done.** Audit found: read lines, CG/BGM/movie unlocks and UNLOCK are not recorded (needed by skip, galleries, the title) | systems, commands | S |
 | 14 | **Done**, transparent movies included (compared: the Episode 8 fire, below). Audit found: movies ignore their repeat flag (8 uses) and the volume settings | systems | M |
 | 15 | **Done**: the opening movie, title, scenario select with its door bridge and curtain wipe, system menu, config, save/load with thumbnails, hidden window, the shared dialog, the backlog and its chapter list, the Picture, Music, Movie and Character Boxes, Characters, Tips and the manual, all compared with Eden; the original's touch gestures (drags, flicks, taps, long presses) on every one of them with the mouse; the shared BGM player. Audit found: no menus or game flow: title, save/load, config, backlog, system menu, scenario select, galleries | systems | L |
-| 16 | **Done** (one noted shortcut: EXIT does not clear the layer banks, so the title fades in over the last scene). Audit found, smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
+| 16 | **Done** (EXIT clears no layer banks, as in the original: `0x7100004b10` slides the touch buttons out, hides the banners and turns input off, and the title fades in over the last scene). Audit found, smaller: wobbler phase reset, wobble slots 44-55 rewired, negative shader `× param.xyz`, blend type 2 equation, MaskWiper scale flag 0x8, TextObject outline clipped by 1 px, SYSCALL 0's system flag, EXIT's teardown, auto mode, the nine unused commands that would panic | all | S each |
 
 ## Structural changes (prevent whole classes of bugs)
 
 1. **One settings/Global handle owned by the app**, read by every subsystem as the original reads `*0x71002264f0`
-   (systems). Partly done: the save data still lives in `Adv`'s `VmState` (`vm_state.global`), but
-   `AdvState::apply_settings` hands it to the message layer and the sound players every frame, so none hard-code it.
+   (systems). Done as far as it prevents bugs: one accessor (`App::save_data`/`save_data_mut`) reaches the save
+   data whichever scene holds it, and `AdvState::apply_settings` hands the settings to the message layer and the
+   sound players every frame, so none hard-code them. Kept as is: the data itself moves from scene to scene (in the
+   ADV it is `vm_state.global`, which the VM commands write); making the app own it would change every scene's and
+   command's signature for no change in behaviour.
 2. **Skip/auto/wait state in the ADV** (`ADV+0x470..+0x494`) with `is_skipping`/`is_auto` exactly as
    `0x7100012430`/`0x71000122f0`, visible to every command's start (commands). Done (`adv/mod.rs`).
 3. **One ADV overlay** drawn after the layers in the original order (`0x71000125a0`): fade, scene title, song title,
    skip/auto icons, notifications (commands). Done (`adv/hud.rs`).
 4. **One TextObject type** with the original's parameter block and one font, building `LayoutParams` the way
-   `0x7100101360` does (Justify, rubi 0.4 × size, width − padding) (text). Partly done:
-   `TextBlock` (`layer/text_block.rs`) serves the HUD, menus and choices; the culprit game's Check text lays out on
-   its own (`murderer/check.rs`).
+   `0x7100101360` does (Justify, rubi 0.4 × size, width − padding) (text). Done: `TextBlock`
+   (`layer/text_block.rs`) draws every text object (the HUD, menus, choices and the culprit game's Check text), all
+   laid out from `text_block::object_layout` with the one `OUTLINE`; `hud::text_layout` adds the port's word wrap
+   for the HUD and menus.
 5. **One layer container implementation** instead of three drifting copies (`LayerGroup`, `PageLayer`,
-   `ScreenLayer`), always passing the parent transform and clearing to transparent (layers). Not done: the three
-   types remain, though each now passes the parent transform and clears to transparent.
-6. **One property table and blend ids as in the original** (layers). Unverified.
+   `ScreenLayer`), always passing the parent transform and clearing to transparent (layers). Done: what they share
+   is one piece, `layer/stack.rs` (children in drawing order with their stencil values, the opaque pass top down,
+   the uncovered-pixel clear, the transparent pass bottom up, the offscreen render, and the rule for when a
+   container needs an offscreen pass). The three types stay, as in the original, and keep only what differs: which
+   children are drawn (a plane's layer banks sorted by render position; the planes from the topmost opaque one up;
+   the transition), the mask, and the screen layer's colour clear.
+6. **One property table and blend ids as in the original** (layers). Done: the 90 property ids are one enum and
+   their defaults are the original's table at `0x7100170e08`, checked value by value (`initial_value`, with a test);
+   `ColorBlendType` documents the original's blend state ids (2-4 straight, 5-7 premultiplied, from the lookup tables
+   `0x7100226840` and `0x7100226d58`).
 7. **Audio gain computed every frame** (`setting × duck × tween`) as the original does, kira only mixing (systems).
-   Partly done: `setting × duck` is set every frame; the tweens still run in kira.
+   Done as far as it is useful: `setting × duck` is set on each track every frame and multiplies with the sound's own
+   `fade × volume`, the original's composition. The fades run on the engine's `Tweener` (shin-audio's
+   `AudioSound`), stepped every audio frame on the mixing thread rather than every video frame; moving them to the
+   game thread would step the gain 60 times a second and could be heard as zipper noise.
 8. **A scene and task framework** (one current scene, a task pool of menus with input priority) before any menu,
    and **input as the engine's bit mask** with a binding table for keyboard, mouse and gamepad (systems). Done:
    the scenes (`app.rs`), the ADV task pool (`adv/menu/mod.rs`) and the binding table (`bindings.rs`); whether input
@@ -79,8 +93,22 @@ both codebases. In the table, "Audit found" is what the audit saw then, not the 
    replayer (structural 9), galleries.
 6. The smaller items of row 16 alongside the areas they touch.
 
-All six steps are done (rows 1-16). Left: structural changes 1 and 4-7 as marked, EXIT's layer banks (row 16), row 10
-on screen, and the comparisons below.
+All six steps are done (rows 1-16), and so are the structural changes. Left: row 10 on screen, and the comparisons
+below.
+
+A review of the code's TODO comments against the decompile (November 2026) fixed three gaps: a finished movie keeps
+its last frame (the original shows the movie's linked still, which is that frame, `0x71000c3400`); each wobbler
+takes its own random seed (`0x71000c7220`), so a layer's random X and Y shakes no longer move together along a
+diagonal; and WIPE gives its loader up to 5 ms of its own frame (`0x71000064b0`), so a wipe starts on the WIPE's
+frame. Two stay open:
+
+- **A quiz's answer after loading:** QUIZ keeps it in the layer bank (`+0x3f84` answered, `+0x3f88` the answer;
+  `0x710000e020`, replay `0x710000df50`), and the scene rebuild (`0x7100019ea0`) hands it to the restored minigame
+  (its slot `0x88`). Loading a save made right after answering shows a fresh quiz instead. Needs each minigame's
+  slot `0x88` and the answer in the save's layer bank.
+- **Skipping and movies:** a movie layer's fast-forward (`0x71000c33d0`) drops the player of a movie that does not
+  repeat (`+0x61`, read as the repeat flag), which would end it and its MOVIEWAIT under skip. `moviewait.rs` says
+  skip does not end MOVIEWAIT; check in Eden which is right before changing either.
 
 Each step: fix from the original's addresses in the reports, compare with Eden on screen, then update
 `engine-internals.md`.

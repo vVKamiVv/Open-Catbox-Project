@@ -48,7 +48,7 @@ impl Char {
         vertical_scale: f32,
         outline: f32,
     ) -> [Vec2; 8] {
-        // TODO: maybe support v8=1 setting, which changes the shape of the outline
+        // setting v8 = 1 would shape the outline differently; it stays 0 (`0x71000d2110`) as no config item sets it
         let v_distance =
             outline / vertical_scale / info.actual_height as f32 * info.actual_size_normalized().y;
         let h_distance =

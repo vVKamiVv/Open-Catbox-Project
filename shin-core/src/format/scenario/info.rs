@@ -95,7 +95,7 @@ pub struct BgmInfoItem {
     pub display_name: U16String,
 
     /// The ID of another BGM track that should be unlocked in the Music Box (`bgmmode`) in addition to this track, when this track is played. `-1` if there is no linked BGM track.
-    pub linked_bgm_id: MusicBoxIdOpt, // TODO: I am not sure if using MusicBoxId is right here
+    pub linked_bgm_id: BgmIdOpt,
 }
 pub type BgmInfo = Vec<BgmInfoItem>;
 

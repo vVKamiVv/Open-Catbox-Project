@@ -8,7 +8,7 @@
 //! (`asset::executable`) and the panel stays empty otherwise.
 
 use glam::{Vec2, vec2};
-use shin_core::{layout::LayoutParams, vm::command::types::MessageTextLayout};
+use shin_core::layout::LayoutParams;
 use shin_core::{
     primitives::color::FloatColor4,
     time::{Easing, Ticks, Tweener},
@@ -25,6 +25,7 @@ use super::{
     tree::{self, BUSTS, CONFIRM, NODES, PORTRAITS},
 };
 use crate::asset::executable;
+use crate::layer::text_block::{OUTLINE, object_layout};
 use crate::layer::user::minigame::{
     self, MinigameInput, SOUND_DECIDE, SOUND_MOVE, Sprite, contains, frames,
 };
@@ -396,7 +397,7 @@ impl Check {
         }
         // the text object is offset by -3 so its outline padding sits left of x 726 (`0x71001019f0`)
         drawer.clip_to(CLIP);
-        drawer.draw_text(vec2(726.0 - TEXT_OUTLINE, 180.0 - self.text_scroll));
+        drawer.draw_text(vec2(726.0 - OUTLINE, 180.0 - self.text_scroll));
         drawer.unclip();
         if text_height > VIEW {
             draw_scroll_bar(drawer, (1762.0, 180.0), self.text_scroll, text_height);
@@ -409,24 +410,8 @@ impl Check {
 /// the 3 px outline on each side), size 32, no padding, and room for rubi above every line (the rubi size 0 becomes
 /// 0.4 x the text size), which makes the lines 48 px apart; drawn in system.fnt
 pub fn text_layout() -> LayoutParams {
-    LayoutParams {
-        layout_width: 1024.0,
-        // the text object always justifies
-        text_alignment: MessageTextLayout::Justify,
-        line_padding_above: 0.0,
-        line_padding_below: 0.0,
-        line_padding_between: 0.0,
-        rubi_size: 32.0 * 0.4,
-        text_size: 32.0,
-        base_font_horizontal_scale: 1.0,
-        follow_kinsoku_shori_rules: true,
-        always_leave_space_for_rubi: true,
-        perform_soft_breaks: true,
-        word_wrap: false,
-    }
+    object_layout(1030.0, 32.0)
 }
-
-pub const TEXT_OUTLINE: f32 = 3.0;
 
 /// The testimonies by person (`0x71001db528`, 17 pointers) and the evidence list (`0x71001db270`, 29 entries of
 /// (index, flags, title, body))

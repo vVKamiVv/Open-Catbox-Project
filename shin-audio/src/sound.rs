@@ -30,8 +30,7 @@ pub enum Command {
 
 pub(crate) struct Shared {
     pub wait_status: AtomicI32,
-    // TODO: use it to implement BGMSYNC (I don't know which unit it uses)
-    // in ms, relative to the start of the sound
+    /// The playback position in ms from the start of the sound (BGMSYNC, lip-sync, a movie's timer)
     pub position: AtomicU32,
     // used for lip sync
     pub amplitude: AtomicU32,
@@ -164,7 +163,7 @@ impl<S: AudioFrameSource + Send> AudioSound<S> {
     fn wait_status(&self) -> AudioWaitStatus {
         let mut result = AudioWaitStatus::empty();
 
-        // TODO: AudioWaitStatus::FADING
+        // LOADING is never set: sounds start at once here
         // if self.state == PlaybackState::Stopped {
         //     result |= AudioWaitStatus::STOPPED;
         // }
@@ -177,7 +176,7 @@ impl<S: AudioFrameSource + Send> AudioSound<S> {
         if !self.panning.is_idle() {
             result |= AudioWaitStatus::PANNING_TWEENING;
         }
-        // TODO: AudioWaitStatus::PLAY_SPEED_TWEENING
+        // PLAY_SPEED_TWEENING is never set: Umineko never changes a sound's play speed
         // result |= AudioWaitStatus::PLAY_SPEED_TWEENER_IDLE;
 
         result

@@ -294,10 +294,7 @@ pub type GlassWiper = TimedWiperWrapper<GlassWiperImpl>;
 
 impl GlassWiper {
     pub fn new(duration: Ticks) -> Self {
-        // the original seeds from a system random source; any seed works
-        let seed = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(1, |d| d.subsec_nanos());
+        let seed = crate::random::random_seed();
         Self::from_inner(GlassWiperImpl::new(duration, seed), duration)
     }
 }
