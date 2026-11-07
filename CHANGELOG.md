@@ -2,7 +2,7 @@
 
 What changed in each release.
 
-## Unreleased
+## v0.2.7 — 2026-11-07
 
 - Launcher music player: tracks no longer loop forever, and it has shuffle, repeat (list, one track or off) and playlists.
 - The music player has its own settings in Settings → Music: how many times a track loops, the fade-out at its end, and whether it keeps playing when the game starts.
