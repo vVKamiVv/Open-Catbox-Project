@@ -1,10 +1,7 @@
-# CI that:
-#
-# * builds rust docs
-# * adds a dummy index.html file
-# * publishes the docs to gitHub pages using actions/deploy-pages@v1 action
+# GitHub Pages: the website (site/, with the launcher's fonts, sky and icon) at the root, and the rust docs under
+# rustdoc/
 
-name: Rustdoc CI
+name: Pages
 
 on:
   push:
@@ -37,21 +34,27 @@ jobs:
           command: doc
           # the launcher (Tauri) needs GTK/WebKit libraries on Linux; its code is documented in launcher/README.md
           args: --no-deps --document-private-items --workspace --exclude open-catbox-launcher
-      - name: Create dummy index.html
+      - name: Put the website and the docs together
         run: |
-          echo "<meta http-equiv=refresh content=0;url=shin/index.html>" > target/doc/index.html
+          mkdir _site
+          cp -r site/. _site/
+          cp launcher/ui/sky.js _site/
+          cp -r launcher/ui/fonts _site/fonts
+          cp launcher/icon.svg _site/favicon.svg
+          cp -r target/doc _site/rustdoc
+          echo "<meta http-equiv=refresh content=0;url=shin/index.html>" > _site/rustdoc/index.html
       # Set the right file permissions, based on https://github.com/actions/upload-pages-artifact#file-permissions.
       - name: Fix file permissions
         shell: sh
         run: |
-          chmod -c -R +rX "target/doc" |
+          chmod -c -R +rX "_site" |
           while read line; do
               echo "::warning title=Invalid file permissions automatically fixed::$line"
           done
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/doc
+          path: _site
   deploy:
     needs: build
 

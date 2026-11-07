@@ -6,7 +6,14 @@
 
 *A gameboard rebuilt piece by piece, so the witch's tea party can go on outside the console.*
 
+**[Website](https://vvkamivv.github.io/Open-Catbox-Project/)** · **[Download](https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest)**
+
 </div>
+
+> [!IMPORTANT]
+> **Wanted: a designer.** The look of the launcher and of the website was made with AI as a placeholder. Anyone who
+> knows how is free, and encouraged, to replace it: the launcher is in `launcher/ui/`, the website in `site/`. It
+> must be original art, with nothing taken from the game or the translations.
 
 ---
 
@@ -58,11 +65,6 @@ Full list in the [changelog](CHANGELOG.md).
 
 How the launcher works: [`launcher.md`](research/docs/launcher.md).
 
-> [!IMPORTANT]
-> **Wanted: a designer.** The launcher's look was made with AI as a placeholder. If you'd like to design a better
-> one, everything is in `launcher/ui/`. It must be original art, with nothing taken from the game or the
-> translations.
-
 ### By hand
 
 1. Extract `data.rom` from your base NSP (title id `01006A300BA2C000`) into an `assets` folder.
@@ -106,6 +108,7 @@ Rebind keys in **Config → PC → Controls**. To confirm with Xbox A / PlayStat
 | `shin-render*`, `shin-audio`, `shin-video`, `shin-tasks`, `shin-window`, `shin-input`, `shin-primitives`, `shin-derive` | Rendering, audio, video, threads, window, input |
 | `sdu/`, `shin-asm/` | Data extraction tool and script assembler |
 | `launcher/` | The launcher |
+| `site/` | The website, published to GitHub Pages with the code docs under [`rustdoc/`](https://vvkamivv.github.io/Open-Catbox-Project/rustdoc/) |
 | `research/` | Engine notes and reverse-engineering tools; start at [`architecture.md`](research/docs/architecture.md) |
 
 ## 🌹 Credits

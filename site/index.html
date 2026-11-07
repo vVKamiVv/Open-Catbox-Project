@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open Catbox Project</title>
+  <meta name="description" content="Play Umineko: The Symphony of Catbox and Dreams natively on PC. Bring your own Switch copy of the game.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="sky" aria-hidden="true"></canvas>
+  <p class="notice"><strong>Wanted: a designer.</strong> The look of this website and of the launcher was made with AI as
+    a placeholder. Anyone who knows how is free, and encouraged, to replace it
+    (<a href="https://github.com/vVKamiVv/Open-Catbox-Project/tree/master/site">site/</a>,
+    <a href="https://github.com/vVKamiVv/Open-Catbox-Project/tree/master/launcher/ui">launcher/ui/</a>).</p>
+
+  <div class="page">
+    <header class="wrap topbar">
+      <a class="brand" href="./"><svg class="brand-mark" viewBox="180 190 664 620" aria-hidden="true"><path id="w" d="M520 470C560 330 700 200 850 210C930 216 900 330 840 400C790 460 660 500 530 500ZM528 510C640 520 760 570 770 680C778 760 690 790 630 730C580 680 545 600 522 530Z"/><use href="#w" transform="translate(1024 0) scale(-1 1)"/><ellipse cx="512" cy="520" rx="15" ry="118"/></svg>Open Catbox</a>
+      <nav class="nav" aria-label="Site">
+        <a href="./" aria-current="page">Home</a>
+        <a href="credits.html">Credits</a>
+        <a href="https://github.com/vVKamiVv/Open-Catbox-Project/blob/master/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/vVKamiVv/Open-Catbox-Project">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="wrap hero">
+        <p class="kicker">Open Catbox Project</p>
+        <h1 class="title">Umineko<span class="sub">no Naku Koro ni</span>Saku</h1>
+        <p class="tagline">The Symphony of Catbox and Dreams, played natively on PC.</p>
+        <div class="actions">
+          <a class="btn play" href="https://github.com/vVKamiVv/Open-Catbox-Project/releases/latest/download/OpenCatbox-Setup.exe">Download</a>
+          <a class="btn" href="https://github.com/vVKamiVv/Open-Catbox-Project/releases">All releases</a>
+          <a class="btn" href="https://github.com/vVKamiVv/Open-Catbox-Project">Source code</a>
+        </div>
+        <p class="release" id="release">For Windows 10 and 11. Free and open source.</p>
+      </section>
+
+      <section class="wrap block">
+        <div class="panel">
+          <ul class="truths">
+            <li><span class="red">No game data is included.</span></li>
+            <li><span class="red">You need to own the game on Switch to play it.</span></li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="wrap block">
+        <h2 class="display">Like the original</h2>
+        <div class="grid">
+          <div class="panel">
+            <p class="big">100 %</p>
+            <p>Measured against the original game, screen by screen. Every command, effect and transition the game uses
+              is there.</p>
+          </div>
+          <div class="panel">
+            <h3>No emulator</h3>
+            <p>A native PC program, built on the open-source shin engine and taken further here.</p>
+          </div>
+          <div class="panel">
+            <h3>Faithful</h3>
+            <p>Timings, effects and menus come from the original game's code and are checked side by side with it.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="wrap block">
+        <h2 class="display">Made for PC</h2>
+        <div class="grid">
+          <div class="panel"><h3>Settings</h3><p>Window mode and size, V-Sync, frame-rate cap and supersampling.</p></div>
+          <div class="panel"><h3>Controls</h3><p>Keyboard, mouse and controller, all rebindable, with Xbox, PlayStation
+            and Switch button prompts.</p></div>
+          <div class="panel"><h3>Any refresh rate</h3><p>120, 144 and 240 Hz screens run at the right speed.</p></div>
+          <div class="panel"><h3>Galleries</h3><p>Save pictures, music, movies and character sprites from the
+            galleries.</p></div>
+          <div class="panel"><h3>The launcher</h3><p>Sets the game up from your dump, downloads the translations and
+            updates itself.</p></div>
+          <div class="panel"><h3>The soundtrack</h3><p>The launcher plays the game's music from your own files, with
+            playlists, shuffle and repeat.</p></div>
+        </div>
+      </section>
+
+      <section class="wrap block">
+        <h2 class="display">Getting started</h2>
+        <div class="two">
+          <div class="panel">
+            <ol class="steps">
+              <li>Download <code>OpenCatbox-Setup.exe</code> and run it.</li>
+              <li>Pick your game dump and your <code>prod.keys</code>.</li>
+              <li>Pick a language.</li>
+              <li>Press <strong>Play</strong>.</li>
+            </ol>
+          </div>
+          <div class="panel">
+            <h3>You need</h3>
+            <ul>
+              <li>Windows 10 or 11</li>
+              <li>The base game NSP, dumped from your Switch</li>
+              <li>Your console's <code>prod.keys</code></li>
+              <li>For Japanese, also the 1.0.3 update NSP</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="wrap block">
+        <h2 class="display">Languages</h2>
+        <div class="grid">
+          <div class="panel"><h3>English</h3><p>Catbox English by &amp;Olga and contributors.</p></div>
+          <div class="panel"><h3>English (Catbox X)</h3><p>By Foxdear, up to Episode 7.</p></div>
+          <div class="panel"><h3>Japanese</h3><p>The original text, with the 1.0.3 update.</p></div>
+        </div>
+        <p class="dim" style="margin-top: 12px">The translations are downloaded from their authors and are not part of
+          this project.</p>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      <p>Open Catbox Project · <a href="https://github.com/vVKamiVv/Open-Catbox-Project/blob/master/LICENSE">MPL 2.0</a>
+        · <a href="credits.html">Credits</a></p>
+      <p>Umineko no Naku Koro ni is by 07th Expansion; Saku is published by Entergram. Not affiliated with them, the
+        shin project or the translation teams.</p>
+    </footer>
+  </div>
+
+  <script src="sky.js"></script>
+  <script>
+    // the newest release's version and size, from GitHub's API (the default text stays if it cannot be reached)
+    fetch("https://api.github.com/repos/vVKamiVv/Open-Catbox-Project/releases/latest")
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((release) => {
+        const setup = release.assets.find((a) => a.name === "OpenCatbox-Setup.exe");
+        const size = setup ? ` · ${Math.round(setup.size / 1048576)} MB` : "";
+        document.getElementById("release").textContent = `${release.tag_name} for Windows 10 and 11${size}. Free and open source.`;
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
