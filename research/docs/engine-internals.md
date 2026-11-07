@@ -106,6 +106,10 @@ unless a kinsoku rule forbids it, so these texts, which have `@r` only between p
 too (to confirm on screen). The port reads them from the player's executable and IPS (`--exefs`, `SHIN_EXEFS`, or an
 `exefs` folder next to the assets; `shin/src/asset/executable.rs`). **confirmed** (the wrapping: inferred)
 
+Port-only: the HUD's texts (the system menu's scene title and play time, the scene and song banners) keep Latin
+words whole (`LayoutParams::word_wrap`: no soft break between two Latin letters or punctuation marks), so a long
+scene title no longer reads "Valent / ine". Every other text breaks as the original does.
+
 ---
 
 ## 4. ROM2 archive format **confirmed**

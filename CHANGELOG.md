@@ -2,6 +2,10 @@
 
 What changed in each release.
 
+## Unreleased
+
+- System menu: long scene titles wrap between words instead of mid-word.
+
 ## v0.2.5 — 2026-11-07
 
 - Launcher: a music playlist beside Play, with the game's soundtrack from your game files. Hide it any time.

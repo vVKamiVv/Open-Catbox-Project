@@ -47,6 +47,8 @@ pub struct LayoutParams {
     pub follow_kinsoku_shori_rules: bool,
     pub always_leave_space_for_rubi: bool,
     pub perform_soft_breaks: bool,
+    /// Port-only: soft breaks keep Latin words whole (the original breaks between any two letters)
+    pub word_wrap: bool,
 }
 
 impl Default for LayoutParams {
@@ -63,6 +65,7 @@ impl Default for LayoutParams {
             follow_kinsoku_shori_rules: true,
             always_leave_space_for_rubi: false,
             perform_soft_breaks: true,
+            word_wrap: false,
         }
     }
 }
@@ -352,6 +355,12 @@ impl<Font: FontMetrics> MessageTextLayouterImpl<Font> {
             let Command::Char(current) = &mut current_slice[0] else {
                 unreachable!()
             };
+
+            // port-only: no break inside a run of Latin letters and punctuation (below the CJK blocks)
+            let latin = |c: char| c > ' ' && (c as u32) < 0x2e80;
+            if self.params.word_wrap && latin(prev.codepoint) && latin(current.codepoint) {
+                current.cant_be_at_line_start = true;
+            }
 
             // synchronize the prohibition rules
             if current.cant_be_at_line_start {

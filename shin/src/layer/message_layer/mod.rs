@@ -453,6 +453,7 @@ impl MessageLayer {
             follow_kinsoku_shori_rules: true,
             always_leave_space_for_rubi: true, // < I am not sure if this should be true
             perform_soft_breaks: true,
+            word_wrap: false,
         };
         let defaults = MessageTextLayouterDefaults {
             color: 999,

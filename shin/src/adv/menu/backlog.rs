@@ -85,6 +85,7 @@ fn layout() -> LayoutParams {
         follow_kinsoku_shori_rules: true,
         always_leave_space_for_rubi: false,
         perform_soft_breaks: true,
+        word_wrap: false,
     }
 }
 

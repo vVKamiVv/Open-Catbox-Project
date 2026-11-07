@@ -63,6 +63,7 @@ pub fn make_snapshot(
         follow_kinsoku_shori_rules: true,
         always_leave_space_for_rubi: true,
         perform_soft_breaks: true,
+        word_wrap: false,
     };
     let defaults = MessageTextLayouterDefaults {
         color: 999,
@@ -76,4 +77,68 @@ pub fn make_snapshot(
     parser.parse_into(&mut layouter);
 
     layouter.finish()
+}
+
+/// Every glyph 10 units wide, with ascent + descent 10, so a char is as wide as the text size
+struct MonoFont;
+
+impl crate::layout::message_text_layouter::font::FontMetrics for MonoFont {
+    fn get_ascent(&self) -> u32 {
+        8
+    }
+
+    fn get_descent(&self) -> u32 {
+        2
+    }
+
+    fn get_glyph_info(&self, _: char) -> Option<crate::format::font::GlyphInfo> {
+        Some(crate::format::font::GlyphInfo {
+            bearing_x: 0,
+            bearing_y: 8,
+            advance_width: 10,
+            actual_width: 10,
+            actual_height: 10,
+            texture_width: 16,
+            texture_height: 16,
+        })
+    }
+}
+
+fn lines(text: &str, word_wrap: bool) -> Vec<String> {
+    let params = LayoutParams {
+        layout_width: 120.0,
+        text_size: 10.0,
+        word_wrap,
+        ..LayoutParams::default()
+    };
+    let defaults = MessageTextLayouterDefaults {
+        color: 999,
+        draw_speed: 100,
+        fade: 0,
+    };
+    let (commands, _, _) =
+        crate::layout::MessageTextLayouter::new(MonoFont, MonoFont, params, defaults).parse(text);
+    let mut lines = Vec::<String>::new();
+    for command in commands {
+        if let Command::Char(c) = command {
+            if lines.len() <= c.line_index {
+                lines.resize(c.line_index + 1, String::new());
+            }
+            lines[c.line_index].push(c.codepoint);
+        }
+    }
+    lines
+}
+
+#[test]
+fn word_wrap_keeps_words_whole() {
+    // 12 chars fit a line: the original's break falls inside "Valentine"
+    let text = "Seven Sisters' Valentine";
+    assert_eq!(lines(text, false), ["Seven Sister", "s' Valentine"]);
+    assert_eq!(lines(text, true), ["Seven ", "Sisters' ", "Valentine"]);
+    // a word longer than the line still breaks
+    assert_eq!(
+        lines("Ushiromiya-Battler", true),
+        ["Ushiromiya-B", "attler"]
+    );
 }

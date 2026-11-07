@@ -98,6 +98,7 @@ fn layout(size: f32, line_spacing: f32, soft_breaks: bool) -> LayoutParams {
         line_padding_below: 4.0,
         line_padding_between: line_spacing,
         perform_soft_breaks: soft_breaks,
+        word_wrap: false,
         always_leave_space_for_rubi: false,
         ..text_layout(1440.0, size)
     }

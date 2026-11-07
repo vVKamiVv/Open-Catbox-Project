@@ -336,6 +336,7 @@ impl ChapterList {
                 let layout = LayoutParams {
                     always_leave_space_for_rubi: false,
                     perform_soft_breaks: false,
+                    word_wrap: false,
                     ..text_layout(1024.0 + 2.0 * OUTLINE, 48.0)
                 };
                 TextBlock::new(

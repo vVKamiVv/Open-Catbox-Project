@@ -516,6 +516,7 @@ impl Chars {
         let layout = |size: f32, profile: bool| LayoutParams {
             always_leave_space_for_rubi: profile,
             perform_soft_breaks: profile,
+            word_wrap: false,
             ..text_layout(966.0, size)
         };
         let name = TextBlock::new(cx.pre_render, font, &name, layout(48.0, false), OUTLINE);

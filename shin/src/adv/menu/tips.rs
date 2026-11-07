@@ -302,6 +302,7 @@ fn layout(size: f32, content: bool) -> LayoutParams {
     LayoutParams {
         always_leave_space_for_rubi: content,
         perform_soft_breaks: content,
+        word_wrap: false,
         ..text_layout(1222.0, size)
     }
 }
