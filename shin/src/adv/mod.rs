@@ -715,7 +715,6 @@ impl Adv {
         false
     }
 
-    // TODO: impl Scene for Adv
     #[tracing::instrument(skip_all)]
     pub fn render(&self, pass: &mut RenderPass) {
         self.adv_state.render(pass);
@@ -908,7 +907,6 @@ impl Adv {
         }
     }
 
-    // TODO: impl Scene for Adv
     pub fn update(
         &mut self,
         context: &mut UpdateContext,

@@ -292,15 +292,18 @@ impl VmCtx {
                 ExpressionTerm::MultiplyReal => {
                     let right = stack.pop().unwrap();
                     let left = stack.pop().unwrap();
-                    // TODO: figure out how negative values are handled
-                    assert!(left >= 0 && right >= 0); // not sure if this will behave correctly otherwise
-                    stack.push(left * right / 1000);
+                    // the original: a wrapping 32-bit product, then a signed division (the expression evaluator's term 0x19)
+                    stack.push(left.wrapping_mul(right) / 1000);
                 }
                 ExpressionTerm::DivideReal => {
                     let right = stack.pop().unwrap();
                     let left = stack.pop().unwrap();
-                    assert!(left >= 0 && right >= 0); // not sure if this will behave correctly otherwise
-                    stack.push(left * 1000 / right);
+                    // the original: 0 for a zero divisor, else a wrapping product by 1000 divided (term 0x1a)
+                    stack.push(if right != 0 {
+                        left.wrapping_mul(1000).wrapping_div(right)
+                    } else {
+                        0
+                    });
                 }
                 ExpressionTerm::Sin => {
                     let val = stack.pop().unwrap();
@@ -356,8 +359,15 @@ impl VmCtx {
             BinaryOperationType::BitwiseXor => left ^ right,
             BinaryOperationType::LeftShift => left << (right % 32),
             BinaryOperationType::RightShift => left >> (right % 32),
-            BinaryOperationType::MultiplyReal => unreal(real(left) * real(right)),
-            BinaryOperationType::DivideReal => unreal(real(left) / real(right)),
+            // integer arithmetic as the original (`0x71000ec480` cases 0xc and 0xd), not through floats
+            BinaryOperationType::MultiplyReal => left.wrapping_mul(right) / 1000,
+            BinaryOperationType::DivideReal => {
+                if right != 0 {
+                    left.wrapping_mul(1000).wrapping_div(right)
+                } else {
+                    0
+                }
+            }
             BinaryOperationType::ATan2 => unangle(f32::atan2(real(left), real(right))),
             BinaryOperationType::SetBit => left | (1 << (right % 32)),
             BinaryOperationType::ClearBit => left & !(1 << (right % 32)),

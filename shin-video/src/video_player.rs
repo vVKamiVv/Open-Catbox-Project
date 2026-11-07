@@ -67,8 +67,7 @@ impl VideoPlayerHandle {
                 .context("Getting H264 frame size")?,
         );
 
-        // TODO: use the audio track
-        // if we are using audio the timer should be tracking the audio playback
+        // TODO: with an audio track, the timer should follow its playback
         let audio_handle = if let Some(track) = mp4.audio_track {
             let frame_source = AacFrameSource::new(track).context("Initializing AacFrameSource")?;
             Some(audio_manager.play(AudioData {

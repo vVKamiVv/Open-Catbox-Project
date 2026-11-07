@@ -111,8 +111,6 @@ const VERTICES_PER_CHARACTER: usize = 4;
 pub struct MessageLayer {
     messagebox_textures: Arc<MessageboxTextures>,
     props: LayerProperties,
-    // TODO: how should we handle the ownership for the listener?
-    message_layer_listener: (),
     voice_player: VoicePlayer,
     adv_fonts: AdvFonts,
     // TODO: maybe split it into smaller structs to reduce complexity somewhat
@@ -217,7 +215,6 @@ impl MessageLayer {
         Self {
             messagebox_textures,
             props: LayerProperties::new(),
-            message_layer_listener: (), // TODO
             voice_player,
             adv_fonts,
 

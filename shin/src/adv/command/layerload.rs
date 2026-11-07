@@ -247,10 +247,6 @@ impl UpdatableCommand for LAYERLOAD {
                 layer.render_clone(&mut context.pre_render.render_clone_ctx())
             };
 
-            if let UserLayer::Bustup(layer) = &mut layer {
-                // TODO: connect the BustupLayer to the lipsync machinery
-            }
-
             let mut properties = match (previous_props, info.keep_old_props) {
                 (Some(previous_props), true) => previous_props,
                 _ => {
@@ -265,8 +261,6 @@ impl UpdatableCommand for LAYERLOAD {
 
             plane_layer_group.add_layer(info.operation_target.layerbank, layer);
         }
-
-        // TODO: call function to unlock layer-related items in CG (for PictureLayer) and Movie & BGM (for MovieLayer) modes
 
         adv_state.allow_running_animations = true;
 

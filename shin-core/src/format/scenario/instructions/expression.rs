@@ -34,7 +34,7 @@ pub enum ExpressionTerm {
     /// `R=pop(), L=pop(), push(L + R)`
     #[brw(magic(0x01u8))]
     Add,
-    /// `R=pop(), L=pop(), push(L - R)` TODO: is the order reversed?
+    /// `R=pop(), L=pop(), push(L - R)` (the original's order)
     #[brw(magic(0x02u8))]
     Subtract,
     /// `R=pop(), L=pop(), push(L * R)`

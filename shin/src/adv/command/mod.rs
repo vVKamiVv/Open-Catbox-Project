@@ -106,7 +106,6 @@ use crate::{
 
 #[enum_dispatch]
 pub trait UpdatableCommand {
-    // TODO: provide mutable access to Adv Scene state
     fn update(
         &mut self,
         _context: &mut UpdateContext,
@@ -334,7 +333,7 @@ pub enum CommandStartResult {
     Continue(CommandResult),
     /// Yield to the game loop, run the command to completion, execution continued with the result
     Yield(ExecutingCommand),
-    #[allow(unused)] // TODO: it will be used for implementing the "EXIT" command
+    /// EXIT: leave the adventure screen once its teardown is done
     Exit,
 }
 

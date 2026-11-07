@@ -131,8 +131,6 @@ impl BgmPlayer {
     }
 }
 
-// TODO: make it renderable and updatable, as it can display they track name when the BGM starts
-
 /// Sets a track's linear gain (the original multiplies its samples)
 pub fn set_track_gain(track: &mut TrackHandle, gain: f32) {
     track.set_volume(
