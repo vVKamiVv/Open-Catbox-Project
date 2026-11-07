@@ -18,7 +18,8 @@
 ---
 
 A native PC version of *Umineko no Naku Koro ni Saku ~Nekobako to Musou no Koukyoukyoku~*. Bring your own Switch
-copy of the game; no emulator needed. Windows for now.
+copy of the game; no emulator needed. Windows for now; Linux and macOS are planned
+([the plan](research/docs/linux-macos-port.md)).
 
 ## 🟥 Spoken in red
 
