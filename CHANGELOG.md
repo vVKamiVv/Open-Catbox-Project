@@ -9,6 +9,9 @@ What changed in each release.
 - A damaged or unreadable save file is now explained on the title screen instead of only in the log.
 - Play time also counts on the title and in the galleries.
 - With the Confirm button set to Bottom, the "skip this event" hint shows the right button.
+- The speaker's name box is the right width again.
+- In Tips, Config and the backlog, text fades out under the window's edge as on the Switch.
+- The mouse cursor hides after 3 seconds without moving.
 
 ## v0.2.5 — 2026-11-07
 

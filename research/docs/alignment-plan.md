@@ -110,35 +110,38 @@ testimony text was compared (it breaks lines mid-word in English as the original
 
 ## Accuracy
 
-**99.7 %**: the mean, over every side-by-side comparison with a recorded per-pixel figure, of the share of pixels
-whose difference from the original is within 32 of 255 (the largest channel difference):
+**100 %** (99.9999 %): the mean, over every side-by-side comparison with a recorded per-pixel figure, of the share of
+pixels whose difference from the original is within 32 of 255 (the largest channel difference):
 
 `accuracy = (1/N) × Σ share_i`, where `share_i` = pixels at most 32/255 away from the original's ÷ pixels compared,
 for comparison i, and N = 6.
 
-| Comparison | Within 32 | Original captured at |
+| Comparison | Within 32 | Left out |
 |---|---|---|
-| Blur (property 66), Ep2 line 7652, the upper half (the blurred background) | 99.91 % | 3x, downscaled |
-| Whirl wipe, Ep2: line 11556 right after it | 99.77 % | 3x, downscaled |
-| Ripple with ghosting on the screen layer, Ep8 line 61681 | 99.30 % | 3x, downscaled |
-| Characters screen, Episode 1 | 100.00 % | 1x |
-| Tips screen, Episode 1 | 99.94 % | 1x |
-| Tips episode list on the title | 99.40 % | 1x; the header band's slowly drifting floral pattern was caught at a different moment |
+| Blur (property 66), Ep2 line 7652 | 100 % | nothing |
+| Whirl wipe, Ep2 line 11556 right after it | 100 % | the click marker (▼) |
+| Ripple with ghosting on the screen layer, Ep8 line 61681 | 100 % | the click marker (▼) |
+| Characters screen, Episode 1 | 99.9999 % (3 px) | the grab's rounded window corners |
+| Tips screen, Episode 1 | 100 % | the grab's rounded window corners |
+| Tips episode list on the title | 99.9998 % (5 px) | the corners and the header band's drifting floral pattern |
 
-(99.91 + 99.77 + 99.33 + 100 + 99.94 + 99.4) / 6 = 99.73, shown as 99.7 %. Last measured on 2026-11-07, with the
-port recaptured from the current build against the same originals (the whirl line rose from 99.60 %; the rest are
-unchanged). The story lines are compared at 960x540 (both sides resized; Eden window grabs cropped to the game
-view first), the menus at 1920x1080. The port's menus are grabbed with **Button prompts set to Switch**, since the
-original shows the Switch's buttons: with the prompts on Auto and the keyboard in use, the key help draws keys and
-Tips and Characters fall to about 99.8 %.
+Measured on 2026-11-07. Every comparison is at 1920x1080, the whole screen, against Eden captures at **1x** (Umineko's
+per-game graphics setting; Eden numbers it 3), which renders the Switch's native resolution, so nothing is resized.
+Animations are left out rather than timed: the click marker blinks and the header band drifts, so a capture catches
+them at a different moment on each side. The port's menus are grabbed from the screen, where Windows 11 rounds the
+window's bottom corners (a few desktop pixels), and with **Button prompts set to Switch**, since the original shows the
+Switch's buttons. The eight pixels still off are single text-outline pixels drawn black in the port and dark grey
+(33-38) in the original.
 
-Capture the original with Eden at **1x** (Umineko's per-game graphics setting; Eden numbers it 3), which renders the
-Switch's native 1920x1080, and take Eden's own screenshot (`eden_capture.py --shot` for menus, or the line capture).
-At 3x the screenshot has to be downscaled, and the resampling alone cost one to two points on text-heavy screens:
-the same three menus measured 98.0-99.1 % from 3x captures and 99.4-100 % at 1x. The three story effects above are
-still 3x captures and will likely gain the same way when recaptured. Two screens compared at 1x match pixel for pixel
-except for animation timing; no layout, colour or text difference remains in them. The quiz (95.7 % from a small
-window grab) and the title (its menu items depend on the save) are not in the number.
+How to capture: the original with `research/tools/compare/eden_capture.py` (story lines: `--messages <ids>`, with the
+GDB stub on and Eden restarted per run; menus: `--shot`); the port with `shin --capture-messages <ids>` for story
+lines and a screen grab for menus. At 3x, Eden's screenshot has to be downscaled and the resampling alone costs one
+to two points on text-heavy screens (the earlier 99.7 % was measured that way).
+
+What closed the gap from 99.7 %: 1x captures for the story lines; the speaker's name plate, whose end cap sat 24 px
+short (`0x71000b2db0`: `+0xf8 + 40 + 178`, then a 96-wide cap); and the window edges over scrolled text in Tips,
+Config and the backlog, which fade the text out (vertex colours, opaque at the edge and clear inside) where the port
+had drawn them opaque. The quiz and the title (its menu items depend on the save) are not in the number.
 
 Compared with the original and found to match, but left out of the number because no within-32 share was recorded
 for them (only a mean difference, a frame-by-frame look, or random patterns that differ in both by design): the

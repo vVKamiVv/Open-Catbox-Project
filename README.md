@@ -29,7 +29,7 @@ copy of the game; no emulator needed. Windows for now.
 
 <div align="center">
 
-### 99.7 % like the original
+### 100 % like the original
 
 </div>
 
