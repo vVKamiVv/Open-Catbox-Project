@@ -67,7 +67,9 @@ fn try_assets_directory(
 /// 2. The directory specified in the `SHIN_ASSETS` environment variable
 /// 3. The directory "assets" next to the executable
 /// 4. The directory "assets" in the current working directory
-/// 5. The user's shared data directory (see [`dirs_next::data_dir`], `/home/alice/.local/share/shin/assets` / `C:\Users\Alice\AppData\Roaming\shin\assets` / `/Users/Alice/Library/Application Support/shin/assets`)
+/// 5. The user's shared data directory (see [`dirs_next::data_dir`], `/home/alice/.local/share/shin/assets` / `C:\Users\Alice\AppData\Roaming\shin\assets` / `/Users/Alice/Library/Application Support/shin/assets`).
+///    Note: the code below joins `../../..` to the data directory rather than `shin`, so it does not look there as
+///    described; which was meant is open (`research/docs/engine-internals.md` §20).
 ///
 /// The used asset directory is the first one having a "data" directory or a "data.rom" file; it is returned too.
 ///

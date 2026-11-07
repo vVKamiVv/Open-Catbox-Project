@@ -1,3 +1,8 @@
+//! The scene model the commands keep (the original's `shin::ADV::Context`): layers and their properties, music and
+//! looping sounds, the message window's style, SAVEINFO texts, CHARS, TIPSGET and NOTIFYSET state, and the save
+//! counter, route and pending SSETs ([`save`]). It is all a load needs: replaying the script rebuilds it without
+//! drawing, and `adv/restore.rs` builds the scene from it.
+
 pub mod audio;
 pub mod layers;
 pub mod save;

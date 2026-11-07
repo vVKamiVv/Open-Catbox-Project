@@ -68,8 +68,8 @@ The formats follow switchbrew.org (NCA, PFS0, RomFS, Ticket).
 - Keys are never written to disk, logged or shown: error messages name a missing key, never its value, and any
   run of 32 or more hex digits is replaced with `<redacted>` before an error reaches the window.
 - Nothing is uploaded. The launcher's only network traffic is reading the translations' GitHub releases and
-  downloading them, when you ask, and checking this project's latest release for a launcher update (on start and
-  from Settings).
+  downloading them, when you ask, checking this project's latest release for a launcher update (on start and
+  from Settings), and listing this project's releases when the Version history tab is first opened.
 
 ## Data layout
 
@@ -115,19 +115,29 @@ The English translations are never bundled; they are downloaded from their autho
 The launcher runs, from `shin.exe`'s own folder:
 
 ```
-shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs
+shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs [--fullscreen]
 ```
 
-`shin.exe` is looked for next to the launcher (where installing puts it), then, in builds from source, in
-`target\release\` of the checkout.
+`--fullscreen` is added when the launcher's Fullscreen setting is on: the game then starts in borderless fullscreen
+for that run (F11 still toggles it, and the game's own PC tab is left as it was). How the game uses these folders is
+in [engine-internals.md](engine-internals.md) §20. `shin.exe` is looked for next to the launcher (where installing
+puts it), then, in builds from source, in `target\release\` of the checkout.
 
 ## Settings and logs
 
 - Settings are stored in `%APPDATA%\OpenCatbox\launcher.json`: the data folder, the last language, fullscreen and
-  debug logging. Fullscreen is only remembered for now; press F11 in the game.
+  debug logging.
 - The game's output goes to `<data>\logs\shin.log`, overwritten on each start. By default it is run with
   `RUST_LOG=warn`; **Settings → Debug logging** raises shin's own crates to `debug`, which is what a bug report
   needs.
+
+## Version history
+
+The **Version history** tab lists every release with its notes, the installed one marked. They come from this
+repository's `CHANGELOG.md`, built into the launcher (its `## vX.Y.Z — date` sections), so the list shows offline.
+The first time the tab opens, the launcher also reads this project's GitHub releases (published ones only) and adds the
+versions the built-in changelog does not have yet, newest first; if GitHub cannot be reached, the tab says so and
+keeps the built-in list (`launcher/src/history.rs`).
 
 ## No console windows
 

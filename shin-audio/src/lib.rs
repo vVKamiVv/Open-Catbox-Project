@@ -1,4 +1,10 @@
 //! Glue together `shin-core` and `kira` to provide an API to play NXA audio files.
+//!
+//! [`AudioManager`] owns kira's manager (cpal output; mixing runs on kira's audio thread). A sound is an NXA stream
+//! (Opus decoded as it plays, with loop points) wrapped in [`AudioData`]; playing it gives an [`AudioHandle`] for
+//! volume, pan, pause and stop with tweens, the playback position, the wait status bits the *WAIT commands test, and
+//! the peak level used for lip-sync. Panning uses the original's linear balance (`0x710002bc40`). The game's players
+//! (BGM, sound effects, voices, system sounds) are in `shin/src/audio/`.
 
 mod data;
 mod handle;

@@ -6,7 +6,10 @@ from the original executable; these files record how, so anyone can check or ext
 
 | Path | What it is |
 |---|---|
-| `docs/engine-internals.md` | Findings: formats, layers, transitions, script commands, with original addresses |
+| `docs/engine-internals.md` | Findings: formats, layers, transitions, script commands, menus, saving, voices, touch, with original addresses; §18-§21 record what the port adds |
+| `docs/architecture.md` | How the port is put together: the crates, one frame from input to present, assets, saving, threads |
+| `docs/coverage.md` | Every crate and subsystem, and where it is documented |
+| `docs/launcher.md` | The launcher step by step: setup from the dump, languages, installing, updating, uninstalling |
 | `docs/alignment-plan.md` | The audit's findings and what was done about them, the effects compared with the original, and the port's measured accuracy |
 | `docs/audit/` | The November 2026 audit's four reports (commands, layers, text, systems), with addresses for every claim |
 | `docs/reverse-engineering-guide.md` | Setup (Ghidra + SwitchLoader, headless scripts, shader decompilation) and workflow |

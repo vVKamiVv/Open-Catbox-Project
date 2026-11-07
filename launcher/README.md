@@ -10,7 +10,8 @@ How it works, step by step (for players and contributors): [`research/docs/launc
 
 ```
 launcher/
-  src/main.rs      Tauri commands: state, settings, setup, downloads, launching the game, moving the data folder
+  src/main.rs      Tauri commands: state, settings, setup, downloads, launching the game, moving the data folder,
+                   installing, uninstalling, updating, version history
   src/install.rs   installing the launcher itself: copy, shortcuts, Installed apps entry, update, uninstall
   src/setup.rs     first-run setup: finds the program NCAs, extracts and hash-checks data.rom, main, patch.rom
   src/nx/          Switch dump reader
@@ -20,6 +21,7 @@ launcher/
     romfs.rs         IVFC level lookup, RomFS file table
     bktr.rs          update RomFS as a patch over the base: IndirectStorage + per-range CTR (AesCtrEx)
   src/langs.rs     translation downloads from the translators' GitHub releases
+  src/history.rs   the Version history tab: CHANGELOG.md embedded at build time, plus newer GitHub releases
   ui/              index.html, style.css (design tokens at the top), app.js, sky.js (animated background)
   ui/fonts/        Cinzel and Cormorant Garamond (SIL OFL, licence files next to them)
   icon.svg         source of icons/ (`cargo tauri icon icon.svg`, then delete the mobile/Store sizes)
@@ -111,4 +113,3 @@ The private key never goes into the repository; without it (and its password) no
 - Linux and macOS: the Rust side is portable, but the `shin.exe` path, the no-console flag and packaging are
   Windows-only so far.
 - Code signing (Authenticode) of the Setup, so SmartScreen stops warning about it.
-- The fullscreen setting is saved but not passed to the game yet (it has no flag; F11 toggles in game).

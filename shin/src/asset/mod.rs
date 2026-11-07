@@ -1,3 +1,8 @@
+//! The game's assets as loaded for the GPU and the speakers: pictures, bustups, masks, texture archives, fonts,
+//! audio, movies and the scenario, each an [`system::Asset`] loaded through the [`system::AssetServer`] from the
+//! layered ROMs (a translation's `patch.rom` over `data.rom`, `research/docs/engine-internals.md` §20), plus the texts
+//! kept in the game's executable ([`executable`]).
+
 mod audio;
 #[expect(unused)]
 pub mod bustup;

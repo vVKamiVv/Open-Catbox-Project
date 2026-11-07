@@ -1,7 +1,7 @@
 //! Saving from the galleries (port-only): the Picture Box viewer's picture, the Music Box's track, the Movie Box's
 //! movie and the Character Box's sprite and background, written under the user's Pictures, Music and Videos folders
-//! on a background thread. Each screen gets a "Save" entry in its key help (− or F5, or a click on it), and a short
-//! notice tells where the file went.
+//! on a background thread. Each screen gets a "Save" entry in its key help (the Save action, F5, P or ZR by default,
+//! or −, or a click on it), and a short notice tells where the file went. See `research/docs/engine-internals.md` §19.
 
 use std::{
     cell::Cell,

@@ -1,3 +1,8 @@
+//! Transitions (`shin::Wiper`): what WIPE plays from the snapshot PAGEBACK took to the new page. Umineko's script uses
+//! four: the default crossfade (type 0), the mask wipe (1), the whirl (8) and the glass shatter (9). [`timed`] runs a
+//! wiper over a fixed time (the original's `TimedWiper`; the app's masked scene fades use it too). The original's six
+//! other wipers are never used and not implemented. See `research/docs/engine-internals.md` §7.
+
 mod default;
 mod glass;
 pub mod mask;

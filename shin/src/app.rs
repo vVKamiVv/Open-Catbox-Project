@@ -1,3 +1,11 @@
+//! The app: start-up, the current scene and the switch between scenes, and what wraps every frame.
+//!
+//! One [`Scene`] runs at a time (the opening movie, the title, the scenario select, the bridge, the story, the four
+//! galleries), as the original's `shin::Scene`; a change crossfades from a snapshot of the old screen
+//! (`App::switch_scene`). Around the scene's update the app applies the `--dev` time control, writes the save file
+//! when asked, updates and draws the touch effect over every scene, and takes `--capture-messages` screenshots.
+//! [`AppAction`] is the set of inputs the game reads, in the Switch's button roles.
+
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::Context;

@@ -1,3 +1,13 @@
+//! The script's commands (`shin::ADV::<NAME>`), one module each.
+//!
+//! A command from the VM is handled in two steps, as in the original: [`StartableCommand::apply_state`] updates the
+//! scene model ([`VmState`]) the way the original's listener does, then [`StartableCommand::start`] acts on what is
+//! drawn and heard and either finishes at once ([`CommandStartResult::Continue`]) or yields an
+//! [`ExecutingCommand`] that is updated every frame until it returns its result (the original's execute slot, called
+//! each frame until it returns true). While a save is loaded, [`replay_command`] stands in for both (slot 2): only the
+//! model changes, and SGET, SELECT and QUIZ take their results from the route. The commands Umineko never uses finish
+//! at once. See `research/docs/engine-internals.md` §10 and `research/docs/audit/commands.md`.
+
 #![allow(clippy::upper_case_acronyms)]
 
 mod prelude {

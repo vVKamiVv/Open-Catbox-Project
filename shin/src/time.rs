@@ -1,3 +1,6 @@
+//! A clock copied from bevy, inherited from shin. Nothing uses it: the frame time comes from `shin-window` as
+//! `delta_ticks` (60 Hz frames).
+
 // implementation copied from bevy
 // plan to add other features, and probably remove some (lol)
 

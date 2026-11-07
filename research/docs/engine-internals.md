@@ -9,7 +9,8 @@ No game code or assets are reproduced. Addresses refer to the v1.0.3 executable 
 `7616F8963DACCD70E20FF3904E13367F96F2D9B3`) as loaded by Ghidra's Switch loader (base `0x7100000000`).
 
 Status markers: **confirmed** (read from code and/or checked in-game), **inferred** (consistent with the code but not
-fully traced), **open** (not known yet).
+fully traced), **open** (not known yet). Sections 18 to 21 describe what the port adds; nothing in them is in the
+original.
 
 ---
 
@@ -37,7 +38,8 @@ possible to go from a class name to its typeinfo, its vtable and every virtual m
 ## 2. Engine overview
 
 See [class-inventory.md](class-inventory.md) for every class and [reverse-engineering-guide.md](reverse-engineering-guide.md)
-for how to continue this research.
+for how to continue this research. How the port itself is put together (crates, the frame, threads) is in
+[architecture.md](architecture.md); which document covers which subsystem is in [coverage.md](coverage.md).
 
 ### Architecture (from the RTTI class list) **confirmed**
 
@@ -394,6 +396,14 @@ the pipe was dropped without being flushed. Under load (several movies at once, 
 truncated or empty and the movie layer panicked ("No frames available"). The pipe is now closed explicitly; the
 ignored test `concurrent_decodes_yield_every_frame` in `shin-video` (`SHIN_TEST_MOVIE=<mp4>`) decodes a clip 40 times,
 four at once, and checks every run gets every frame.
+
+Port note (**confirmed**, the port's decoders): `shin-video` demuxes the MP4 itself (`mp4.rs`), decodes AAC with
+symphonia and picks the H.264 decoder at build time (`shin-video/src/h264_decoder/mod.rs`): on Windows, Media
+Foundation's own decoder on one thread per movie, up to 8 frames ahead (`media_foundation.rs`), falling back to the
+ffmpeg pipe when Media Foundation cannot be set up (the "N" editions without the Media Feature Pack); elsewhere the
+ffmpeg pipe (`spawn_ffmpeg.rs`, Annex B in, y4m out); with the `gstreamer` feature, GStreamer everywhere. Frames
+arrive as NV12 and are drawn by the `movie` / `movie_alpha` programs; the alpha of transparent movies is read from
+the bottom half of the frame (§15).
 
 ---
 
@@ -1140,7 +1150,8 @@ the file given by `--savedata`), JSON, read at startup and rewritten whenever a 
 original's format untouched. Fields: `window_mode` (`windowed`, `borderless`, `exclusive`), `window_size` (logical
 pixels while windowed: 1280x720, 1600x900, 1920x1080, 2560x1440 or 3840x2160 from the menu), `vsync`, `frame_cap`
 (0 = none, 30/60/120/144/240), `supersampling` (1, 1.5, 2), `button_prompts` (`auto`, `xbox`, `playstation`,
-`switch`, `keyboard`) and `bindings` (the remapped controls, below). Missing fields take their defaults. `--fullscreen` forces borderless fullscreen for the run without
+`switch`, `keyboard`), `bottom_confirms` (the "Confirm button" row, below) and `bindings` (the remapped controls,
+below). Missing fields take their defaults. `--fullscreen` forces borderless fullscreen for the run without
 writing it; F11 toggles windowed/borderless and is saved. The touch effects stay the save's own setting (v17, the
 Miscellaneous tab). Code: `shin/src/port_settings.rs`, applied by `shin-window` (`DisplaySettings`).
 
@@ -1185,6 +1196,14 @@ grey; LB/RB/LT/RT or L1/R1/L2/R2; menu/view or options/create; d-pads; LS/RS, L3
 with the key's short name in the system font, or arrow caps for the d-pad glyphs. The buttons keep mapping by
 position, so a pad plays the same whatever the prompts say (Xbox B and PlayStation ○ confirm, as the Switch's A).
 
+**Confirm button.** The PC tab's "Confirm button" row is Right (the default, as on the Switch: the right face button
+confirms) or Bottom (`bottom_confirms`: Xbox A and PlayStation ✕ confirm, as Western releases do). With Bottom the
+south and east face buttons trade places where controller input enters the game (`shin-input/src/inputs.rs`,
+`GamepadButton::from_gilrs`), before the bindings see them, and `prompts.rs` swaps the same two glyphs back, so every
+prompt style shows the button to press. The swap happens before the bindings, whose pad names keep meaning the
+Switch role (`PadSouth` is B), so with Bottom an input stored as `PadSouth` is pressed with the right button. Connected
+controllers are logged with their vendor and product ids and the prompt style chosen for them.
+
 **Rendering.** The canvas is the largest 16:9 area of the window at its native resolution. With supersampling the
 canvas (and every render texture, which follow its size) is rendered at the factor times that size, capped by the
 device's largest texture, then filtered into its area of the window by four bilinear taps a quarter of a window
@@ -1206,3 +1225,91 @@ once per update were changed so 144 or 240 Hz look like 60 Hz:
 
 Measured: the title's 90-frame fade took 1489 ms over 359 updates with V-Sync off and a 240 cap, 1501 ms over 91
 updates with a 60 cap (debug log `A 90-frame scene fade took ...`).
+
+---
+
+## 19. Port-only: saving from the galleries (**not in the original**)
+
+The Switch galleries only show their items; the port can also write them to disk (`shin/src/export.rs`, used by
+`picture_box.rs`, `music_box.rs`, `movie_box.rs` and `character_box.rs`). Each of those screens gets a "Save" entry at
+the end of its key help (the − glyph). The Save action (F5, P and ZR by default, §18), − (the keyboard's `-`) or a
+click on the entry saves the current item on a compute thread, and a two-second notice (the last half second fading)
+with the decide sound tells where the file went, or why it failed. Nothing else on those screens changes.
+
+| Screen | What is saved | Where (under the user's folder) |
+|---|---|---|
+| Picture Box viewer | the shown picture, decoded whole from its `.pic`, as a PNG | `Pictures\Umineko\Pictures\<name>.png` |
+| Music Box | the track under the cursor, decoded from its `.nxa` and played through once (no loop), as 16-bit WAV with the title in a `LIST` chunk | `Music\Umineko\<NN> <title>.wav` (NN = its place in the list) |
+| Movie Box | the movie's `.mp4` as stored | `Videos\Umineko\<name>.mp4` |
+| Character Box | the bustup composed for the chosen emotion as a transparent PNG, and the background picture | `Pictures\Umineko\Characters\<name>_<emotion>.png`, `Pictures\Umineko\Backgrounds\<name>.png` |
+
+The folders come from `dirs_next` (`picture_dir`, `audio_dir`, `video_dir`); without one, `<data dir>\shin\Umineko`.
+File names drop the characters Windows forbids. The notice names the folder by its English name
+(`Pictures\Umineko\Pictures`), since the font has no glyphs for a localised one. Files are read with
+`AssetServer::open`, so they come from the same layers as the game's (a translation's `patch.rom` first, §20).
+
+## 20. Port-only: finding the assets, languages and the executable's texts (**not in the original**)
+
+**Where the assets are** (`shin/src/asset/system/locate.rs`). The first of these folders that holds a `data` folder or
+a `data.rom` is used: `--assets-dir`, `SHIN_ASSETS`, an `assets` folder next to the executable, an `assets` folder in
+the working directory, then a shared data folder (see the note at the end of this section).
+
+**Layers.** Files are read through a `LayeredAssetIo`: the first layer that has a path wins, in this order: a `patch`
+folder, `patch.rom`, a `data` folder, `data.rom`. `patch` and `patch.rom` are looked for in `--patch-dir` when it is
+given, else in the assets folder; a `--patch-dir` without them (the original Japanese) leaves `data.rom` alone. This
+is the console's own rule (§3). Paths are resolved first: each `dir/..` pair is dropped, as the original's file system
+does (the title's sea sound is BGM `../se/umilse_002`). Loaded assets are cached by path and arguments as weak
+references (`AssetServer`), so an asset stays loaded only while something holds it.
+
+**Languages.** The launcher keeps each language in its own folder and starts the game with `--assets-dir <data>
+--patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs` ([launcher.md](launcher.md)): English and
+Catbox X bring their own `patch.rom`, `main` and `.ips`; Japanese is the 1.0.3 update's `patch.rom` and `main` with
+no `.ips`. The port has no language setting of its own: the language is whatever those files are.
+
+**The executable's texts** (`shin/src/asset/executable.rs`, `shin-core/src/format/executable.rs`). The folder holding
+`main` is the first of `--exefs`, `SHIN_EXEFS` and an `exefs` folder next to the assets; its `.ips` patches are
+applied over it (§3). Without one, those texts (the culprit game's testimonies and evidence, the system dialogs) stay
+empty. The PC tab draws its own labels in English, or in Japanese when the executable's texts are Japanese (§18).
+
+Note on the last asset folder: the doc comment of `locate_assets` describes `<data dir>/shin/assets`, but the code
+(inherited from shin) joins `../../..` to the data dir instead. Which was intended is **open**; neither the launcher
+nor the README relies on that folder.
+
+## 21. Port-only: the developer tools (**not in the original**)
+
+All behind command-line flags (`shin --help`, `shin/src/cli.rs`); without them a player sees none of this.
+
+| Flag | What it does | Code |
+|---|---|---|
+| `--dev` | F3 toggles the debug overlays, drawn with egui over the finished frame: FPS; the ADV state (script address, current command, message id, save counter, event, auto/skip); the current plane's layers with every changed property's tween. F6 pauses the game's time (the game gets no input while paused), F7 steps one 1/60 s frame, F8/F9 halve/double the speed (1/8x to 8x), F10 resets it | `app.rs` (`DevTools`), `render/overlay.rs`, `fps_counter.rs` |
+| `--capture-messages <ids>` | fast-forwards to each message id in turn, waits `--capture-settle` seconds (default 4) once the line has typed out, saves the canvas as `<capture-dir>/<id>.png` (`--capture-dir`, default `captures/port`) and quits after the last; for comparisons with `research/tools/compare/eden_capture.py` | `capture.rs` |
+| `--episode N` | a story started without a save begins with episode N through its own set-up | `app.rs` |
+| `--new-game`, `--load auto` / `--load 1`..`100` | skip the title: start the story (Episode 1, or `--episode`), or load the auto slot or a bookmark | `app.rs`, `cli.rs` |
+| `--fast-forward-to <addr>` | runs the script to an address, choices picked automatically | `adv/mod.rs` |
+| `--unsafe-entry-point <addr>` | starts the VM at an address (the start-up block is skipped, so sprites and the box come out wrong) | `adv/mod.rs` |
+| `--savedata <file>` | another save file; `settings.json` then sits beside it | `savedata.rs`, `port_settings.rs` |
+| `--fullscreen` | borderless fullscreen for this run, not saved (§18) | `app.rs` |
+
+`RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) sets the log level. A background thread checks every
+10 s for `parking_lot` deadlocks and logs their backtraces (`main.rs`). `shin/src/time.rs` (a clock copied from bevy)
+is compiled but not used.
+
+## 22. Data formats at a glance
+
+Where each format is described. All are little-endian; the readers are in `shin-core/src/format/` (each with a module
+doc), and `sdu` converts each of them (`sdu --help`).
+
+| Format | Magic | In short | Described in |
+|---|---|---|---|
+| ROM archive (`data.rom`, `patch.rom`) | `ROM2` | a directory tree index, then the files | §4, `rom.rs` |
+| Picture (`.pic`) | `PIC4` | blocks, each dictionary or differential encoded and optionally LZ77-compressed, with opaque and transparent regions for two-pass drawing | §5, `picture/mod.rs` |
+| Bustup (`.bup`) | `BUP4` | picture blocks for a base, expressions (a shared and an own face), mouths and eyes | `bustup/mod.rs` |
+| Mask (`.msk`) | `MSK4` | an 8-bit grey picture (rows padded to 16 bytes; LZ77 with 12-bit offsets when compressed) plus region vertices | `mask/mod.rs` |
+| Texture archive (`.txa`) | `TXA4` | an index of named textures (name, size, virtual index), each stored like a picture block, optionally dictionary encoded | `texture_archive/mod.rs` |
+| Font (`.fnt`) | `FNT4` | size, ascent and descent, a 0x10000-entry character table of glyph offsets (glyphs shared between characters stored once); each glyph a header (bearings, sizes, advance) and four mip levels of 8-bit coverage, LZ77-compressed with 10-bit offsets | `font.rs`, [audit/text.md](audit/text.md) |
+| Audio (`.nxa`) | `NXA1` | Opus frames as they are, with loop points | `audio/mod.rs` |
+| System sounds (`sysse.bin`) | `SYSE`, `ADP1` | named entries, each an ADPCM stream derived from the PlayStation's, 30 samples per block | `sysse/` |
+| Scenario (`main.snr`) | `SNR ` | a header locating the asset and gallery tables and the bytecode | `scenario/` (tables in `info.rs`), §10, `shin-core/src/vm` |
+| Save (`SAVEDATA`) | | XOR-obfuscated; version, play time, persistent data, read and unlock sets, settings, the auto slot and 100 slots, each slot with its route bit stream | §14, `save/` |
+| Executable (`main`) | NSO | the texts the engine keeps in code, with a translation's IPS32 patch applied | §3, `executable.rs` |
+| Script text | | the engine's Shift-JIS variant | `text/mod.rs` |

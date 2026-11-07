@@ -1,3 +1,16 @@
+//! The window and the frame loop: a winit event loop, wgpu set up on the window's surface, and the [`ShinApp`] trait
+//! the game implements (`shin/src/app.rs`).
+//!
+//! Each redraw (`RedrawRequested`): wait for the frame cap if one is set; turn the input gathered since the last
+//! frame (winit events, gilrs gamepad events) into a [`RawInputState`], let the app filter it
+//! ([`ShinApp::filter_input`]), lower it to the app's actions and map the mouse onto the 1920x1080 canvas; call
+//! [`ShinApp::update`] with the elapsed time and an update command encoder (offscreen passes go there); apply new
+//! [`DisplaySettings`] (window mode and size, V-Sync, frame cap, supersampling); call [`ShinApp::render`] into the
+//! canvas, which is the window's largest 16:9 area, or with supersampling a larger texture filtered down into it by
+//! four bilinear taps; draw [`ShinApp::render_overlay`] over the surface; submit the dynamic buffer, update and render
+//! encoders together and present. Everything runs on the main thread. The architecture is described in
+//! `research/docs/architecture.md`, the port-only display settings in `research/docs/engine-internals.md` §18.
+
 use std::{
     fmt::Debug,
     sync::Arc,

@@ -1,3 +1,11 @@
+//! The render programs, written in WGSL (`wgsl/`), with typed Rust bindings.
+//!
+//! The build script (`build.rs`) first writes `wgsl/types.wgsl` from the uniform and vertex types of
+//! `shin-render-shader-types`, so both sides share one layout; then it validates each shader with naga, compiles it to
+//! SPIR-V and generates `shaders.rs` (included below): one descriptor per program with its entry points, bind groups
+//! and vertex type. The WGSL source is kept as the fallback where SPIR-V shaders are not supported. The programs
+//! follow the original's (decompiled with `ExtractShaders.java`, see `research/docs/reverse-engineering-guide.md`).
+
 use std::marker::PhantomData;
 
 pub use shin_render_shader_types as types;

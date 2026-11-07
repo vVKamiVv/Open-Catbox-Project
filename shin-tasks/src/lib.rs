@@ -1,3 +1,9 @@
+//! The engine's thread pools, set up once by [`create_task_pools`]: a rayon pool with one thread per core for
+//! CPU work ([`compute::spawn`], [`compute::spawn_and_forget`]) and one `async-io` thread running an async executor
+//! for I/O-bound futures such as asset loads ([`async_io::spawn`]). Both hand back a task that the main thread polls
+//! each frame ([`ComputeTask::poll_naive`], [`AsyncTask::poll_naive`]) or awaits; [`block_on`] runs a future on the
+//! calling thread.
+
 use std::{fmt, fmt::Debug, io, num::NonZeroUsize};
 
 use futures_lite::FutureExt as _;

@@ -1,3 +1,8 @@
+//! The message window (`shin::MessageLayer`): MSGINIT's box style, MSGSET's line laid out by the message text
+//! layouter (`shin_core::layout`) and typed out at the text-speed setting, click waits, signals and syncs, the line's
+//! voices (`@v`, through the voice player), the box sliding in and out, auto mode, and the read flag of a finished
+//! line. See `research/docs/audit/text.md` and `research/docs/engine-internals.md` §10.
+
 mod blocks;
 mod interpolators;
 pub mod layout;

@@ -1,3 +1,13 @@
+//! The adventure screen (`shin::ADV`): the story as the script plays it.
+//!
+//! [`Adv`] owns the VM ([`shin_core::vm::Scripter`]), the scene model the commands keep ([`VmState`]), what is drawn
+//! and heard ([`AdvState`]: the layer tree, message window, choice menu, sound players, HUD) and a task pool of
+//! windows over the scene (`menu/`). Each frame it updates the top task (which takes the input) or handles the story's
+//! own buttons and touches, then runs the VM: the running command updates, and when it finishes the VM runs to the
+//! next command, which is applied to the model and started (`command/`). Loading replays the script to a save point
+//! without drawing and rebuilds the scene (`restore.rs`); the same replay drives rollback, the chapter jumps, event
+//! skip, the backlog and the save list's thumbnails. See `research/docs/engine-internals.md` §10 and §14-§17.
+
 pub mod assets;
 mod command;
 pub mod hud;

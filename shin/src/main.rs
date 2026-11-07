@@ -1,3 +1,11 @@
+//! The game: Umineko no Naku Koro ni Saku on PC (the Open Catbox Project), built on shin.
+//!
+//! [`app`] holds the scenes and the frame; [`adv`] is the story screen (the VM's commands, its menus and HUD);
+//! [`layer`] and [`wiper`] draw it; [`audio`], [`asset`] and [`savedata`] play, load and save; the title flow and the
+//! galleries have a module each; [`ui`] holds the shared gestures, button prompts and touch effect. The port-only parts
+//! are [`port_settings`], [`bindings`], [`export`] and [`capture`]. The overall architecture is in
+//! `research/docs/architecture.md`, the original's behaviour in `research/docs/engine-internals.md`.
+
 // this is noisy & not well-supported by IDEs
 #![allow(clippy::uninlined_format_args)]
 

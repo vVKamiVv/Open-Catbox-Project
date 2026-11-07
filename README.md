@@ -51,11 +51,28 @@ a per-pixel figure (glass, mosaic, dissolve, raster, transparent movies, every m
 Separately, **every command, layer type, transition and layer effect the game's script uses is implemented**. The inventory comes from statically analysing the whole script
 ([`engine-internals.md`](research/docs/engine-internals.md) §2 and §10).
 
+### What v0.2.0 brings on top of the original
+
+- A **PC** tab in Config: window mode (windowed, borderless, fullscreen), window size, V-Sync, a frame-rate cap,
+  supersampling (1.5x / 2x), the button prompts and which controller button confirms.
+- **Controls**: every action can be rebound for keyboard, mouse and controller, and the on-screen button prompts
+  follow the device you play with (keyboard, Xbox, PlayStation or Switch pad).
+- **Save from the galleries**: pictures as full-size PNG, music as WAV, movies as MP4 and character sprites as
+  transparent PNG, into your Pictures, Music and Videos folders.
+- The same speed at any refresh rate: 120, 144 and 240 Hz screens no longer speed anything up.
+- A **launcher that installs itself**: one `OpenCatbox-Setup.exe`, no administrator rights, updates in place, and
+  uninstalls from Installed apps.
+
+What each of these does, exactly, is in [`engine-internals.md`](research/docs/engine-internals.md) §18-§19 and
+[`launcher.md`](research/docs/launcher.md); the full list of changes is in the [changelog](CHANGELOG.md).
+
 ## 🍰 Preparing the tea party
 
 ### With the launcher
 
-The **Open Catbox launcher** (`launcher/`) does the whole setup for you:
+The **Open Catbox launcher** (`launcher/`) does the whole setup for you. Download `OpenCatbox-Setup.exe` from the
+[releases](https://github.com/vVKamiVv/Open-Catbox-Project/releases) and run it: it installs itself for your Windows
+user (no administrator rights), with Start menu and desktop shortcuts, and keeps itself up to date. Then:
 
 1. Point it at your own dump of the Switch release (the base NSP, title id `01006A300BA2C000`, and optionally the
    1.0.3 update NSP for Japanese) and your console's `prod.keys`. It unpacks the game data on your computer and
@@ -117,20 +134,22 @@ Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the 
 | Up arrow | Up | Roll back one line; move in menus |
 | Drag and flick | Touch | Scroll lists, turn pages, pan pictures |
 | Page Up / Page Down | Right stick | Scroll long texts (Tips, Characters, the culprit game) |
-| F5 or P | ZR | Save to the last used bookmark; save the item in the galleries |
+| F5 or P (in the galleries also `-`) | ZR (in the galleries also −) | Save to the last used bookmark; in the galleries, save the item to your Pictures, Music or Videos folder |
 | F11 | | Fullscreen (borderless) on/off |
 
 Keys and buttons can be rebound in Config → PC → Controls (saved in `settings.json`), except menu movement and the
 mouse's left button.
-Controller buttons map by position, so on an Xbox pad B confirms and A goes back, as on the Switch; the on-screen
-button prompts follow the device you last used (keyboard, Xbox, PlayStation or Switch pad), or the "Button prompts"
-choice in the PC tab.
+Controller buttons map by position, so on an Xbox pad B confirms and A goes back, as on the Switch; set Config → PC →
+**Confirm button** to Bottom to confirm with Xbox A / PlayStation ✕ instead. The on-screen button prompts follow the
+device you last used (keyboard, Xbox, PlayStation or Switch pad), or the "Button prompts" choice in the PC tab, and
+always show the button that is bound now.
 
 A tap leaves a ripple and a drag a trail of stars, as on the Switch's touch screen (setting "visual touch
 feedback"). Config has a PC tab for the window mode and size, V-Sync, a frame-rate cap, supersampling, the button
-prompts and the controls, saved in
-`settings.json` next to the save file. For working on the port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its
-animations) and time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 normal speed).
+prompts, the confirm button and the controls, saved in `settings.json` next to the save file. For working on the
+port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its animations) and time control (F6 pause,
+F7 one frame, F8/F9 slower/faster, F10 normal speed); the other developer flags are in `shin --help` and
+[`engine-internals.md`](research/docs/engine-internals.md) §21.
 
 ## 🗝️ Inside the mansion
 
@@ -140,7 +159,8 @@ animations) and time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 n
 | `shin-core/` | Reading and writing the game's data formats |
 | `shin-render*`, `shin-audio`, `shin-video`, `shin-tasks`, `shin-window`, `shin-input`, `shin-primitives`, `shin-derive` | Rendering, audio, video, threading, windowing, input and shared building blocks |
 | `sdu/`, `shin-asm/` | Command-line tool to extract and convert game data (`.rom`, `.pic`, `.bup`, `.nxa`, `.snr`, `.fnt`, `.txa`), and an assembler/disassembler for the game's script bytecode |
-| `research/` | Reverse-engineering notes, Ghidra scripts and the symbol map of the original executable |
+| `launcher/` | The Open Catbox launcher: setup from your dump, translations, installing and updating itself |
+| `research/` | Reverse-engineering notes, Ghidra scripts and the symbol map of the original executable; how the port is put together is in [`architecture.md`](research/docs/architecture.md) |
 
 ## 🌹 Credits
 

@@ -40,7 +40,7 @@ from it.
 
 This version only contains some improvements to savedata handling in sdu.
 
-- Fix a bug where some savefiles were not decoded promerly due to several missing `.align` calls
+- Fix a bug where some savefiles were not decoded properly due to several missing `.align` calls
 - Update naming of some savefile fields to reflect latest RE
 - Implement savefile encoding, accessible via `sdu save encode`. This allows one to edit the decoded savefile and to
   insert it back into the game.
@@ -63,7 +63,7 @@ This version only contains some improvements to savedata handling in sdu.
 
 ### Version 0.7.0
 
-This is a release that contains big rewrites upder the hood. They might not improve compatibility that much initially (I
+This is a release that contains big rewrites under the hood. They might not improve compatibility that much initially (I
 would expect the compat to be worse, actually), but will make implementing some engine features possible at all.
 
 - Rewrite of the rendering engine to actually use the shaders/render passes in an equivalent to the way original game
@@ -73,10 +73,10 @@ would expect the compat to be worse, actually), but will make implementing some 
   be contained.
 - Rewrite of the input handling to somewhat resemble what the original game does.
 - Rewrite of the `MessageLayer` to include all the features the original game has. Now we have messagebox sliding
-  animations, overflow handling, keywait animations and voice support (though this needs still needs implementation from
+  animations, overflow handling, keywait animations and voice support (though this still needs implementation from
   the audio engine side).
 - Rewrite of the `LayerGroup`, `PageLayer` and `ScreenLayer` classes, which are much closer to what the game does.
-- Stub implementation of `NewDrawableLayer` framework, paving the way for implementing various funny effects the scrip
+- Stub implementation of `NewDrawableLayer` framework, paving the way for implementing various funny effects the script
   uses sometimes.
 - Rewrite of `PictureLayer` and `BustupLayer` to no longer use stitched together textures (RIP), but do it the same way
   game does, by rendering in blocks. This indirectly fixes the ugly face seams we were getting due to some rounding
@@ -91,14 +91,14 @@ It also updates various dependencies of the engine, but this shouldn't change th
 
 ### Version 0.6.0
 
-This is just an update of the changes accumulated over they year. This doesn't improve compat, mostly small internal
+This is just an update of the changes accumulated over the year. This doesn't improve compat, mostly small internal
 changes
 
 - Add a very basic linear scenario disassembler. The output format is not stable yet, probably should work on making it
   compatible with what `shin-asm` expects.
 - Implement & expose in sdu `shin-asm`: a way-too-much over-engineered assembler for SNR files. It is still largely
-  unfinished and can assembly only very basic files.
-- Add an optional gstreamer backend to `shin-video`, allowing for hardware-accelerated decoding. Not build by default,
+  unfinished and can assemble only very basic files.
+- Add an optional gstreamer backend to `shin-video`, allowing for hardware-accelerated decoding. Not built by default,
   unsure on how to distribute on windows yet.
 - Use typed `NumberSpec` values, which will get lowered to a more concrete type than `i32` when computed.
 - Various dependency updates.

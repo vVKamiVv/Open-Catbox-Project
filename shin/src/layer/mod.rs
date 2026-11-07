@@ -1,3 +1,14 @@
+//! Layers: everything the story draws.
+//!
+//! The tree, from the top: [`RootLayerGroup`] holds the message window ([`message_layer`]) and the [`ScreenLayer`],
+//! which shows a [`PageLayer`] through a transition (PAGEBACK and WIPE, with a wiper from `crate::wiper`). The page
+//! has four planes, each a [`LayerGroup`] of layer banks holding the script's layers ([`user`]: picture, bustup,
+//! tile, movie, rain, the quiz family). Every drawable layer has the original's numbered properties, each a tweener
+//! ([`LayerProperties`], set by LAYERCTRL), wobblers, and the effect chain of [`NewDrawableLayer`] (blur, mosaic,
+//! raster, ripple, dissolve, ghosting), rendered offscreen in `pre_render` during the update. The choice menu
+//! ([`select_layer`]) is drawn over the tree. See `research/docs/engine-internals.md` §6, §7, §11-§13 and
+//! `research/docs/audit/layers.md`.
+
 mod either;
 mod layer_group;
 pub mod message_layer;

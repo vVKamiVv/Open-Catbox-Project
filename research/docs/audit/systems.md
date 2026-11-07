@@ -3,7 +3,8 @@
 > **Snapshot.** This report describes shin as it stood at the November 2026 audit; its Status and shin columns
 > are kept as written so the evidence stays readable. Since then: the scene and task framework, every menu and mode (title, scenario select, save/load, config, backlog,
 > system menu, the galleries, Characters, Tips, the manual), voices, the settings, transparent and looping movies,
-> the touch gestures on every screen and the touch effect are in, and the menus were compared with the original. Current status of every finding:
+> the touch gestures on every screen and the touch effect are in, input goes through a binding table for keyboard,
+mouse and gamepad (rebindable since v0.2.0, engine-internals §18), and the menus were compared with the original. Current status of every finding:
 > [alignment-plan.md](../alignment-plan.md), which also lists what was compared with the original and the port's
 > measured accuracy.
 

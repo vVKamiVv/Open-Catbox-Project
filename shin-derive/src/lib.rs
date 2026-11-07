@@ -1,3 +1,7 @@
+//! Procedural macros for the engine: the VM command types (`Command`), typed texture archives (`TextureArchive`),
+//! vertex types (`Vertex`), `RenderClone`, fixed-point rationals (`rat!`), and the syntax tree helpers of `shin-asm`
+//! (`syntax_kind!`, `AstNode`, `AstToken`).
+
 // this is noisy & not well-supported by IDEs
 #![allow(clippy::uninlined_format_args)]
 
