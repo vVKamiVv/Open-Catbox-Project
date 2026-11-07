@@ -82,6 +82,9 @@ Other counts: LAYERLOAD flags only 0, 2 (keep properties) and 3 (rain); LAYERUNL
 ## 2. What still differs
 
 Everything the player could see from this audit is fixed. What is left is unused by Umineko or inferred:
+("Unused" was checked on 2026-11-07 by scanning the disassembled `main.snr` of the English, Catbox X and Japanese
+releases: no LAYERCTRL sets props 61–65 or 70 or the delta flag, every LAYERUNLOAD delay is 0, PAGEBACK takes no
+argument, WIPE uses types 0, 1, 8 and 9 only, and LAYERLOAD types 4, 5, 7 and flag 4 never appear.)
 
 1. **Wobbler random seed.** Random mode (13 uses) runs with seed 0; the original reads wobbler `+0`, source unknown.
 2. **Dissolve seed.** Seeded from the clock; the original reads layer `+0x58`, source unknown.

@@ -126,6 +126,10 @@ Status: M matches, D diverges, S stub, X missing, T structural. Impact: H/M/L/no
 1. **The nine unused commands** (MSGSYNC, BGMWAIT, VOICESTOP, RESUMESET, RESUME, LAYERSWAP, TRANSSET, TRANSWAIT,
    MASKUNLOAD) finish at once with a warning. None is used by main.snr. The VM's four unary ops (zero, not16,
    negate, abs) are all in.
+2. **Checked against the scripts** (English, Catbox X and Japanese `main.snr`, 2026-11-07): the only unary op used is
+   negate; real division appears 4 times (the clock hands, non-negative inputs) and real multiplication never;
+   SAVEINFO uses levels 0 and 1; MSGINIT's values (4, 5, 20, 36, and a register set to 1 or 2) are all valid;
+   LAYERSELECT's ids are 0–28.
 
 ## 3. Structural
 
