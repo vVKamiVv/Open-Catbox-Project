@@ -2,6 +2,10 @@
 
 What changed in each release.
 
+## v0.2.3 — 2026-11-07
+
+- Lip-sync fixed: mouths open fully when speaking and close when silent, as in the original.
+
 ## v0.2.2 — 2026-11-07
 
 - **Exit** in the title menu.
