@@ -29,7 +29,10 @@ use crate::{
         },
         properties::LayerProperties,
         render_params::{DrawableClipMode, DrawableClipParams, DrawableParams, TransformParams},
-        user::PictureLayer,
+        user::{
+            PictureLayer,
+            picture_layer::{PictureBlockParams, render_picture},
+        },
     },
     render::PreRenderContext,
     update::{AdvUpdatable, AdvUpdateContext, Updatable, UpdateContext},
@@ -71,6 +74,8 @@ pub struct MovieLayerImpl {
     movie_label: String,
     video_player: Arc<VideoPlayerHandle>,
     still_picture: Option<Arc<Picture>>,
+    /// Skipping ended the movie before its end: its linked still is shown from then on
+    skipped: bool,
     shared: Arc<Mutex<Shared>>,
     transparency: MovieTransparencyMode,
     repeat: bool,
@@ -117,6 +122,7 @@ impl MovieLayer {
                     .expect("Failed to play movie"),
             ),
             still_picture,
+            skipped: false,
             shared: Arc::new(Mutex::new(Shared::new(volume_source, local_volume))),
             transparency,
             repeat,
@@ -182,6 +188,25 @@ impl NewDrawableLayer for MovieLayerImpl {
             PassKind::Opaque
         };
 
+        if self.skipped
+            && let Some(still) = &self.still_picture
+        {
+            // the still is a picture: drawn as the picture layer draws one, in its own passes
+            if let Some(params) = PictureBlockParams::setup(pass_kind, drawable) {
+                let builder =
+                    RenderRequestBuilder::new().depth_stencil_shorthand(stencil_ref, false, false);
+                render_picture(
+                    still,
+                    &self.movie_label,
+                    pass,
+                    builder,
+                    params,
+                    transform.compute_final_transform(),
+                );
+            }
+            return;
+        }
+
         if pass_kind != target_pass {
             return;
         }
@@ -219,7 +244,12 @@ impl NewDrawableLayer for MovieLayerImpl {
 
 impl NewDrawableLayerFastForward for MovieLayerImpl {
     fn fast_forward(&mut self) {
-        // the original (`0x71000c33d0`) may end a movie that does not repeat here; unchecked, see alignment-plan.md
+        // `0x71000c33d0`: skipping drops the player of a movie that does not repeat, which ends it (and a MOVIEWAIT
+        // on it) and leaves its linked still; checked in Eden, where skip passes Episode 1's no81 (1.6 s) in 0.24 s
+        if !self.repeat && !self.video_player.is_finished() {
+            self.video_player.stop();
+            self.skipped = true;
+        }
     }
 }
 

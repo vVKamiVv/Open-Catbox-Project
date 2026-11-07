@@ -100,15 +100,15 @@ A review of the code's TODO comments against the decompile (November 2026) fixed
 its last frame (the original shows the movie's linked still, which is that frame, `0x71000c3400`); each wobbler
 takes its own random seed (`0x71000c7220`), so a layer's random X and Y shakes no longer move together along a
 diagonal; and WIPE gives its loader up to 5 ms of its own frame (`0x71000064b0`), so a wipe starts on the WIPE's
-frame. Two stay open:
+frame. Checked in Eden afterwards: skipping ends a movie that does not repeat (Episode 1's `no81`, 1.6 s, is passed
+in 0.24 s with skip on, line 3896 to 3897). The movie layer's fast-forward (`0x71000c33d0`) drops the player, which
+ends the movie and its MOVIEWAIT and leaves the movie's linked still on screen; the port now does the same (0.06 s
+there, where it used to play the whole 1.6 s). One stays open:
 
 - **A quiz's answer after loading:** QUIZ keeps it in the layer bank (`+0x3f84` answered, `+0x3f88` the answer;
   `0x710000e020`, replay `0x710000df50`), and the scene rebuild (`0x7100019ea0`) hands it to the restored minigame
   (its slot `0x88`). Loading a save made right after answering shows a fresh quiz instead. Needs each minigame's
   slot `0x88` and the answer in the save's layer bank.
-- **Skipping and movies:** a movie layer's fast-forward (`0x71000c33d0`) drops the player of a movie that does not
-  repeat (`+0x61`, read as the repeat flag), which would end it and its MOVIEWAIT under skip. `moviewait.rs` says
-  skip does not end MOVIEWAIT; check in Eden which is right before changing either.
 
 Each step: fix from the original's addresses in the reports, compare with Eden on screen, then update
 `engine-internals.md`.

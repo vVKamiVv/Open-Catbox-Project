@@ -85,9 +85,9 @@ impl UpdatableCommand for MOVIEWAIT {
                 continue;
             };
 
-            // `0x710000bd60`: bit 1 waits while the movie plays. Neither skip mode nor input ends the wait; only event
-            // skip gets past it. shortcut: bit 0 (the movie not ready yet) is never used by the script, so it is not
-            // waited for; implement it if a script uses MOVIEWAIT with 1
+            // `0x710000bd60`: bit 1 waits while the movie plays. Input does not end the wait; skipping does, through the
+            // movie layer's fast-forward, which ends a movie that does not repeat. shortcut: bit 0 (the movie not ready
+            // yet) is never used by the script, so it is not waited for; implement it if a script uses MOVIEWAIT with 1
             if self.unwanted_statuses.contains(AudioWaitStatus::PLAYING)
                 && !movie_layer.is_finished()
             {

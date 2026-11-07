@@ -187,6 +187,13 @@ impl VideoPlayerHandle {
         }
     }
 
+    /// Ends the movie now: no more frames, and its sound stops (dropping the audio-tied timer stops it)
+    pub fn stop(&self) {
+        let mut write_guard = self.inner.write();
+        write_guard.pending_frame = None;
+        *write_guard.timer.get_mut() = Timer::new_independent(1);
+    }
+
     pub fn is_finished(&self) -> bool {
         let read_guard = self.inner.read();
         read_guard.pending_frame.is_none()

@@ -41,7 +41,7 @@ mod murderer;
 #[expect(unused)]
 pub mod movie_layer;
 mod null_layer;
-mod picture_layer;
+pub(crate) mod picture_layer;
 mod quiz_layer;
 mod rain_layer;
 mod tile_layer;

@@ -7,6 +7,7 @@ What changed in each release.
 - A movie that has ended keeps its last frame on screen, as on the Switch, instead of going blank.
 - Random screen shakes move independently left-right and up-down again, instead of along a diagonal.
 - Wipes start on the frame they are called, as on the Switch, instead of one frame later.
+- Skipping no longer waits for movies to play out, as on the Switch.
 - Website, and issue forms for bugs, differences from the Switch version and ideas.
 
 ## v0.2.7 — 2026-11-07

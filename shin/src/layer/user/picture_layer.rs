@@ -171,35 +171,47 @@ impl PictureLayerImpl {
         params: PictureBlockParams,
         transform: Mat4,
     ) {
-        let translation = Mat4::from_translation(Vec3::new(
-            -self.picture.origin_x as f32,
-            -self.picture.origin_y as f32,
-            0.0,
-        ));
-        // NOTE: this scale is combination of a scale from the header (anything besides 1.0 is rejected by shin-core rn) and ¿device-specific? scale (which is 1.0 on switch)
-        let scale = Mat4::from_scale(Vec3::new(1.0, 1.0, 1.0));
+        render_picture(&self.picture, &self.label, pass, builder, params, transform);
+    }
+}
 
-        let transform = transform * scale * translation;
+/// Draws `picture` around its origin; `label` names it in the GPU debug markers
+pub fn render_picture(
+    picture: &Picture,
+    label: &str,
+    pass: &mut RenderPass,
+    builder: RenderRequestBuilder,
+    params: PictureBlockParams,
+    transform: Mat4,
+) {
+    let translation = Mat4::from_translation(Vec3::new(
+        -picture.origin_x as f32,
+        -picture.origin_y as f32,
+        0.0,
+    ));
+    // NOTE: this scale is combination of a scale from the header (anything besides 1.0 is rejected by shin-core rn) and ¿device-specific? scale (which is 1.0 on switch)
+    let scale = Mat4::from_scale(Vec3::new(1.0, 1.0, 1.0));
 
-        pass.push_debug(&format!(
-            "PictureLayer[{}]/{}",
-            &self.label,
-            match params.pass_kind {
-                PictureBlockPassKind::OpaqueOnly => "opaque",
-                PictureBlockPassKind::TransparentOnly => "transparent",
-                PictureBlockPassKind::OpaqueAndTransparent => "opaque_and_transparent",
-            }
-        ));
-        for (&offset, (positions, block)) in &self.picture.blocks {
-            pass.push_debug(&format!("Block[{}]", offset));
-            for position in positions {
-                let transform = transform * Mat4::from_translation(position.extend(0.0));
-                render_block(block, pass, builder, params, transform);
-            }
-            pass.pop_debug();
+    let transform = transform * scale * translation;
+
+    pass.push_debug(&format!(
+        "PictureLayer[{}]/{}",
+        label,
+        match params.pass_kind {
+            PictureBlockPassKind::OpaqueOnly => "opaque",
+            PictureBlockPassKind::TransparentOnly => "transparent",
+            PictureBlockPassKind::OpaqueAndTransparent => "opaque_and_transparent",
+        }
+    ));
+    for (&offset, (positions, block)) in &picture.blocks {
+        pass.push_debug(&format!("Block[{}]", offset));
+        for position in positions {
+            let transform = transform * Mat4::from_translation(position.extend(0.0));
+            render_block(block, pass, builder, params, transform);
         }
         pass.pop_debug();
     }
+    pass.pop_debug();
 }
 
 pub type PictureLayer = NewDrawableLayerWrapper<PictureLayerImpl>;

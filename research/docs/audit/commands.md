@@ -108,7 +108,7 @@ Status: M matches, D diverges, S stub, X missing, T structural. Impact: H/M/L/no
 | LAYERLOAD / LAYERUNLOAD / LAYERCTRL / LAYERWAIT | `layerload.rs` ... | M | Layer agent's area; LAYERLOAD and LAYERWAIT executes use `isSkipping` (shin relies on the per-frame root fast-forward) | L | – |
 | LAYERSELECT listener `0x7100003740` | `layerselect.rs` | M | Both ids clamped to 0..255, then put in order | none | - |
 | LAYERSWAP `0x710000b8c0` (ctor `0x710000b7b0`) | – (finishes at once with a warning; `create_back_layer_group_if_needed` disabled) | X | It render-clones the root group into `ADV+0xb0` (the back layer group); unused | none | – |
-| MOVIEWAIT `0x710000bd60` | `moviewait.rs` | M | No skip test in the original either | none | – |
+| MOVIEWAIT `0x710000bd60` | `moviewait.rs` | M | No skip test in MOVIEWAIT itself; skipping ends it through the movie layer's fast-forward (`0x71000c33d0`, checked in Eden), as in the port | none | – |
 | TRANSSET / TRANSWAIT `0x710000c220` / `0x710000c260` | – (finish at once with a warning) | X | TRANSSET only stores params in the model (`+0x37d8..+0x3800`); TRANSWAIT waits on layers of a selection (`0x710007b690`). Unused | none | – |
 | PAGEBACK / PLANESELECT / PLANECLEAR | `pageback.rs`, `planeselect.rs`, `planeclear.rs` | M | Model writes match (`+0x3dd0`, `+0x3dcc`) | none | – |
 | MASKLOAD listener `0x71000040c0` | `maskload.rs` | M | Plane mask `+0x3380 + 0x170·plane` | none | – |
