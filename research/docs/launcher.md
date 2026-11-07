@@ -144,6 +144,9 @@ puts it), then, in builds from source, in `target\release\` of the checkout.
 
 - Settings are stored in `<home>\launcher.json`: the last language, fullscreen, debug logging, an optional `data_dir`
   (absolute, or relative to the home) and `migrated_from` after the one-time move below.
+- **Settings → Import save…** copies a `SAVEDATA` you pick (for example one backed up from the Switch) over the
+  game's save, keeping the current one as `SAVEDATA.bak` next to it. Only its size is checked (empty or over 1 MB is
+  refused); the game itself rejects a file that does not decode.
 - The game's output goes to `<data>\logs\shin.log`, overwritten on each start. By default it is run with
   `RUST_LOG=warn`; **Settings → Debug logging** raises shin's own crates to `debug`, which is what a bug report
   needs.
