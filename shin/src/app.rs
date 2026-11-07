@@ -139,7 +139,7 @@ impl ShinApp for App {
     fn init(context: AppContext<Self>, cli: Self::Parameters) -> anyhow::Result<Self> {
         let audio_manager = Arc::new(AudioManager::new());
 
-        let (asset_io, assets_dir) = locate_assets(cli.assets_dir.as_deref(), cli.patch_dir.as_deref()).context("Failed to locate assets. Consult the README for instructions on how to set up the game.")?;
+        let (asset_io, assets_dir) = locate_assets(cli.assets_dir.as_deref(), cli.patch_dir.as_deref()).context("Game data not found. Set it up with the launcher, or see the README.")?;
         crate::asset::executable::load(
             &[
                 cli.exefs.clone(),
