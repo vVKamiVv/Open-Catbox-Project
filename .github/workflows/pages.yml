@@ -27,7 +27,11 @@ jobs:
         with:
           make-default: false
       - name: Install packages (Linux)
-        run: sudo apt-get update && sudo apt-get install libasound2-dev libudev-dev
+        # GStreamer for shin-video's Linux decoder; the runner's libunwind-14-dev conflicts with the libunwind-dev it needs
+        run: |
+          sudo apt-get update
+          sudo apt-get remove -y libunwind-14-dev || true
+          sudo apt-get install -y libasound2-dev libudev-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
       - name: cargo doc --no-deps
         uses: actions-rs/cargo@v1
         with:
