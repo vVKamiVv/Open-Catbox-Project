@@ -1,7 +1,7 @@
 use std::{fs::File, time::Duration};
 
 use enum_map::{Enum, EnumMap, enum_map};
-use glam::Mat4;
+use glam::{Mat4, Vec3, Vec4};
 use shin_audio::AudioManager;
 use shin_core::{primitives::update::FrameId, time::Ticks};
 use shin_input::{
@@ -24,6 +24,7 @@ impl Action for PlayAction {
             mouse: _,
             keyboard,
             gamepads,
+            ..
         }: &RawInputState,
     ) -> EnumMap<Self, bool> {
         enum_map! {
@@ -67,6 +68,7 @@ impl ShinApp for PlayerExample {
         &mut self,
         context: AppContext<Self>,
         input: EnumMap<Self::ActionType, ActionState>,
+        _pointer: shin_input::Pointer,
         elapsed_time: Duration,
         _command_encoder: &mut wgpu::CommandEncoder,
     ) {
@@ -90,11 +92,10 @@ impl ShinApp for PlayerExample {
         if let Some(frame) = self.video_player.get_frame() {
             let size = frame.get_frame().get_size();
 
-            frame.render(
-                pass,
-                RenderRequestBuilder::new(),
-                Mat4::from_translation(1.0 / size.extend(1.0)),
-            );
+            // the frame is a quad of its size in pixels; the window's pass is in clip space: stretch it over the window
+            let to_clip = Mat4::from_translation(Vec3::new(-1.0, 1.0, 0.0))
+                * Mat4::from_scale(Vec3::new(2.0 / size.x, -2.0 / size.y, 1.0));
+            frame.render(pass, RenderRequestBuilder::new(), to_clip, Vec4::ONE, false);
         }
     }
 }

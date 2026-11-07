@@ -27,6 +27,7 @@ impl Action for HelloAction {
             mouse: _,
             keyboard,
             gamepads,
+            ..
         }: &RawInputState,
     ) -> EnumMap<Self, bool> {
         enum_map! {
@@ -53,6 +54,7 @@ impl ShinApp for HelloApp {
         &mut self,
         context: AppContext<Self>,
         input: EnumMap<HelloAction, ActionState>,
+        _pointer: shin_input::Pointer,
         _elapsed: Duration,
         _command_encoder: &mut wgpu::CommandEncoder,
     ) {
