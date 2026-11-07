@@ -2,6 +2,12 @@
 
 What changed in each release.
 
+## v0.2.4 — 2026-11-07
+
+- Story swipes, as on the Switch: right opens the menu, down hides the text box, left shows the touch buttons
+  (auto, skip, backlog, previous and next chapter).
+- Overwriting a save updates its picture right away.
+
 ## v0.2.3 — 2026-11-07
 
 - Lip-sync fixed: mouths open fully when speaking and close when silent, as in the original.
