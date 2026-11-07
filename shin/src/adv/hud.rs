@@ -286,7 +286,12 @@ impl AdvHud {
         if self.hint_alpha.running() {
             return false;
         }
-        self.hint_v = if touch { 0.5 } else { 0.0 };
+        // the buttons' row is 1 when confirm and cancel are swapped (`0x71000fc1f0`; the port's Confirm button option)
+        self.hint_v = match (touch, shin_input::inputs::bottom_confirms()) {
+            (true, _) => 0.5,
+            (false, true) => 0.25,
+            (false, false) => 0.0,
+        };
         self.hint_alpha = Steps::new(0.0, vec![
             linear(1.0, 32.0),
             linear(1.0, 120.0),
@@ -429,8 +434,7 @@ impl AdvHud {
 
         let hint = self.hint_alpha.value();
         if self.hint_alpha.running() && hint > 0.0 {
-            // row 0: "Press B to Skip.", row 2: the touch screen's
-            // shortcut: the original picks row 1 for the buttons' hint by a system flag (`0x71000fc1f0`); always row 0
+            // row 0: "Press B to Skip.", row 1 its swapped-buttons twin, row 2: the touch screen's
             let sprite = Sprite::new(self.textures.get("skip"), [16.0, 1000.0, 656.0, 1064.0])
                 .uv([0.0, self.hint_v, 1.0, self.hint_v + 0.25])
                 .alpha(hint);

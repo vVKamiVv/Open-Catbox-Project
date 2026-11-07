@@ -90,16 +90,15 @@ impl Default for MessageboxStyle {
 }
 
 impl FromNumber for MessageboxStyle {
+    /// The original clamps on use: a type of 6 or more, or a layout of 4 or more, is 0 (`0x7100226518`, `0x7100226520`)
     fn from_number(number: i32) -> Self {
-        assert!(number >= 0);
         let msgbox_type = number & 0xf;
         let text_layout = (number >> 4) & 0xf;
         Self {
-            messagebox_type: num_traits::FromPrimitive::from_i32(msgbox_type).unwrap_or_else(
-                || panic!("MsgInit::from: unknown messagebox type: {}", msgbox_type),
-            ),
+            messagebox_type: num_traits::FromPrimitive::from_i32(msgbox_type)
+                .unwrap_or(MessageboxType::Neutral),
             text_layout: num_traits::FromPrimitive::from_i32(text_layout)
-                .unwrap_or_else(|| panic!("MsgInit::from: unknown text layout: {}", text_layout)),
+                .unwrap_or(MessageTextLayout::Justify),
         }
     }
 }

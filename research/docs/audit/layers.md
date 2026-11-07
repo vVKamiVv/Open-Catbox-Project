@@ -30,7 +30,7 @@ Logs, decompiles and extracted shaders: `$S\audit\layers\` (`d1.c`–`d9.c`, `sh
 | 26 flip | 62 | | ok |
 | 73–75 rain | 55 / 16 / 4 | | ok (doc §6) |
 | 67 mosaic, 76–81 raster, 40–43 wobble alpha | 14, 8–4, 2 | | ok |
-| 2, 25, 44–55, 61–65, 70–72, 85–89 | **0** | never set by the script | 44–55 wired as the original; clip 61–65 and prop 70 still panic if set, harmless for Umineko |
+| 2, 25, 44–55, 61–65, 70–72, 85–89 | **0** | never set by the script | 44–55 wired as the original; clip 61–65 and prop 70 are logged once and not drawn if set, harmless for Umineko |
 
 Other counts: LAYERLOAD flags only 0, 2 (keep properties) and 3 (rain); LAYERUNLOAD delay always 0; MASKLOAD 169 (flags
 16/17/19); WIPE mask type 29 (flags 0 or 4); TRANSSET/TRANSWAIT/LAYERSWAP/MASKUNLOAD 0.
@@ -54,19 +54,19 @@ Other counts: LAYERLOAD flags only 0, 2 (keep properties) and 3 (rain); LAYERUNL
 | `PictureBlockParams::setup` `0x7100072230` | `picture_layer.rs::setup` | matches | same pass split and shader simplification as shin's `is_equivalent_to_default` | none | – |
 | `PictureLayer::renderDirect/renderIndirect` `0x71000c5fa0` / `0x71000c6040` | `picture_layer.rs`, `NewDrawableLayer::render_drawable_indirect` | matches, 1 shortcut | indirect always returns the transparent pass (`coversScreen` `0x7100072c80` not ported, marked `shortcut:`); block culling `TODO` | none | S |
 | Effect chain `NewDrawableLayer::preRender` `0x71000762e0` | `new_drawable_layer/mod.rs`, `effect_passes.rs` | matches (doc §11) | blur, mosaic, raster, ripple, dissolve, ghosting confirmed; ghosting transform `0x7100075220` = shin's | none | – |
-| Prop 70 effect (program `0x2c`) | `pre_render` | **stub** | `todo!()` → panic if ever > 0 | none (never set) | M |
+| Prop 70 effect (program `0x2c`) | `pre_render` | **stub** | Logged once and skipped if ever > 0 (the effect is not decoded) | none (never set) | M |
 | Dissolve seed (layer `+0x58`) | `NewDrawableLayerState::dissolve_seed` | inferred | shin seeds from the clock (marked `shortcut:`); source in the original still open | low | S |
 | Effect composite `0x7100078af0` | `try_finish_indirect_render` | matches | transparent pass programs 14–19 + blends 5–7, opaque pass 8–13 + blend 1; colour premultiplied (inferred from `0x71000566f0` multiply) | none | – |
-| Clip mode props 61–65 (read in `0x71000788e0`) | `assert_eq!(clip mode, None)` in every user layer's direct draw (picture, bustup, tile, rain, ...), `try_finish_indirect_render` and `LayerGroup::render` | stub | would panic | none (never set) | M |
+| Clip mode props 61–65 (read in `0x71000788e0`) | not drawn: a set clip mode is logged once (`layer::warn_unsupported_clip`) | stub | would panic | none (never set) | M |
 | `LayerGroup` render `0x710007d5e0` | `layer_group.rs::render` | matches | opaque pass children back to front, then fill quad (program 0, stencil greater, (0,0,0,0)), transparent pass front to back | none | – |
 | `LayerGroup` child sort, comparator `0x7100081110` | `layer_group.rs::pre_render` sort | matches | higher RenderPosition first (|Δ| ≥ ε); ties: lower layer id first (key = Properties `+0x20`, set by LAYERLOAD from the record field `+0x58` = layer id). equal ids (the port's id-less screen and message layers) fall back to the layer bank | none | – |
 | `LayerGroup` indirect `vfunc_16` `0x710007e2c0`, fill colour `0x7100226c88` | `LayerGroupNewDrawableDelegate::render_drawable_indirect`, `render` opaque fill | matches | effect texture cleared and uncovered pixels filled with (0,0,0,0) | none | – |
-| `LayerGroup` delayed removal (`vfunc_3` `0x710007bc00`) | `remove_layer` | stub (`unimplemented!`) | | none (delay always 0) | M |
+| `LayerGroup` delayed removal (`vfunc_3` `0x710007bc00`) | `remove_layer` | diverges | A delay is logged and the layer removed at once | none (delay always 0) | M |
 | `LayerGroup::TransitionLayer`, LAYERLOAD auto-wipe (flag 4) | none | missing | | none (flag never used) | L |
 | LayerGroup mask (MASKLOAD) `0x710007df80`, `0x710007d8d0` | `prepare_mask_*`, `finish_render_with_mask` | matches (structure, flag bits) | flip 1/2, invert 4, scale **0x10** in both; mask programs `0x7100226da8` unverified (not compared) | unknown (169 uses; the mask wiper has since been seen to match Eden in the scenario select's curtain wipe) | – |
 | `PageLayer` `vfunc_8` `0x710009f360`, `vfunc_16` `0x710009fc50` | `page_layer.rs` | matches | plane occlusion and stencil bump match; the effect chain gets the parent's transform; clears and fill use (0,0,0,0) | none | – |
 | `ScreenLayer` `vfunc_8` `0x71000e67f0`, `vfunc_16` `0x71000e6b70` | `screen_layer.rs` | matches | the effect chain gets the parent's transform (no double shake/zoom); indirect returns the opaque pass; background (0,0,0,0) | none | – |
-| `ScreenLayer::TransitionLayer` + PAGEBACK | `TransitionLayer`, `pageback` | matches; stub branch | `pageback(start_anew = true)` is `todo!()` (never called with true) | none | – |
+| `ScreenLayer::TransitionLayer` + PAGEBACK | `TransitionLayer`, `pageback` | matches; stub branch | `pageback(start_anew = true)` starts from an empty page (inferred; PAGEBACK always passes false) | none | – |
 | Back layer group (snapshot while animations are blocked) | `create_back_layer_group_if_needed` (`adv/mod.rs`) | **stub** (inferred semantics) | no-op; the original renders a snapshot instead of half-applied changes | low (possible one-frame half-built scenes) | M |
 | `BustupLayer::update` `0x7100036a00` | `bustup_layer.rs` | matches | prop 27 = 0 freezes the mouth (frame 0) and resets blinking; otherwise mouth = `min(level × mouth count / 3, count − 1)` from the voice's lip-sync level, and blinking: timer += dt, after a wait of `(1 − r²)·240 + 80` ticks (`0x710015a640`, `0x710015aa48`; r from minstd_rand 48271, × 2⁻³¹) the eye frames play over 20 ticks. Each bustup is seeded from a random source, as in the original | none | – |
 | `MovieLayer` `0x71000c3560` / `0x71000c38c0` | `movie_layer.rs` | matches | alpha (`Transparent`) movies drawn with their alpha (`movie_alpha.wgsl`), repeat replays from the start, layer colour and blend applied; YUV converted in the same pass (the original uses a separate pass, same image) | none | – |
@@ -88,8 +88,8 @@ Everything the player could see from this audit is fixed. What is left is unused
 3. **Back layer group** (`create_back_layer_group_if_needed`): a no-op. Implement once its behaviour is confirmed
    (snapshot the root group when a layer command starts while animations are blocked; render the snapshot until
    animations run again).
-4. **Panics on unused features:** clip mode 61–65, prop 70, delayed LAYERUNLOAD, `pageback(start_anew)`, the six
-   unported wipers.
+4. **Unused features without the original's behaviour:** clip mode 61–65 and prop 70 are logged and not drawn,
+   a delayed LAYERUNLOAD removes at once; the six unported wipers still panic if loaded.
 5. **Missing, never loaded:** `LayerGroup::TransitionLayer` (LAYERLOAD flag 4), layer types 4, 5 and 7.
 
 ## 3. Structural

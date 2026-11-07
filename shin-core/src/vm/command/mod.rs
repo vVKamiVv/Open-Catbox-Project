@@ -4,7 +4,7 @@ pub mod types;
 
 use shin_derive::Command;
 use types::{
-    AudioWaitStatus, LayerCtrlFlags, LayerId, LayerLoadFlags, LayerProperty, LayerType, MaskFlags,
+    AudioWaitStatus, LayerCtrlFlags, LayerLoadFlags, LayerProperty, LayerType, MaskFlags,
     MessageboxStyle, Pan, VLayerId, Volume,
 };
 
@@ -301,9 +301,9 @@ pub enum Command {
     /// These can then be used as [VLayerIdRepr::Selected] in commands accepting a [VLayerId].
     #[cmd(opcode = 0xc6u8)]
     LAYERSELECT {
-        // AFAIK, those can't use the virtual layer numbers
-        selection_start_id: NumberSpec<LayerId>,
-        selection_end_id: NumberSpec<LayerId>,
+        // plain layer numbers (no virtual ones), clamped to 0..=255 by the listener (`0x7100003740`)
+        selection_start_id: NumberSpec<i32>,
+        selection_end_id: NumberSpec<i32>,
     },
     #[cmd(opcode = 0xc7u8)]
     MOVIEWAIT {

@@ -3,10 +3,11 @@ use super::prelude::*;
 impl StartableCommand for command::runtime::AUTOSAVE {
     type StateInfo = ();
 
-    /// `0x71000026e0`: a save point
+    /// `0x71000026e0`: a save point, which also commits the SAVEINFO texts
     fn apply_state(&self, state: &mut VmState) {
         state.save.save_point(&mut state.global.persist_data);
         state.save.chapter();
+        state.save_info.commit();
     }
 
     fn start(

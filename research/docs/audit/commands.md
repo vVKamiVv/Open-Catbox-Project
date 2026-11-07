@@ -60,23 +60,23 @@ Status: M matches, D diverges, S stub, X missing, T structural. Impact: H/M/L/no
 | Original (address) | shin | St | What differs / evidence | Impact | Fix |
 |---|---|---|---|---|---|
 | VM run loop `0x71000ef450`, `rnd` `0x71000ed3c0` | `shin-core/src/vm/mod.rs` | M | PRNG steps once per instruction before it runs, dispatch until a command; rnd formula matches. Unary ops other than zero/negate still `todo!()` (only negate used, engine-internals §10) | none | – |
-| ADV task update `0x7100010fb0` (command loop) | `Adv::update` | M/D | Same loop shape. WAIT ends 1 frame early: the original decrements the timer after the command loop, shin inside WAIT's update, which also runs on its start frame (`wait.rs`) | L | S |
-| ADV input `0x7100011ea0` | `Adv::handle_input`, `Adv::handle_mode_buttons` | D | L/R toggles with sounds, X/Y/cancel stop the modes, event hint and event skip (B and long press), Plus/Minus jumps, Y system menu, X backlog, B hide window, Up rollback and the touch gestures are all in. Still different: an interruptible WAIT is ended even when the press advanced the text (original: only if the message layer did not take it). Held Ctrl skips as a PC extra | L | S |
+| ADV task update `0x7100010fb0` (command loop) | `Adv::update` | M | Same loop shape. WAIT checks its timer before counting it down, as the original counts after the command loop (`wait.rs`) | none | - |
+| ADV input `0x7100011ea0` | `Adv::handle_input`, `Adv::handle_mode_buttons` | M | L/R toggles with sounds, X/Y/cancel stop the modes, event hint and event skip (B and long press), Plus/Minus jumps, Y system menu, X backlog, B hide window, Up rollback, the touch gestures, and confirm or down advancing; an interruptible WAIT ends only on a press the text did not take (`0x7100012194`). Held Ctrl skips as a PC extra | none | - |
 | `isSkipping` `0x7100012430` | `Adv::is_fast_forwarding` | M | Skip bit (or held Ctrl), system enabled, no event, no task/choice/quiz, v11 read test (`modes_allowed`) | none | – |
 | `isAuto` `0x71000122f0`, auto toggle (L) | `Adv::is_auto` → `MessageLayer::request_autoplay` | M | Same gates without the read test; auto does not advance event lines (`IGNORE_INPUT`) | none | – |
 | Read flags: MSGSET ctor `+0x2dd9` (`0x71000d19f0` on seen set), writer `0x7100014f50`/`0x7100014fa0` (spec_save 6.2) | `msgset.rs` (`line_read`), `Adv::update` (`take_finished`) | M | MSGSET computes the read flag (script id − 1); a finished line is added to `seen_messages` | none | – |
 | skip/auto icons, touch HUD `+0x500`, event hint `+0x4a0` (render `0x71000125a0`) | `hud.rs`, `touch_buttons.rs` | M | Icons, touch buttons and hint drawn in the original's order. Shortcut: the hint always uses row 0 (the original picks row 1 by a system flag `0x71000fc1f0`) | none | – |
 | Notification queue `0x71000148f0`, banner in ADV update/render | `AdvHud::queue_notification` | M | One pending per kind, `notify1`/`notify2`, tweens as in the NOTIFYSET row | none | – |
-| `ADV::Context` (`+0x2530..+0x9170`) | `VmState` (+`SaveState`, `LayersState`, `AudioState`, `MessageState`, `SaveInfo`) | T | System enabled, CHARS, tips, notify level, line read, line and chapter save points and line counts are now model fields written in `apply_state`. Still missing: the SAVEINFO pending/committed pairs `+0x90f8..+0x9118` | L | S |
+| `ADV::Context` (`+0x2530..+0x9170`) | `VmState` (+`SaveState`, `LayersState`, `AudioState`, `MessageState`, `SaveInfo`) | T | System enabled, CHARS, tips, notify level, line read, line and chapter save points and line counts are now model fields written in `apply_state`. The SAVEINFO pending/committed pairs `+0x90f8..+0x9118` are in `SaveInfo` | L | S |
 | `ADV::First` (`0x7100019930`) | `Adv::new` | M | New game or load start | none | – |
 | `ADV::SceneLoader` (`0x710001b340`, `0x7100019ea0`) | `Adv::new`, `replay`, `restore.rs` | M | The same replay serves loads, rollback, the chapter jumps, event skip, the backlog and save thumbnails | none | – |
 | `ADV::HiddenWindow` (ctor `0x710001bd80`) | `menu/hidden_window.rs` | M | B / downward flick; nothing paused | none | – |
 | `ADV::SystemMenu` (ctor `0x710001c100`) | `menu/system_menu.rs` | M | Compared with Eden (alignment-plan row 15) | none | – |
 | `ADV::Command` slot 3 "skippable" | `look_ahead` in `adv/mod.rs` | M | Not a per-command slot: `look_ahead` decides the stops (AUTOSAVE, SELECT/QUIZ, unread line with v11, EVEND) | none | – |
-| **EXIT** listener `0x7100000230`, execute `0x7100004b10` | `exit.rs`, `Adv::update` | D | Banners hide, skip/auto off, box closes, voice and SE stop, SSETs flushed, 30-frame wait, then the save is written and the title opens. Still different: the layer banks are not cleared (the title fades in over the last scene), the touch buttons are not slid out (`syscall0Fade`), and input stays on during the wait (original `+0x480 = 0`, modal `+0x470 = 1`) | L | S |
+| **EXIT** listener `0x7100000230`, execute `0x7100004b10` | `exit.rs`, `Adv::update` | M | The touch buttons slide out, the banners hide (`0x71000643c0`, `0x710009e4a0`), input turns off, skip/auto off, box closes, voice and SE stop, SSETs flushed, 30-frame wait, then the save is written and the title opens. (An earlier note that it clears the layer banks misread the banner calls) | none | - |
 | SGET `0x7100004d40` / SSET `0x7100004e60` | `sget.rs`, `sset.rs`, `save.rs` | M | Pending-SSET lookup, route write (spec_save) | none | – |
-| WAIT `0x7100005090` | `wait.rs` | M/D | Skip cancels; interrupt rule and 1-frame timing above | L | S |
-| MSGINIT listener `0x7100000690` | `msginit.rs` | M | Model `+0x90ec`. The original clamps on use (type < 6 via table `0x7100226518`, layout < 4 via `0x7100226520`, else 0); shin panics on an unknown value when parsing (none in main.snr) | none | S |
+| WAIT `0x7100005090` | `wait.rs` | M | Skip cancels; a wait of N frames ends on frame N + 1; an interruptible one ends on a confirm or down the text did not take | none | - |
+| MSGINIT listener `0x7100000690` | `msginit.rs` | M | Model `+0x90ec`. An unknown type (6 or more) or layout (4 or more) is 0, as the original's tables (`0x7100226518`, `0x7100226520`) | none | - |
 | **MSGSET** ctor `0x7100005140`, execute `0x71000052e0`, slot 3 `0x71000052a0` | `msgset.rs` | M | Flags `read | (event ? 2 : 0)` and animate = `!isSkipping` as in the original; ctor's read flag and rollback points kept. The message layer does not use the read flag (`UNUSED_FLAG`), see open questions | none | – |
 | MSGWAIT listener `0x71000008b0`, exec `0x7100005630` | `msgwait.rs` | M | A close clears the line, so a waiting `MSGWAIT -1` finishes as with the original's `isClosing` | none | – |
 | MSGSIGNAL `0x7100005710` | `msgsignal.rs` | M | – | none | – |
@@ -97,16 +97,16 @@ Status: M matches, D diverges, S stub, X missing, T structural. Impact: H/M/L/no
 | VOICESTOP `0x7100007700` | – (finishes at once with a warning) | X | Stops the voice; unused | none | S |
 | VOICEWAIT `0x7100007760` | `voicewait.rs` | M | Voice player status | none | – |
 | SYSSE `0x71000077d0` | `sysse.rs` | M | §10 | none | – |
-| SAVEINFO listener `0x7100002590` | `saveinfo.rs` | D | Original writes a *pending* text per level (`+0x90f8 + 16·level`); AUTOSAVE commits it (`+0x9100 ← +0x90f8`, `+0x9110 ← +0x9108`); the save slot and the banner use the committed copy. shin sets it at once; `set_save_info` accepts level 4 but the array has 4 entries (panics; script uses 0 and 1 only) | L | S |
-| **AUTOSAVE** listener `0x71000026d0`, exec `0x71000078d0` | `autosave.rs`, `hud.rs` | D | Counter/snapshot and the scene-title banner (`0x7100064240`: level-1 SAVEINFO text, size 48, 1920 wide, bottom-left at (4, 1076), in/out 0.03, hold 240, finished by skip, gated by v14) match. Missing: the commit of the SAVEINFO texts (see SAVEINFO) | L | S |
+| SAVEINFO listener `0x7100002590` | `saveinfo.rs`, `vm_state/mod.rs` `SaveInfo` | M | Writes the *pending* text for its level (`+0x90f8 + 16·level`; levels 0 and 1, others are logged and ignored); AUTOSAVE commits it. The save slots, the banner and the system menu use the committed copy | none | - |
+| **AUTOSAVE** listener `0x71000026d0`, exec `0x71000078d0` | `autosave.rs`, `hud.rs` | M | Counter/snapshot, the SAVEINFO commit (`+0x9100 ← +0x90f8`, `+0x9110 ← +0x9108`) and the scene-title banner (`0x7100064240`: level-1 text, size 48, 1920 wide, bottom-left at (4, 1076), in/out 0.03, hold 240, finished by skip, gated by v14) | none | - |
 | EVBEGIN / EVEND `0x71000027e0` / `0x7100002960` | `evbegin.rs`, `evend.rs` | M | Model matches; executes return 1. Event semantics live in MSGSET flags, isSkipping and event skip | none | – |
 | RESUMESET / RESUME `0x7100007b00` / `0x7100007b40` | – (finish at once with a warning; RESUME stops a replay) | X | Unused | none | – |
 | **SYSCALL** listener `0x7100002ce0`, exec `0x7100007c10` | `syscall.rs` | M | Id 0: `apply_state` sets system enabled `+0x913c = (argument != 0)`; start slides the touch buttons out and turns skip and auto off. One use (`0xa1456`) | none | – |
-| TROPHY `0x7100007c80` | `trophy.rs` | M | Switch build does nothing (`0x71001171f0` locks/unlocks a mutex); shin's warn is noise | none | S |
+| TROPHY `0x7100007c80` | `trophy.rs` | M | Switch build does nothing (`0x71001171f0` locks/unlocks a mutex); a no-op here too | none | - |
 | **UNLOCK** `0x7100007cd0` | `unlock.rs`, `unlocks.rs` | M | Type 0/1/2 add each index to the CG / BGM / movie sets (38 uses) | none | – |
 | LAYERINIT `0x7100008120` (ctor `0x7100007dd0`) | `layerinit.rs` | M | Model shape matches | none | – |
 | LAYERLOAD / LAYERUNLOAD / LAYERCTRL / LAYERWAIT | `layerload.rs` ... | M | Layer agent's area; LAYERLOAD and LAYERWAIT executes use `isSkipping` (shin relies on the per-frame root fast-forward) | L | – |
-| LAYERSELECT listener `0x7100003740` | `layerselect.rs` | D | Original clamps both ids to 0..255 then swaps; shin swaps, does not clamp | none | S |
+| LAYERSELECT listener `0x7100003740` | `layerselect.rs` | M | Both ids clamped to 0..255, then put in order | none | - |
 | LAYERSWAP `0x710000b8c0` (ctor `0x710000b7b0`) | – (finishes at once with a warning; `create_back_layer_group_if_needed` disabled) | X | It render-clones the root group into `ADV+0xb0` (the back layer group); unused | none | – |
 | MOVIEWAIT `0x710000bd60` | `moviewait.rs` | M | No skip test in the original either | none | – |
 | TRANSSET / TRANSWAIT `0x710000c220` / `0x710000c260` | – (finish at once with a warning) | X | TRANSSET only stores params in the model (`+0x37d8..+0x3800`); TRANSWAIT waits on layers of a selection (`0x710007b690`). Unused | none | – |
@@ -123,17 +123,9 @@ Status: M matches, D diverges, S stub, X missing, T structural. Impact: H/M/L/no
 
 ## 2. What still differs
 
-1. **SAVEINFO is not pending until AUTOSAVE.** shin writes the text at once, so the save slot and the scene title
-   can show a SAVEINFO given after the chapter's AUTOSAVE. Fix: pending/committed pairs in `SaveInfo`, committed in
-   `AUTOSAVE::apply_state`; also bound `set_save_info` to 0..=3.
-2. **WAIT timing and its interrupt rule.** WAIT ends one frame early and an advance press ends an interruptible
-   WAIT even when the message layer took it. Fix: one ADV wait timer (`0x71000138d0..0x7100013900`) decremented
-   after the command loop, ended by a press only when nothing consumed it.
-3. **EXIT's teardown** leaves the layer banks, the touch buttons and input as they were (see the table).
-4. **LAYERSELECT** does not clamp its ids to 0..255.
-5. **The nine unused commands** (MSGSYNC, BGMWAIT, VOICESTOP, RESUMESET, RESUME, LAYERSWAP, TRANSSET, TRANSWAIT,
-   MASKUNLOAD) finish at once with a warning; the VM's unary ops other than zero/negate still `todo!()`. None is
-   used by main.snr.
+1. **The nine unused commands** (MSGSYNC, BGMWAIT, VOICESTOP, RESUMESET, RESUME, LAYERSWAP, TRANSSET, TRANSWAIT,
+   MASKUNLOAD) finish at once with a warning. None is used by main.snr. The VM's four unary ops (zero, not16,
+   negate, abs) are all in.
 
 ## 3. Structural
 

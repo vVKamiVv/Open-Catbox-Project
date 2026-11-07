@@ -7,8 +7,9 @@ use crate::update::UpdateContext;
 
 /// Behaviour in the Switch v1.0.3 executable (`shin::ADV::WAIT`, execute `0x7100005090`): starts the ADV wait timer
 /// (`0x71000138d0`: context `+0x490` = interruptible, `+0x494` = frames left) and is done once it runs out; skip mode
-/// cancels it (`0x71000138f0`). An interruptible wait can also be ended by the player advancing (Umineko: 49 uses,
-/// e.g. "wait up to a minute or until a click" at `0x0a14a2`).
+/// cancels it (`0x71000138f0`). The timer counts down after the frame's command loop, so a wait of N frames ends on
+/// the frame after its N-th. An interruptible wait is also ended by a confirm or down the text did not take
+/// (`0x7100012194`; Umineko: 49 uses, e.g. "wait up to a minute or until a click" at `0x0a14a2`).
 pub struct WAIT {
     token: Option<command::token::WAIT>,
     waiting_left: Ticks,
@@ -17,8 +18,7 @@ pub struct WAIT {
 }
 
 impl WAIT {
-    /// The player pressed advance; ends the wait if it is interruptible
-    // inferred: the code reading the interruptible flag (+0x490) is not located yet; advance is the natural trigger
+    /// The player pressed advance and the text did not take it; ends the wait if it is interruptible
     pub fn interrupt(&mut self) {
         self.interrupted |= self.allow_interrupt;
     }
@@ -59,15 +59,12 @@ impl UpdatableCommand for WAIT {
         _adv_state: &mut AdvState,
         is_fast_forwarding: bool,
     ) -> Option<CommandResult> {
-        self.waiting_left -= context.delta_ticks;
-        // TODO: short circuit the wait for now
         if self.waiting_left <= Ticks::ZERO || is_fast_forwarding || self.interrupted {
             debug!("WAIT: done");
-            // TODO: this is kinda boilerplaty, maybe we want to have a TokenCell type?
-            Some(self.token.take().unwrap().finish())
-        } else {
-            None
+            return Some(self.token.take().unwrap().finish());
         }
+        self.waiting_left -= context.delta_ticks;
+        None
     }
 }
 

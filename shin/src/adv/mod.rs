@@ -137,8 +137,6 @@ pub struct Adv {
     capture: Option<CaptureTargets>,
     /// Set by a load until the scene has been rebuilt from the replay
     load: Option<LoadState>,
-    /// The play time in 60 Hz frames (`*0x71002267d0`), counted into the save's play seconds
-    play_frames: f64,
     /// Ticks towards the next skip step
     skip_ticks: f32,
     /// The save file should be written (the original writes it when leaving the adventure screen)
@@ -188,7 +186,6 @@ impl Adv {
         bgm_player: BgmPlayer,
     ) -> Self {
         let scenario = assets.scenario.clone();
-        let play_frames = global.play_seconds as f64 * 60.0;
         let (scripter, vm_state, load) = replay(&scenario, global, entry, entry_point);
         let adv_state = AdvState::new(audio_manager, asset_server, assets, bgm_player);
 
@@ -205,7 +202,6 @@ impl Adv {
             script_exited: false,
             capture: None,
             load: load.map(LoadState::Replayed),
-            play_frames,
             skip_ticks: 0.0,
             write_requested: false,
             toggles_held: (false, false),
@@ -591,6 +587,11 @@ impl Adv {
         &self.vm_state.global
     }
 
+    /// The save data, for the app's play-time count
+    pub fn save_data_mut(&mut self) -> &mut SaveData {
+        &mut self.vm_state.global
+    }
+
     /// Whether the save file should be written now; clears the request
     pub fn take_write_request(&mut self) -> bool {
         std::mem::take(&mut self.write_requested)
@@ -730,6 +731,10 @@ impl Adv {
         pointer: Pointer,
         gestures: &[Gesture],
     ) {
+        // EXIT turns input off (`+0x480 = 0`) while it waits to leave
+        if self.script_exited {
+            return;
+        }
         if let Some(select_layer) = &mut self.adv_state.select_layer {
             for (action, input) in [
                 (AppAction::AnyUp, SelectInput::Up),
@@ -893,10 +898,11 @@ impl Adv {
             return;
         }
 
-        // a tap (a click released without a drag or a long press) advances the text, as in the original
-        if state[AppAction::Enter].is_clicked || tapped {
-            self.adv_state.message_layer_mut().try_advance();
-            if let Some(ExecutingCommand::WAIT(wait)) = &mut self.current_command {
+        // confirm, down (mask `0x12000000`) or a tap (a click released without a drag or a long press) advances the
+        // text; only a press the text did not take ends an interruptible WAIT (`0x7100011f08`)
+        if state[AppAction::Enter].is_clicked || state[AppAction::AnyDown].is_clicked || tapped {
+            let taken = self.adv_state.message_layer_mut().try_advance();
+            if !taken && let Some(ExecutingCommand::WAIT(wait)) = &mut self.current_command {
                 wait.interrupt();
             }
         }
@@ -962,10 +968,6 @@ impl Adv {
         let settings = self.vm_state.global.settings;
         self.adv_state
             .apply_settings(&settings, context.delta_ticks);
-
-        // `0x7100026d50`: the play time counts every frame
-        self.play_frames += context.delta_ticks.as_f32() as f64;
-        self.vm_state.global.play_seconds = (self.play_frames / 60.0).min(u32::MAX as f64) as u32;
 
         let mut result = CommandResult::None;
         match self.load.take() {

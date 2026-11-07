@@ -16,18 +16,26 @@ use shin_core::{
 
 use crate::adv::vm_state::audio::AudioState;
 
+/// The SAVEINFO texts (model `+0x90f8..+0x9118`): level 0 the episode, level 1 the scene title
 pub struct SaveInfo {
-    pub info: [String; 4],
+    /// What SAVEINFO last set (`+0x90f8 + 16 * level`)
+    pub pending: [String; 2],
+    /// What the last AUTOSAVE committed (`+0x9100`, `+0x9110`): the save slots, the banner and the system menu use these
+    pub info: [String; 2],
 }
 
 impl SaveInfo {
+    /// SAVEINFO (`0x7100002590`) sets the pending text; the script uses levels 0 and 1 only
     pub fn set_save_info(&mut self, level: i32, info: String) {
-        assert!(
-            (0..=4).contains(&level),
-            "SaveInfo::set_save_info: level out of range"
-        );
+        match self.pending.get_mut(level as usize) {
+            Some(slot) if level >= 0 => *slot = info,
+            _ => tracing::warn!("SAVEINFO level {level} is outside the model's two; ignored"),
+        }
+    }
 
-        self.info[level as usize] = info;
+    /// AUTOSAVE (`0x71000026e0`) commits the pending texts
+    pub fn commit(&mut self) {
+        self.info = self.pending.clone();
     }
 }
 
@@ -68,7 +76,8 @@ impl VmState {
     pub fn new(global: SaveData, entry: GameDataEntry) -> Self {
         Self {
             save_info: SaveInfo {
-                info: ["", "", "", ""].map(|v| v.to_string()),
+                pending: Default::default(),
+                info: Default::default(),
             },
             messagebox_state: MessageState::new(),
             global,

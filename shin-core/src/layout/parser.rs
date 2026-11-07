@@ -4,7 +4,7 @@ use crate::layout::text_layouter::TextLayouter;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ParsedCommand {
-    /// Just your regular character (or a @U command)
+    /// Just your regular character (or a `@u` command)
     Char(char),
     /// @+
     EnableLipsync,
@@ -187,9 +187,10 @@ impl Iterator for MessageTextParser<'_> {
             ']' => ParsedCommand::InstantTextEnd,
             '{' => ParsedCommand::BoldTextStart,
             '}' => ParsedCommand::BoldTextEnd,
-            // NB: the original engine does not do any validation here. We have to if we want to continue using the char type
-            'U' => ParsedCommand::Char(
-                char::from_u32(self.read_int_argument() as u32).expect("Invalid char code"),
+            // `@u<code>.` (lowercase in the original, case 0x75); it does not validate the code, an invalid one shows as
+            // the replacement character here
+            'u' => ParsedCommand::Char(
+                char::from_u32(self.read_int_argument() as u32).unwrap_or(char::REPLACEMENT_CHARACTER),
             ),
             c => {
                 warn!("Unknown layouter command: {}", c);

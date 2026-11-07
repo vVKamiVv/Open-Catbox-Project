@@ -47,6 +47,12 @@ use crate::{
     update::AdvUpdatable,
 };
 
+/// Logs once that a layer asked for clipping (props 61-65), which the port does not draw
+pub(crate) fn warn_unsupported_clip() {
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    WARNED.call_once(|| tracing::warn!("A layer uses clipping (props 61-65), which is not implemented"));
+}
+
 pub trait Layer: AdvUpdatable {
     fn fast_forward(&mut self);
     fn get_stencil_bump(&self) -> u8 {

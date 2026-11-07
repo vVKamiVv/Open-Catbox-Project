@@ -129,6 +129,10 @@ pub struct App {
     dev: Option<DevTools>,
     /// The tap ripples and drag stars over every scene (`*0x710022b8c8`)
     touch_effect: ui::touch_effect::TouchEffect,
+    /// The play time in frames, counted in every scene (`0x7100026d50`); read from the save on the first update
+    play_frames: Option<f64>,
+    /// Why the save file could not be used, told on the title (the original tells it before the opening movie)
+    load_problem: Option<savedata::LoadProblem>,
 }
 
 impl ShinApp for App {
@@ -165,15 +169,15 @@ impl ShinApp for App {
         ui::prompts::init(&context.wgpu.device, &context.wgpu.queue);
 
         let mut savedata_path = cli.savedata.clone().or_else(savedata::default_path);
-        let save = match savedata_path.as_deref().map(savedata::load) {
-            Some(Ok(save)) => save,
+        let (save, load_problem) = match savedata_path.as_deref().map(savedata::load) {
+            Some(Ok(loaded)) => loaded,
             Some(Err(e)) => {
                 // never overwrite a save that could not be read
                 error!("{e:?}; nothing will be saved this time");
                 savedata_path = None;
-                SaveData::new()
+                (SaveData::new(), Some(savedata::LoadProblem::Unreadable))
             }
-            None => SaveData::new(),
+            None => (SaveData::new(), None),
         };
         let effect_textures = adv_assets.effect_textures.clone();
         let dev = cli
@@ -217,6 +221,8 @@ impl ShinApp for App {
                 fade,
                 idle_bgm: None,
                 bridge_global: None,
+                play_frames: None,
+                load_problem,
                 adv_assets,
                 capture_dir: cli.capture_dir,
                 pending_capture: None,
@@ -341,6 +347,8 @@ impl ShinApp for App {
             fade: None,
             idle_bgm: None,
             bridge_global: None,
+            play_frames: None,
+            load_problem,
             adv_assets,
             capture_dir: cli.capture_dir,
             pending_capture: None,
@@ -366,9 +374,8 @@ impl ShinApp for App {
         Some(port_settings::get().display())
     }
 
-    fn custom_event(&mut self, _context: AppContext<Self>, _event: Self::EventType) {
-        todo!()
-    }
+    /// The game sends itself no custom events
+    fn custom_event(&mut self, _context: AppContext<Self>, _event: Self::EventType) {}
 
     fn update(
         &mut self,
@@ -408,6 +415,18 @@ impl ShinApp for App {
         } else {
             (input, pointer)
         };
+
+        // `0x7100026d50`: the play time counts every frame, whatever the scene
+        let frames = self.play_frames.unwrap_or(self.save_data().play_seconds as f64 * 60.0)
+            + elapsed_time.as_secs_f64() * 60.0;
+        self.play_frames = Some(frames);
+        self.save_data_mut().play_seconds = (frames / 60.0).min(u32::MAX as f64) as u32;
+
+        if let Scene::Title(title) = &mut self.scene
+            && let Some(problem) = self.load_problem.take()
+        {
+            title.alert = Some(problem.message());
+        }
 
         if let Some(pending) = self.pending_capture.take() {
             match pending.save(&context.wgpu.device, &self.capture_dir) {
@@ -789,6 +808,20 @@ impl App {
             Scene::CharacterBox(characters) => &characters.global,
             Scene::Adv(adv) => adv.save_data(),
             Scene::Bridge(_) => self.bridge_global.as_ref().expect("the bridge keeps the save data"),
+        }
+    }
+
+    fn save_data_mut(&mut self) -> &mut SaveData {
+        match &mut self.scene {
+            Scene::TitleDemo(demo) => &mut demo.global,
+            Scene::Title(title) => &mut title.global,
+            Scene::ScenarioSelect(select) => &mut select.global,
+            Scene::MusicBox(music) => &mut music.global,
+            Scene::MovieBox(movies) => &mut movies.global,
+            Scene::PictureBox(pictures) => &mut pictures.global,
+            Scene::CharacterBox(characters) => &mut characters.global,
+            Scene::Adv(adv) => adv.save_data_mut(),
+            Scene::Bridge(_) => self.bridge_global.as_mut().expect("the bridge keeps the save data"),
         }
     }
 

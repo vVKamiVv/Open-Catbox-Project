@@ -101,8 +101,8 @@ impl<T> LayerGroup<T> {
 
     pub fn remove_layer(&mut self, layerbank_id: LayerbankId, delay_time: Ticks) -> Option<T> {
         if delay_time != Ticks::ZERO {
-            // this is never used in umineko
-            unimplemented!("LayerGroup::remove_layer: delay_time is not implemented");
+            // shortcut: LAYERUNLOAD's delay (never used by Umineko) removes the layer at once
+            tracing::warn!("LAYERUNLOAD with a delay of {delay_time:?}; removing the layer now");
         }
 
         self.layers
@@ -745,7 +745,10 @@ impl<T> LayerGroup<T> {
             render_transparent,
         );
 
-        assert_eq!(props.get_clip_mode(), DrawableClipMode::None);
+        // shortcut: clipping (props 61-65, never set by Umineko) is not drawn
+        if props.get_clip_mode() != DrawableClipMode::None {
+            crate::layer::warn_unsupported_clip();
+        }
 
         // all the layer transforms were already applied during the pre-rendering
         // so we just take a simple blank slate transform

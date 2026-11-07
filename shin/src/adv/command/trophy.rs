@@ -1,10 +1,10 @@
 use super::prelude::*;
 
+/// Behaviour in the Switch v1.0.3 executable (`shin::ADV::TROPHY`, execute `0x7100007c80`): the Switch build only
+/// locks and unlocks a mutex (`0x71001171f0`); there is nothing to unlock, so it does nothing here either.
 impl StartableCommand for command::runtime::TROPHY {
     type StateInfo = ();
-    fn apply_state(&self, _state: &mut VmState) {
-        warn!("TODO: TROPHY state: {:?}", self);
-    }
+    fn apply_state(&self, _state: &mut VmState) {}
 
     fn start(
         self,
@@ -14,7 +14,7 @@ impl StartableCommand for command::runtime::TROPHY {
         _state_info: (),
         _adv_state: &mut AdvState,
     ) -> CommandStartResult {
-        warn!("TODO: TROPHY: {:?}", self);
+        tracing::debug!("TROPHY {:?}", self);
         self.token.finish().into()
     }
 }

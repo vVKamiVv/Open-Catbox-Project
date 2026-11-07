@@ -30,6 +30,7 @@ use crate::{
         AdvRequest, MenuAssets, Task, TaskCx,
         chars::Chars,
         config_menu::ConfigMenu,
+        dialog::Dialog,
         manual::Manual,
         save_menu::{Mode, SaveMenu},
         tips::{Tips, TipsFilter},
@@ -208,6 +209,8 @@ pub struct Title {
     pressed: Option<usize>,
     /// Exit's label and description, made on the first update (they need the GPU)
     exit_texts: Option<ExitTexts>,
+    /// A message to show in an OK dialog (why the save file could not be used)
+    pub alert: Option<String>,
 }
 
 /// The port's Exit item, in the art's lettering: Gelasio, as near the art's Georgia-like faces
@@ -433,6 +436,7 @@ impl Title {
             pointer_held: false,
             pressed: None,
             exit_texts: None,
+            alert: None,
         };
         if returning {
             title.show_items_now();
@@ -726,6 +730,15 @@ impl Title {
         );
 
         let input = MenuInput::new(state, pointer);
+        if self.child.is_none()
+            && let Some(message) = self.alert.take()
+        {
+            self.child = Some(Box::new(Dialog::ok(
+                context.pre_render,
+                &self.assets,
+                &message,
+            )));
+        }
         if let Some(mut child) = self.child.take() {
             let running = child.update(&mut self.task_cx(context, true, input));
             if running {

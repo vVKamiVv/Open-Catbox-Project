@@ -82,16 +82,16 @@ low / none. Fix: S < 1 h, M < 1 day, L more.
 
 | Original (address) | shin counterpart | Status | What differs / evidence | Impact | Fix |
 |---|---|---|---|---|---|
-| Main loop `0x7100026d50` | `shin/src/app.rs` `App::update` | diverges | Scene switch, one shared BGM player and the TouchEffect over every scene are in. Play time counts only while the ADV runs (`shin/src/adv/mod.rs`, same /60 and clamp), not in every scene | low | S |
+| Main loop `0x7100026d50` | `shin/src/app.rs` `App::update` | matches | Scene switch, one shared BGM player, the TouchEffect over every scene, and the play time counted every frame in every scene (`App::play_frames`) | none | - |
 | `shin::Scene` (typeinfo `0x71001d3e20`) + factories `Create*` (lambda names, `lambdas.txt`); switch `0x7100027370` (31 call sites) | `shin/src/app.rs` `Scene`, `App::switch_scene` | matches | One scene at a time; a change crossfades from a snapshot of the old screen | none | - |
 | `shin::Task`, `TaskPool` (vtable `0x7100223378`: add `0x7100100930`, isEmpty `vfunc_2`, update `vfunc_3`, render `vfunc_4`), `UITask`, `UpdateTask` | `shin/src/adv/menu/mod.rs` | matches | The top task takes the input; the ADV's buttons work only while the pool is empty | none | - |
 | `AsyncQueue` / `AsyncQueue::Task`, `X::First` loader tasks | `shin-tasks`, `AssetServer::load` | matches (functionally) | Each `First` loads `/x.txa` asynchronously then builds the menu; shin's async asset loads do the same job | none | - |
-| Pad input `0x71000c4300`, copy `0x71000c4900` | `shin-input` (gilrs + keyboard + mouse), `shin/src/bindings.rs`, `app.rs` `AppAction` | diverges | Keyboard, mouse and gamepad go through a binding table (rebindable); repeat timings match. No confirm/cancel swap flag (`0x71000fc1f0`); the player can rebind instead | low | S |
-| ADV button handling `0x7100011f08` (see above) | `shin/src/adv/mod.rs` | diverges | Auto, skip, v11, rollback, backlog, system menu, hide window, +/- chapter jumps and event skip are in. Down does not advance the message (default binding: menus only). Port extra: holding Ctrl skips under the same rules | low | S |
+| Pad input `0x71000c4300`, copy `0x71000c4900` | `shin-input` (gilrs + keyboard + mouse), `shin/src/bindings.rs`, `app.rs` `AppAction` | matches | Keyboard, mouse and gamepad go through a binding table (rebindable); repeat timings match. The confirm/cancel swap (`0x71000fc1f0`) is the Confirm button option (`bottom_confirms`), which also picks the event hint's row 1 | none | - |
+| ADV button handling `0x7100011f08` (see above) | `shin/src/adv/mod.rs` | matches | Auto, skip, v11, rollback, backlog, system menu, hide window, +/- chapter jumps, event skip, and advance on confirm or down (mask `0x12000000`). Port extra: holding Ctrl skips under the same rules | none | - |
 | `GestureRecognizer::Listener`, `ADV::OnTap` | `shin/src/ui/gesture.rs`, `shin/src/adv/mod.rs`, `shin/src/adv/touch_buttons.rs` | matches | Taps, drags and flicks with the mouse as one finger; the ADV's flicks and touch buttons are in | none | - |
 | `TouchEffect` (vtable `0x7100224e58`, update `0x7100115d70`, v17) | `shin/src/ui/touch_effect.rs` | matches | Ripples and drag stars over every scene, gated by v17 | none | - |
 | `SystemEventDelegate` | `shin-window` focus handling | n/a | Suspend/resume on Switch | none | - |
-| `Trophy::Installer`, TROPHY | `shin/src/adv/command/trophy.rs` (stub) | stub | Nothing to install on PC; could map to achievements | none | - |
+| `Trophy::Installer`, TROPHY | `shin/src/adv/command/trophy.rs` | matches | The Switch build does nothing either (`0x71001171f0`); a no-op | none | - |
 | `ScenarioSelectBridge` + `CreateScenarioSelectBridge(int)` | `shin/src/scenario_select.rs` `Bridge` | matches | The door-opening transition that starts an ADV for a scenario id | none | - |
 
 ### 1b. Menus and modes (60 RTTI classes; grouped with their `First`/`Viewer` helpers)
@@ -106,7 +106,7 @@ Sounds go through `SysSePlayer::play` with names from pointers: "decide" `*0x710
 | Original (address) | What it is / does | Entered from | Depends on | Impact | Fix |
 |---|---|---|---|---|---|
 | `FirstBoot` (Scene; vtable `0x71001d90b0`; update `0x7100065300`, render `0x7100065720`; `CreateFirstBoot`) | Boot: system assets (`/systex.txa` load `0x7100065d24`, `/system.fnt` `0x7100065ae8`), logo sequence from a table at `*0x7100226cb8` (0x18-byte entries, frame count at +8; 60-frame fades, `0x710015a778`; dead code in v1.0.3, engine-internals §15), then the `LoadGame` task (`0x71000d5290`); its callback `0x71000664d0` sets the play-time clock; then `CreateTitle` (`0x7100066530`). **shin:** `shin/src/app.rs` `App::new` (loads the save, then TitleDemo); matches | process start | LoadGame | none | - |
-| `LoadGame` (Task `0x7100220860`; read job `0x71000d4890`; `SubErrorAlert`, `InheritAlert` lambdas) | Reads SAVEDATA; corrupt / newer-version dialogs. **shin:** `shin/src/savedata.rs`; diverges: no dialogs, an unreadable save is logged and nothing is saved that session (the file is kept) | FirstBoot | dialogs | low | S |
+| `LoadGame` (Task `0x7100220860`; read job `0x71000d4890`; `SubErrorAlert`, `InheritAlert` lambdas) | Reads SAVEDATA; corrupt / newer-version dialogs. **shin:** `shin/src/savedata.rs`; matches: a corrupt save (case 1, `0x7100161ace`) or a newer version's (case 2, `0x710015c930`) is moved aside and the title shows the original's dialog; an unreadable file (`0x710015f8dc`) shows it too and nothing is saved that session. The English patch leaves these texts in Japanese, so English players get the port's wording; the original shows them before the opening movie, the port on the title | FirstBoot | dialogs | low | S |
 | `SaveGame` (Task `0x7100220828`; job `0x71000d3ce0`; create `0x71000d52f0`) | Writes SAVEDATA (>= 1 s, with an indicator, `SaveGame::Update` lambdas). **shin:** `shin/src/savedata.rs`, `shin/src/adv/menu/save_notice.rs`; matches | EXIT `0x71000147e0`, title return, config close if changed `0x71000609b0`, manual save `0x71000daafc`, delete `0x71000db6c0` | - | none | - |
 | `Title` (no RTTI for the class itself; `Title::First` `0x7100223fe0` vfunc_3 `0x71001112d0`; `CreateTitle(int)`; methods `StartMenu`, `MenuItemOut`, `Start`, `Decide` (3 lambdas), `Continue`, `DebugMenu`) | Title screen: `/title.txa` (load `0x7100113be4`), background `/title/bg%02d.pic` (`0x7100113df0`, number chosen at runtime); fade-in 60 frames, or 90 frames with property 66 (blur) tweened to 0 when `+0x22c < 0`. Continue = new ADV from `Global.auto` (`0x7100112670`). DebugMenu writes persist slots ("unlock all", `0x7100112890..`). Scene switches from title decisions at `0x710010e368..0x710010e588`. **shin:** `shin/src/title.rs`; matches (DebugMenu not ported; unverified whether retail can reach it) | FirstBoot, EXIT, system menu "return to title", TitleDemo exit | SaveMenu, ConfigMenu, ScenarioSelect, extras, ManualViewer | none | - |
 | `Title::SubMenu` (Task `0x7100223f08`; `MenuItemIn/Out`, `Decide` x3) | The episode list of Characters and Tips on the title (`0x710010f0a0`). **shin:** `shin/src/title.rs` `SubMenu`; matches | Title | CharsMode, TipsMode | none | - |
@@ -179,13 +179,8 @@ Sounds go through `SysSePlayer::play` with names from pointers: "decide" `*0x710
 
 ## 2. What still differs
 
-1. **Down does not advance the story** (`0x7100011f08` advances on mask `0x12000000`, confirm or any-down); the
-   port's default binding puts Down on the menus only. Size S.
-2. **No confirm/cancel swap** (`0x71000fc1f0`); the HUD's event hint always uses row 0. Rebinding covers the swap.
-3. **LoadGame dialogs** (corrupt / newer save) are not shown; the port logs and saves nothing that session.
-4. **Play time** counts only in the ADV, not in every scene as the main loop `0x7100026d50` does. Size S.
-5. **TROPHY** is a stub (nothing to install on PC).
-6. Small shortcuts noted in the module docs: thumbnails without movie layers, galleries without left-stick panning,
+1. **LoadGame's dialogs** show on the title rather than before the opening movie.
+2. Small shortcuts noted in the module docs: thumbnails without movie layers, galleries without left-stick panning,
    synchronous loads in the Character Box, movie fast-forward and AAC seek not done.
 
 ---

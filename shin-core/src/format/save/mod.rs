@@ -109,7 +109,8 @@ impl SaveData {
     fn read(reader: &mut BitBuffer) -> Result<Self, BitReadError> {
         let some_ctr: u32 = reader.read_int(8)?;
         if some_ctr == 0 {
-            todo!("Construct default Savedata")
+            // a fresh save (`decode_raw` already answers these)
+            return Ok(Self::new());
         }
         if some_ctr > 1 {
             panic!("Invalid Savedata: some_ctr > 1")

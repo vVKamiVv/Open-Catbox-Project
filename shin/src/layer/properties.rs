@@ -511,7 +511,6 @@ impl LayerPropertiesState {
         self.properties = initial_values();
     }
 
-    #[allow(unused)]
     pub fn get_property(&self, property: LayerProperty) -> i32 {
         self.properties[property]
     }

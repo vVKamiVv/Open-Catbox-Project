@@ -245,7 +245,11 @@ impl NewDrawableLayerState {
             effect_passes::apply_blur(context, render_texture_src, scratch, blur_radius);
         }
         if prop70 >= f32::EPSILON {
-            todo!()
+            // shortcut: prop 70's effect (program `0x2c`, never set by Umineko) is not decoded; the layer draws without it
+            static WARNED: std::sync::Once = std::sync::Once::new();
+            WARNED.call_once(|| {
+                tracing::warn!("Layer property 70 is set; its effect is not implemented")
+            });
         }
         if mosaic_size > 0 {
             let target = scratch_texture(&mut self.render_texture_target, context);
@@ -335,7 +339,10 @@ impl NewDrawableLayerState {
         let _self_transform = props.get_composed_transform_params(transform);
 
         let clip_params = props.get_clip_params();
-        assert_eq!(clip_params.mode, DrawableClipMode::None);
+        // shortcut: clipping (props 61-65, never set by Umineko) is not drawn
+        if clip_params.mode != DrawableClipMode::None {
+            crate::layer::warn_unsupported_clip();
+        }
 
         let transform = top_left_projection_matrix();
 

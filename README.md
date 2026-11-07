@@ -82,7 +82,7 @@ Put the `assets` folder next to `shin.exe`, or set `SHIN_ASSETS` to its path. On
 
 | Keyboard / mouse | Controller (Switch labels) | Does |
 |---|---|---|
-| Left click, Space, Enter | A | Advance, choose |
+| Left click, Space, Enter, Down arrow | A, Down | Advance, choose |
 | Backspace, Escape, right click | B | Back, hide the text box |
 | Hold the left button | Hold a touch | Skip an event |
 | Y | Y | System menu |

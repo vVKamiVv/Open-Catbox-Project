@@ -690,8 +690,8 @@ impl MessageLayer {
             return true;
         }
 
-        // if all else fails - try to stop/advance the voice
-        if self.blocks.len() >= self.current_block_index {
+        // if all else fails - try to stop/advance the voice, when one plays (`0x71000b1b10`: `+0x6c`)
+        if !self.is_voice_playing || self.current_block_index >= self.blocks.len() {
             return true;
         }
         match &self.blocks[self.current_block_index].ty {

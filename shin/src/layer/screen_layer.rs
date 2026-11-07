@@ -277,11 +277,12 @@ impl ScreenLayer {
     }
 
     pub fn pageback(&mut self, ctx: &mut RenderCloneCtx, start_anew: bool) {
-        if start_anew {
-            todo!()
-        }
-
-        self.pending_layer = Some(self.active_layer.get_target_layer().render_clone(ctx));
+        // inferred: starting anew begins from an empty page (PAGEBACK always passes false)
+        self.pending_layer = Some(if start_anew {
+            PageLayer::new(self.plane_count)
+        } else {
+            self.active_layer.get_target_layer().render_clone(ctx)
+        });
 
         // NB: the original engine iterates over plane `LayerGroup`s and calls `LayerGroup::stop_transition` on them
         // We do not implement `LayerGroup`-level transitions, so this is skipped

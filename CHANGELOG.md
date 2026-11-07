@@ -5,6 +5,10 @@ What changed in each release.
 ## Unreleased
 
 - System menu: long scene titles wrap between words instead of mid-word.
+- Down advances the story, as on the Switch.
+- A damaged or unreadable save file is now explained on the title screen instead of only in the log.
+- Play time also counts on the title and in the galleries.
+- With the Confirm button set to Bottom, the "skip this event" hint shows the right button.
 
 ## v0.2.5 — 2026-11-07
 

@@ -116,8 +116,9 @@ impl Scripter {
                 let source = self.ctx.get_number(source);
                 let result = match ty {
                     UnaryOperationType::Zero => 0,
-                    UnaryOperationType::Negate => -source,
-                    _ => todo!(),
+                    UnaryOperationType::Not16 => source ^ 0xffff,
+                    UnaryOperationType::Negate => source.wrapping_neg(),
+                    UnaryOperationType::Abs => source.wrapping_abs(),
                 };
 
                 trace!(?pc, ?ty, ?destination, ?source, ?result, "uo");
