@@ -274,7 +274,7 @@ impl PictureBox {
         ui::tween(&mut self.scroll, target, 4.0, Easing::Linear);
     }
 
-    fn handle_keys(&mut self, assets: &AssetServer, input: &MenuInput) {
+    fn handle_keys(&mut self, assets: &AssetServer, input: &MenuInput, frames: f32) {
         let n = self.items.len();
         if input.confirm {
             self.decide(assets);
@@ -315,7 +315,8 @@ impl PictureBox {
             return;
         }
         if input.scroll != 0.0 {
-            let scroll = (self.scroll.value() + input.scroll * 32.0).clamp(0.0, self.max_scroll());
+            let scroll =
+                (self.scroll.value() + input.scroll * 32.0 * frames).clamp(0.0, self.max_scroll());
             self.scroll = Tweener::new(scroll);
             self.follow_cursor(scroll);
         }
@@ -499,7 +500,7 @@ impl PictureBox {
                     && self.scroll.is_idle()
                     && self.state == State::Active
                 {
-                    self.handle_keys(context.asset_server, &input);
+                    self.handle_keys(context.asset_server, &input, frames);
                 }
             }
             State::Deciding => {
@@ -749,12 +750,13 @@ impl PictureBox {
             return;
         }
 
-        // `0x710004b0f0`: a flick's speed pans each frame, without dt, slowing by 0.95^dt, until the picture is fit,
-        // gone or scaling
+        // `0x710004b0f0`: a flick's speed pans each frame (the original's 60, without dt), slowing by 0.95 a frame,
+        // until the picture is fit, gone or scaling; the port moves by the 60 Hz frames' sum
         if viewer.velocity != Vec2::ZERO {
             if viewer.picture.is_some() && !viewer.is_scaling() && !viewer.fit {
-                viewer.pan.0 += viewer.velocity.x;
-                viewer.pan.1 -= viewer.velocity.y;
+                let moved = viewer.velocity * ui::decaying_sum(0.95, frames);
+                viewer.pan.0 += moved.x;
+                viewer.pan.1 -= moved.y;
                 viewer.velocity *= 0.95f32.powf(frames);
                 Self::layout(viewer, false);
             } else {
@@ -1069,15 +1071,17 @@ impl PictureBox {
         let mut x = right - width + 2.0;
         for &key in keys {
             x -= 48.0;
-            let (u, v) = ((key & 7) as f32 * 0.125, (key >> 3) as f32 * 0.5);
-            let mut icon = Sprite::new(self.textures.get("key"), [x, y, x + 48.0, y + 48.0]).uv([
-                u,
-                v,
-                u + 0.125,
-                v + 0.5,
-            ]);
-            icon.color = color;
-            icon.draw(pass, ui::builder(), projection);
+            let keys = self.textures.get("key");
+            let rect = [x, y, x + 48.0, y + 48.0];
+            ui::prompts::draw(
+                pass,
+                ui::builder(),
+                projection,
+                keys,
+                key as u8,
+                rect,
+                color,
+            );
         }
         x - 16.0
     }

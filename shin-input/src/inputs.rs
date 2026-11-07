@@ -86,6 +86,59 @@ impl GamepadButton {
     }
 }
 
+/// Which maker's buttons a gamepad has, for the button prompts (the buttons themselves map by position either way)
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+pub enum GamepadFamily {
+    /// Switch Pro Controller, Joy-Con
+    Nintendo,
+    /// DualShock, DualSense
+    PlayStation,
+    /// Xbox and other XInput pads
+    Xbox,
+    /// Anything else: shown with the Xbox prompts
+    #[default]
+    Generic,
+}
+
+impl GamepadFamily {
+    /// From what gilrs reports: the USB vendor first (Nintendo 0x057E, Sony 0x054C, Microsoft 0x045E), then the name
+    pub fn detect(name: &str, vendor: Option<u16>, _product: Option<u16>) -> Self {
+        match vendor {
+            Some(0x057e) => return Self::Nintendo,
+            Some(0x054c) => return Self::PlayStation,
+            Some(0x045e) => return Self::Xbox,
+            _ => {}
+        }
+        let name = name.to_ascii_lowercase();
+        let has = |words: &[&str]| words.iter().any(|w| name.contains(w));
+        if has(&["nintendo", "switch", "joy-con", "joycon", "pro controller"]) {
+            Self::Nintendo
+        } else if has(&[
+            "playstation",
+            "dualshock",
+            "dualsense",
+            "sony",
+            "ps3",
+            "ps4",
+            "ps5",
+        ]) {
+            Self::PlayStation
+        } else if has(&["xbox", "xinput", "x-box", "microsoft"]) {
+            Self::Xbox
+        } else {
+            Self::Generic
+        }
+    }
+}
+
+/// The device the player used last: the button prompts follow it
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy)]
+pub enum InputDevice {
+    #[default]
+    KeyboardMouse,
+    Gamepad(GamepadFamily),
+}
+
 #[derive(Debug, Hash, Ord, PartialOrd, PartialEq, Eq, Clone, Copy, Enum)]
 pub enum MouseButton {
     /// Left mouse button
@@ -100,4 +153,35 @@ pub enum MouseButton {
     WheelDown,
     // Ignore "other" mouse buttons for the sake of simplicity
     // Other(u16),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GamepadFamily::{self, *};
+
+    #[test]
+    fn detects_gamepad_families() {
+        let detect = GamepadFamily::detect;
+        assert_eq!(
+            detect("Pro Controller", Some(0x057e), Some(0x2009)),
+            Nintendo
+        );
+        assert_eq!(
+            detect("Wireless Controller", Some(0x054c), Some(0x0ce6)),
+            PlayStation
+        );
+        assert_eq!(detect("Controller", Some(0x045e), Some(0x02ea)), Xbox);
+        // the XInput backend reports no ids
+        assert_eq!(detect("Xbox Controller", None, None), Xbox);
+        assert_eq!(detect("XInput Controller #1", None, None), Xbox);
+        assert_eq!(
+            detect("DualSense Wireless Controller", None, None),
+            PlayStation
+        );
+        assert_eq!(
+            detect("Nintendo Switch Joy-Con (L)", Some(0x1234), None),
+            Nintendo
+        );
+        assert_eq!(detect("8BitDo SN30", Some(0x2dc8), Some(0x6001)), Generic);
+    }
 }

@@ -449,15 +449,16 @@ impl Backlog {
         let mut x = right - width + 2.0;
         for &key in keys {
             x -= 48.0;
-            let (u, v) = ((key & 7) as f32 / 8.0, (key >> 3) as f32 / 2.0);
-            let mut icon = Sprite::new(self.textures.get("key"), [x, y, x + 48.0, y + 48.0]).uv([
-                u,
-                v,
-                u + 0.125,
-                v + 0.5,
-            ]);
-            icon.color = color;
-            icon.draw(pass, ui::builder(), projection);
+            let keys = self.textures.get("key");
+            ui::prompts::draw(
+                pass,
+                ui::builder(),
+                projection,
+                keys,
+                key,
+                [x, y, x + 48.0, y + 48.0],
+                color,
+            );
         }
         x - 16.0
     }

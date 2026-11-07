@@ -11,6 +11,7 @@ mod adv;
 mod app;
 mod asset;
 mod audio;
+mod bindings;
 mod capture;
 mod character_box;
 mod cli;

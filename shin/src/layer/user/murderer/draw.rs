@@ -115,6 +115,19 @@ impl<'p, 'a, 'b, 'c, 'd, 'e> Drawer<'p, 'a, 'b, 'c, 'd, 'e> {
         sprite.draw(self.pass, self.builder, self.transform);
     }
 
+    /// Glyph `glyph` of the `key` atlas as the active device shows it ([`crate::ui::prompts`])
+    pub fn key_glyph(&mut self, keys: &GpuTexture, glyph: u8, rect: Rect) {
+        crate::ui::prompts::draw(
+            self.pass,
+            self.builder,
+            self.transform,
+            keys,
+            glyph,
+            rect,
+            FloatColor4::WHITE,
+        );
+    }
+
     /// The whole texture `name` over `rect`, white
     pub fn image(&mut self, name: &str, rect: Rect) {
         let texture = self.texture(name);

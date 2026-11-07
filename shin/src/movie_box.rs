@@ -598,15 +598,17 @@ impl MovieBox {
         label.color = color;
         label.draw(pass, ui::builder(), projection);
         let x = right - width + 2.0 - 48.0;
-        let (u, v) = ((key % 8) as f32 * 0.125, (key / 8) as f32 * 0.5);
-        let mut icon = Sprite::new(self.textures.get("key"), [x, y, x + 48.0, y + 48.0]).uv([
-            u,
-            v,
-            u + 0.125,
-            v + 0.5,
-        ]);
-        icon.color = color;
-        icon.draw(pass, ui::builder(), projection);
+        let keys = self.textures.get("key");
+        let rect = [x, y, x + 48.0, y + 48.0];
+        ui::prompts::draw(
+            pass,
+            ui::builder(),
+            projection,
+            keys,
+            key as u8,
+            rect,
+            color,
+        );
         x - 10.0
     }
 }

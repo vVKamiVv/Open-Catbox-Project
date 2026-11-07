@@ -294,7 +294,9 @@ impl MusicBox {
             return;
         }
         if input.scroll != 0.0 {
-            let scroll = (self.scroll.value() + input.scroll * 32.0).clamp(0.0, self.max_scroll());
+            let frames = context.delta_ticks.as_f32();
+            let scroll =
+                (self.scroll.value() + input.scroll * 32.0 * frames).clamp(0.0, self.max_scroll());
             self.scroll = Tweener::new(scroll);
             self.follow_cursor(scroll);
         }
@@ -646,15 +648,17 @@ impl MusicBox {
         let mut x = right - width + 2.0;
         for &key in keys {
             x -= 48.0;
-            let (u, v) = ((key & 7) as f32 * 0.125, (key >> 3) as f32 * 0.5);
-            let mut icon = Sprite::new(self.textures.get("key"), [x, y, x + 48.0, y + 48.0]).uv([
-                u,
-                v,
-                u + 0.125,
-                v + 0.5,
-            ]);
-            icon.color = color;
-            icon.draw(pass, ui::builder(), projection);
+            let keys = self.textures.get("key");
+            let rect = [x, y, x + 48.0, y + 48.0];
+            ui::prompts::draw(
+                pass,
+                ui::builder(),
+                projection,
+                keys,
+                key as u8,
+                rect,
+                color,
+            );
         }
         x - 16.0
     }

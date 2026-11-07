@@ -440,7 +440,7 @@ fn draw_scroll_hint(drawer: &mut Drawer) {
     const RIGHT: f32 = 1790.0;
     const TOP: f32 = 920.0;
     const WIDTH: f32 = 176.0;
-    const GLYPH: u32 = 9;
+    const GLYPH: u8 = 9;
     let label = drawer.texture("help_chars");
     let v = 144.0 / 336.0;
     drawer.sprite(
@@ -448,8 +448,7 @@ fn draw_scroll_hint(drawer: &mut Drawer) {
     );
     let key = drawer.texture("key");
     let x = RIGHT - WIDTH + 2.0 - 48.0;
-    let (u, v) = ((GLYPH & 7) as f32 / 8.0, (GLYPH >> 3) as f32 / 2.0);
-    drawer.sprite(Sprite::new(key, [x, TOP, x + 48.0, TOP + 48.0]).uv([u, v, u + 0.125, v + 0.5]));
+    drawer.key_glyph(key, GLYPH, [x, TOP, x + 48.0, TOP + 48.0]);
 }
 
 /// Where a header is drawn in the list: it sticks to the top until the next one pushes it up

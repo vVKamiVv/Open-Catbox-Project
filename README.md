@@ -104,7 +104,7 @@ Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the 
 
 ## 🎮 Moving the pieces
 
-| Keyboard / mouse | Switch controller | Does |
+| Keyboard / mouse | Controller (Switch labels) | Does |
 |---|---|---|
 | Left click (on release), Space, Enter | A | Advance, choose |
 | Backspace, Escape, right click | B | Back; hide the text box; skip an event |
@@ -117,11 +117,18 @@ Set `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) to see what the 
 | Up arrow | Up | Roll back one line; move in menus |
 | Drag and flick | Touch | Scroll lists, turn pages, pan pictures |
 | Page Up / Page Down | Right stick | Scroll long texts (Tips, Characters, the culprit game) |
-| F5 | | Save to the last used bookmark |
+| F5 or P | ZR | Save to the last used bookmark; save the item in the galleries |
 | F11 | | Fullscreen (borderless) on/off |
 
+Keys and buttons can be rebound in Config → PC → Controls (saved in `settings.json`), except menu movement and the
+mouse's left button.
+Controller buttons map by position, so on an Xbox pad B confirms and A goes back, as on the Switch; the on-screen
+button prompts follow the device you last used (keyboard, Xbox, PlayStation or Switch pad), or the "Button prompts"
+choice in the PC tab.
+
 A tap leaves a ripple and a drag a trail of stars, as on the Switch's touch screen (setting "visual touch
-feedback"). Config has a PC tab for the window mode and size, V-Sync, a frame-rate cap and supersampling, saved in
+feedback"). Config has a PC tab for the window mode and size, V-Sync, a frame-rate cap, supersampling, the button
+prompts and the controls, saved in
 `settings.json` next to the save file. For working on the port, `--dev` adds debug overlays (F3: FPS, script state, every layer and its
 animations) and time control (F6 pause, F7 one frame, F8/F9 slower/faster, F10 normal speed).
 

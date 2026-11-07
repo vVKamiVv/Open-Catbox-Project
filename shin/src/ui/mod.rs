@@ -1,6 +1,7 @@
 //! Drawing and timing helpers the menus share, in the original's 1920x1080 top-left space.
 
 pub mod gesture;
+pub mod prompts;
 pub mod touch_effect;
 
 use enum_map::EnumMap;
@@ -144,6 +145,12 @@ pub fn tween(tweener: &mut Tweener, target: f32, frames: f32, easing: Easing) {
 pub fn hold(tweener: &mut Tweener, frames: f32) {
     let value = tweener.target_value();
     tween(tweener, value, frames, Easing::Linear);
+}
+
+/// The distance a speed covers over `frames` 60 Hz frames while it decays by `rate` a frame, in frames at the
+/// starting speed: `(1 - rate^frames) / (1 - rate)`, 1 for one frame (frame-rate independent coasting)
+pub fn decaying_sum(rate: f32, frames: f32) -> f32 {
+    (1.0 - rate.powf(frames)) / (1.0 - rate)
 }
 
 /// Advances a tweener by `frames` frames

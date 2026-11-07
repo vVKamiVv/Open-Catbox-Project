@@ -9,8 +9,12 @@ use std::sync::Arc;
 
 use glam::{Mat4, Vec2, vec2, vec3};
 use shin_core::{format::save::Settings, time::Tweener};
-use shin_render::{ColorBlendType, RenderRequestBuilder, render_pass::RenderPass};
+use shin_render::{
+    ColorBlendType, RenderRequestBuilder, render_pass::RenderPass, resize::CanvasSize,
+};
 use tracing::warn;
+
+mod controls;
 
 use super::{MenuAssets, Task, TaskCx, dialog::Dialog, save_notice::SaveNotice};
 use crate::{
@@ -96,8 +100,8 @@ enum Kind {
     /// PC tab: one wide button showing the selected option, stepped through by left and right (or tapping its
     /// halves); for lists too long for a row of buttons
     Cycle(&'static [Text]),
-    /// PC tab: an entry not available yet, its label dimmed
-    Disabled,
+    /// PC tab: an entry that opens another screen (A or a tap)
+    Open,
 }
 
 impl Kind {
@@ -107,7 +111,7 @@ impl Kind {
             Kind::Slider(_) => 101,
             Kind::Buttons(options) => options.len(),
             Kind::Texts(options) | Kind::Cycle(options) => options.len(),
-            Kind::Disabled => 1,
+            Kind::Open => 1,
         }
     }
 }
@@ -177,6 +181,13 @@ const FRAME_CAPS: &[Text] = &[
     Text::same("240"),
 ];
 const SUPERSAMPLING: &[Text] = &[Text::same("1x"), Text::same("1.5x"), Text::same("2x")];
+const BUTTON_PROMPTS: &[Text] = &[
+    Text("Auto", "自動"),
+    Text::same("Xbox"),
+    Text::same("PlayStation"),
+    Text::same("Switch"),
+    Text("Keyboard", "キーボード"),
+];
 
 /// The index of `value` in `list`, or `default`
 fn index_of<T: PartialEq>(list: &[T], value: T, default: usize) -> u8 {
@@ -343,11 +354,23 @@ const ITEMS: &[ItemDef] = &[
             port_settings::update(|s| s.supersampling = port_settings::SUPERSAMPLING[v as usize])
         },
     },
-    // the controls screen comes next
+    ItemDef {
+        page: PC_PAGE,
+        label: Label::Text(Text("Button prompts", "ボタン表示")),
+        kind: Kind::Cycle(BUTTON_PROMPTS),
+        get: |_| port_settings::get().button_prompts as u8,
+        set: |_, v| {
+            use port_settings::ButtonPrompts::*;
+            port_settings::update(|s| {
+                s.button_prompts = [Auto, Xbox, PlayStation, Switch, Keyboard][v as usize]
+            })
+        },
+    },
+    // the Controls screen
     ItemDef {
         page: PC_PAGE,
         label: Label::Text(Text("Controls…", "操作設定")),
-        kind: Kind::Disabled,
+        kind: Kind::Open,
         get: |_| 0,
         set: |_, _| {},
     },
@@ -384,7 +407,7 @@ struct Item {
 impl Item {
     fn new(def: &'static ItemDef, y: f32, text: &impl Fn(Text, f32) -> TextBlock) -> Self {
         let buttons = match def.kind {
-            Kind::Slider(_) | Kind::Disabled => 0,
+            Kind::Slider(_) | Kind::Open => 0,
             Kind::Buttons(options) => options.len(),
             Kind::Texts(options) => options.len(),
             Kind::Cycle(_) => 1,
@@ -414,7 +437,7 @@ impl Item {
     /// The tweener focusing moves: a slider's glow, or the selected option's highlight (a cycle glows whole)
     fn focus_tweener(&mut self, settings: &Settings) -> &mut Tweener {
         match self.def.kind {
-            Kind::Slider(_) | Kind::Cycle(_) | Kind::Disabled => &mut self.focus,
+            Kind::Slider(_) | Kind::Cycle(_) | Kind::Open => &mut self.focus,
             Kind::Buttons(_) | Kind::Texts(_) => {
                 &mut self.options[(self.def.get)(settings) as usize].0
             }
@@ -486,6 +509,7 @@ enum State {
 enum Child {
     Reset(Dialog),
     Notice(Dialog),
+    Controls(Box<controls::Controls>),
 }
 
 /// What the current touch went down on (`+0x41c..+0x428`)
@@ -536,6 +560,9 @@ pub struct ConfigMenu {
     /// The list's scroll (`+0x4b8`) and its coasting after a flick (`+0x424`)
     scroll: f32,
     coast: Coast,
+    /// For clipping the list
+    target_size: (u32, u32),
+    japanese: bool,
 }
 
 fn build_pages(text: &impl Fn(Text, f32) -> TextBlock) -> [Vec<Item>; PAGES] {
@@ -598,6 +625,8 @@ impl ConfigMenu {
             grab: None,
             scroll: 0.0,
             coast: Coast::default(),
+            target_size: (1920, 1080),
+            japanese,
         };
         menu.pages[0][0].set_focus(&settings, true, false);
         Some(menu)
@@ -629,6 +658,21 @@ impl ConfigMenu {
         self.pages[page][old].set_focus(settings, false, true);
         self.cursors[page] = index;
         self.pages[page][index].set_focus(settings, true, true);
+    }
+
+    /// Port-only (the PC tab is taller than the view): the list scrolls to show the item the keys moved to
+    fn reveal(&mut self, index: usize) {
+        let y = self.pages[self.page][index].y;
+        self.scroll = self.scroll.clamp((y + ITEM_H - VIEW).max(0.0), y);
+    }
+
+    /// Opens what an [`Kind::Open`] item opens: the Controls screen
+    fn open(&mut self, cx: &mut TaskCx, index: usize) {
+        if let Kind::Open = self.pages[self.page][index].def.kind {
+            cx.sound("decide");
+            let screen = controls::Controls::new(cx, &self.assets, self.japanese);
+            self.child = Some(Child::Controls(Box::new(screen)));
+        }
     }
 
     /// Writes a new value through the item's setter, with the "move" sound when it changed
@@ -699,13 +743,17 @@ impl ConfigMenu {
         } else if input.up {
             if self.cursor() > 0 {
                 self.select_item(&settings, self.cursor() - 1);
+                self.reveal(self.cursor());
                 cx.sound("move");
             }
         } else if input.down {
             if self.cursor() + 1 < n {
                 self.select_item(&settings, self.cursor() + 1);
+                self.reveal(self.cursor());
                 cx.sound("move");
             }
+        } else if input.confirm {
+            self.open(cx, self.cursor());
         } else if input.y {
             cx.sound("decide");
             self.reset();
@@ -832,6 +880,8 @@ impl ConfigMenu {
                                 self.write(cx, index, value.clamp(0, last) as u8);
                                 cx.sound("decide");
                             }
+                        } else if let Kind::Open = item.def.kind {
+                            self.open(cx, index);
                         } else if let Some(k) = self.option.take() {
                             // `0x7100057110`: the option is selected, flashes and is written, with the decide sound
                             let old = (item.def.get)(&settings) as usize;
@@ -937,6 +987,12 @@ impl ConfigMenu {
         let (dialog, reset) = match child {
             Child::Reset(dialog) => (dialog, true),
             Child::Notice(dialog) => (dialog, false),
+            Child::Controls(screen) => {
+                if !screen.update(cx) {
+                    self.child = None;
+                }
+                return;
+            }
         };
         let running = dialog.update(&mut cx.reborrow(cx.focused));
         let events = dialog.take_events();
@@ -996,13 +1052,8 @@ impl ConfigMenu {
             }
             (Label::Text(_), Some(label)) => {
                 // where the art's labels start, centred on the row
-                let alpha = if let Kind::Disabled = item.def.kind {
-                    0.45
-                } else {
-                    1.0
-                };
                 let at = vec2(44.0, y + (ITEM_H - label.size().y) / 2.0);
-                draw_text_at(pass, label, list, at, alpha);
+                draw_text_at(pass, label, list, at, 1.0);
             }
             (Label::Text(_), None) => {}
         }
@@ -1097,7 +1148,7 @@ impl ConfigMenu {
                 let at = vec2(x1 - 40.0, middle) - on.size() / 2.0;
                 draw_text_at(pass, on, list, at, on_alpha);
             }
-            Kind::Disabled => {}
+            Kind::Open => {}
         }
     }
 }
@@ -1116,6 +1167,8 @@ fn draw_text_at(pass: &mut RenderPass, text: &TextBlock, transform: Mat4, at: Ve
 impl Task for ConfigMenu {
     fn update(&mut self, cx: &mut TaskCx) -> bool {
         let frames = cx.frames;
+        let size = cx.pre_render.resize_source.handle::<CanvasSize>().get();
+        self.target_size = (size.width, size.height);
         match self.state {
             State::Opening => {
                 self.fade = (self.fade + 0.1 * frames).min(1.0);
@@ -1221,8 +1274,19 @@ impl Task for ConfigMenu {
         Sprite::new(t("window"), [48.0, 176.0, 48.0 + 1824.0, 176.0 + 834.0])
             .draw(pass, builder, slid);
 
-        // shortcut: no page holds more items than the 666 px list shows, so the scroll stays 0, the list is not clipped
-        // and its scroll bar is left out
+        if let Some(Child::Controls(screen)) = &self.child {
+            Sprite::new(t("caption"), [480.0, top, 1440.0, top + 128.0])
+                .draw(pass, builder, projection);
+            screen.render(pass, &self.textures, slid, top, 1080.0 - f * 88.0 + 20.0);
+            return;
+        }
+
+        // only the PC tab is taller than the 666 px view: the list is clipped to it (the scroll bar is left out)
+        ui::clip(
+            pass,
+            Some([0.0, LIST_Y, 1920.0, LIST_Y + VIEW]),
+            self.target_size,
+        );
         let list = slid * Mat4::from_translation(vec3(LIST_X, LIST_Y - self.scroll, 0.0));
         for item in &self.pages[self.page] {
             self.draw_item(pass, list, item);
@@ -1240,6 +1304,7 @@ impl Task for ConfigMenu {
                     .draw(pass, builder, list);
             }
         }
+        ui::clip(pass, None, self.target_size);
         // the window's edges over the list's clip
         Sprite::new(t("window"), [136.0, 247.0, 1784.0, 252.0])
             .uv([0.04825, 0.08513, 0.95175, 0.09113])
@@ -1320,13 +1385,16 @@ impl Task for ConfigMenu {
                 .uv([0.0, v, help.width / 320.0, v + 0.2])
                 .draw(pass, builder, projection);
             let x = right - help.width + 2.0 - 48.0;
-            let (u, v) = (
-                (help.glyph & 7) as f32 / 8.0,
-                (help.glyph >> 3) as f32 / 2.0,
+            let rect = [x, y, x + 48.0, y + 48.0];
+            ui::prompts::draw(
+                pass,
+                builder,
+                projection,
+                t("key"),
+                help.glyph,
+                rect,
+                FloatColor4::WHITE,
             );
-            Sprite::new(t("key"), [x, y, x + 48.0, y + 48.0])
-                .uv([u, v, u + 0.125, v + 0.5])
-                .draw(pass, builder, projection);
             right = x - 16.0;
         }
 

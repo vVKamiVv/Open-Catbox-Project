@@ -12,14 +12,11 @@ use shin_core::{
     time::Ticks,
     vm::command::types::{MaskFlags, MaskParam},
 };
-use shin_input::{
-    Action, ActionState, Pointer, RawInputState,
-    inputs::{GamepadButton, MouseButton, VirtualGamepadButton},
-};
+use shin_input::{Action, ActionState, Pointer, RawInputState};
 use shin_render::{RenderRequestBuilder, render_pass::RenderPass};
 use shin_window::{AppContext, DisplaySettings, RenderContext, ShinApp};
 use tracing::{debug, error, info, warn};
-use winit::{dpi::PhysicalSize, keyboard::KeyCode};
+use winit::dpi::PhysicalSize;
 
 use shin_core::primitives::color::FloatColor4;
 use shin_render::render_texture::RenderTexture;
@@ -52,9 +49,10 @@ use crate::{
     wiper::{mask::MaskWiperImpl, timed::TimedWiper},
 };
 
-/// The player's inputs, in the roles of the Switch's buttons (`0x71000c4300`); a gamepad maps directly (Nintendo
-/// layout: A confirms, B cancels), the keyboard and mouse stand in for them
-#[derive(Debug, Enum)]
+/// The player's inputs, in the roles of the Switch's buttons (`0x71000c4300`); a gamepad maps by position (Nintendo
+/// layout: A, the east button, confirms; B, the south one, cancels), the keyboard and mouse stand in for them. What
+/// triggers each is in [`crate::bindings`], remappable on the Controls screen.
+#[derive(Debug, Enum, Clone, Copy, PartialEq, Eq)]
 pub enum AppAction {
     ToggleFullscreen,
     /// A: confirm, advance
@@ -80,8 +78,10 @@ pub enum AppAction {
     /// + and - (the keyboard's = and -): the scenario select's "Unlock all", the story's chapter jumps
     Plus,
     Minus,
-    /// shortcut: the port has no save menu yet, so F5 saves to the slot the menu would open at
+    /// The galleries' Save; in the story it saves to the slot the save menu would open at (F5, P, ZR)
     Save,
+    /// Port-only: the story's roll back, by default the menus' up (read only where up would roll back)
+    RollBack,
     /// `--dev` only (ignored otherwise): F3 the overlay window, F6 pause, F7 one frame, F8/F9 slower/faster, F10 1x
     DevOverlay,
     DevPause,
@@ -92,56 +92,9 @@ pub enum AppAction {
 }
 
 impl Action for AppAction {
+    /// Through the bindings: the defaults in `bindings.rs`, or what the player set on the Controls screen
     fn lower(raw_input_state: &RawInputState) -> EnumMap<Self, bool> {
-        let key = |code| raw_input_state.keyboard.contains(&code);
-        let pad = |button| raw_input_state.gamepads.is_held(button);
-        let stick = |direction| raw_input_state.gamepads.is_vheld(direction);
-        EnumMap::from_fn(|action| match action {
-            AppAction::ToggleFullscreen => key(KeyCode::F11),
-            AppAction::Enter => {
-                key(KeyCode::Space) || key(KeyCode::Enter) || pad(GamepadButton::A)
-            }
-            AppAction::Cancel => {
-                key(KeyCode::Backspace)
-                    || key(KeyCode::Escape)
-                    || raw_input_state.mouse.buttons[MouseButton::Right]
-                    || pad(GamepadButton::B)
-            }
-            AppAction::AnyDown => {
-                key(KeyCode::ArrowDown)
-                    || pad(GamepadButton::Down)
-                    || stick(VirtualGamepadButton::StickLDown)
-            }
-            AppAction::AnyUp => {
-                key(KeyCode::ArrowUp) || pad(GamepadButton::Up) || stick(VirtualGamepadButton::StickLUp)
-            }
-            AppAction::AnyLeft => {
-                key(KeyCode::ArrowLeft)
-                    || pad(GamepadButton::Left)
-                    || stick(VirtualGamepadButton::StickLLeft)
-            }
-            AppAction::AnyRight => {
-                key(KeyCode::ArrowRight)
-                    || pad(GamepadButton::Right)
-                    || stick(VirtualGamepadButton::StickLRight)
-            }
-            AppAction::PageUp => key(KeyCode::PageUp) || stick(VirtualGamepadButton::StickRUp),
-            AppAction::PageDown => key(KeyCode::PageDown) || stick(VirtualGamepadButton::StickRDown),
-            AppAction::HoldSkip => key(KeyCode::ControlLeft),
-            AppAction::AutoToggle => key(KeyCode::KeyA) || pad(GamepadButton::L),
-            AppAction::SkipToggle => key(KeyCode::KeyS) || pad(GamepadButton::R),
-            AppAction::ButtonX => key(KeyCode::KeyX) || pad(GamepadButton::X),
-            AppAction::ButtonY => key(KeyCode::KeyY) || pad(GamepadButton::Y),
-            AppAction::Plus => key(KeyCode::Equal) || pad(GamepadButton::Plus),
-            AppAction::Minus => key(KeyCode::Minus) || pad(GamepadButton::Minus),
-            AppAction::Save => key(KeyCode::F5),
-            AppAction::DevOverlay => key(KeyCode::F3),
-            AppAction::DevPause => key(KeyCode::F6),
-            AppAction::DevStep => key(KeyCode::F7),
-            AppAction::DevSlower => key(KeyCode::F8),
-            AppAction::DevFaster => key(KeyCode::F9),
-            AppAction::DevSpeedReset => key(KeyCode::F10),
-        })
+        crate::bindings::lower(raw_input_state)
     }
 }
 
@@ -201,6 +154,7 @@ impl ShinApp for App {
 
         // TODO: do not block the game loop (?)
         let adv_assets = shin_tasks::block_on(AdvAssets::load(&asset_server)).unwrap();
+        ui::prompts::init(&context.wgpu.device, &context.wgpu.queue);
 
         let mut savedata_path = cli.savedata.clone().or_else(savedata::default_path);
         let save = match savedata_path.as_deref().map(savedata::load) {
@@ -416,6 +370,12 @@ impl ShinApp for App {
         elapsed_time: Duration,
         command_encoder: &mut wgpu::CommandEncoder,
     ) {
+        // while the Controls screen waits for a key, the key is its alone
+        let input = if crate::bindings::is_capturing() {
+            EnumMap::default()
+        } else {
+            input
+        };
         if input[AppAction::ToggleFullscreen].is_clicked {
             // F11 flips between the window and borderless fullscreen, as the PC tab's window mode
             port_settings::update(|s| {
@@ -483,6 +443,8 @@ impl ShinApp for App {
             dynamic_buffer: &mut context.render.dynamic_buffer,
             encoder: command_encoder,
         };
+
+        ui::prompts::refresh(&pre_render_context, &self.adv_assets.fonts.system_font);
 
         let mut update_context = UpdateContext {
             frame_id: self.frame_id,
@@ -696,6 +658,8 @@ impl ShinApp for App {
 
     /// `--dev`: runs the overlays' egui pass, which takes the clicks egui wants before the game sees them
     fn filter_input(&mut self, context: AppContext<Self>, input: &mut RawInputState) {
+        crate::bindings::record_held(input);
+        ui::prompts::set_device(input.last_device);
         let Some(dev) = &mut self.dev else { return };
         let window = &context.winit.window;
         let size = window.inner_size();

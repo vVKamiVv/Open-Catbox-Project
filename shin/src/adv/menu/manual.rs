@@ -313,11 +313,15 @@ impl KeyHelp<'_> {
         let mut x = right - width + self.glyph_offset;
         for &key in glyphs {
             x -= self.glyph_step;
-            let (u, v) = ((key & 7) as f32 * 0.125, (key >> 3) as f32 * 0.5);
-            let mut icon =
-                Sprite::new(self.keys, [x, y, x + 48.0, y + 48.0]).uv([u, v, u + 0.125, v + 0.5]);
-            icon.color = color;
-            icon.draw(pass, ui::builder(), projection);
+            ui::prompts::draw(
+                pass,
+                ui::builder(),
+                projection,
+                self.keys,
+                key,
+                [x, y, x + 48.0, y + 48.0],
+                color,
+            );
         }
         x - self.gap
     }

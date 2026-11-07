@@ -1,5 +1,5 @@
-//! The port's own settings, which the Switch original has no counterpart for: the window, the frame timing and
-//! supersampling. They live in `settings.json` next to the save file (`%APPDATA%\shin\settings.json` on Windows),
+//! The port's own settings, which the Switch original has no counterpart for: the window, the frame timing,
+//! supersampling, the button prompts and the remapped controls. They live in `settings.json` next to the save file (`%APPDATA%\shin\settings.json` on Windows),
 //! not in `SAVEDATA`, whose format stays the original's; the Config screen's "PC" tab edits them and every change is
 //! written at once. The touch effects stay the save's own setting (`v17_showtoucheffect`, the Miscellaneous tab).
 
@@ -21,6 +21,20 @@ pub enum WindowMode {
     Borderless,
     /// Exclusive fullscreen
     Exclusive,
+}
+
+/// Which buttons the key help shows
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ButtonPrompts {
+    /// The device used last: the keyboard, or the gamepad's own buttons
+    #[default]
+    Auto,
+    Xbox,
+    #[serde(rename = "playstation")]
+    PlayStation,
+    Switch,
+    Keyboard,
 }
 
 /// The window sizes offered while windowed, in logical pixels
@@ -47,7 +61,8 @@ pub struct PortSettings {
     pub frame_cap: u32,
     /// The canvas is rendered this many times larger and filtered down to the window
     pub supersampling: f32,
-    /// Reserved for remappable controls: action name to inputs
+    pub button_prompts: ButtonPrompts,
+    /// The remapped controls: action name to inputs (see [`crate::bindings`]); actions not here keep their defaults
     pub bindings: BTreeMap<String, Vec<String>>,
 }
 
@@ -58,6 +73,7 @@ impl PortSettings {
         vsync: true,
         frame_cap: 0,
         supersampling: 1.0,
+        button_prompts: ButtonPrompts::Auto,
         bindings: BTreeMap::new(),
     };
 
@@ -111,6 +127,7 @@ pub fn load(path: Option<PathBuf>) {
         },
         _ => PortSettings::default(),
     };
+    crate::bindings::apply(&settings.bindings);
     *SETTINGS.lock().unwrap() = settings;
     *PATH.lock().unwrap() = path;
 }
@@ -127,6 +144,9 @@ pub fn update(change: impl FnOnce(&mut PortSettings)) {
     change(&mut settings);
     if *settings == old {
         return;
+    }
+    if settings.bindings != old.bindings {
+        crate::bindings::apply(&settings.bindings);
     }
     if let Some(path) = PATH.lock().unwrap().as_deref() {
         if let Err(e) = write(path, &settings) {

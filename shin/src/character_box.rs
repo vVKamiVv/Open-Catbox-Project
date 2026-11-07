@@ -724,9 +724,10 @@ impl CharacterBox {
             }
             State::Viewer => {
                 self.handle_viewer_pointer(pointer, frames);
-                // `0x710003cac0`: a flick's speed moves the camera each frame, without dt, slowing by 0.95^dt
+                // `0x710003cac0`: a flick's speed moves the camera each frame (the original's 60, without dt), slowing by 0.95
                 if self.velocity != Vec2::ZERO {
-                    self.move_camera(self.velocity);
+                    // the 60 Hz frames' moves summed, as the speed decays
+                    self.move_camera(self.velocity * ui::decaying_sum(0.95, frames));
                     self.velocity *= 0.95f32.powf(frames);
                 }
                 if !self.gestures.is_active() && self.state == State::Viewer {

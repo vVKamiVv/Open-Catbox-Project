@@ -38,10 +38,7 @@ use crate::{
         system::{AssetDataAccessor, AssetServer},
     },
     audio::play_sys_se,
-    layer::{
-        text_block::TextBlock,
-        user::minigame::{self, Sprite},
-    },
+    layer::{text_block::TextBlock, user::minigame},
     render::PreRenderContext,
     ui,
 };
@@ -51,7 +48,7 @@ const BORDER: FloatColor4 = FloatColor4::from_rgba(0.1843, 0.0980, 0.0784, 1.0);
 const NOTICE_FRAMES: f32 = 120.0;
 const FADE_FRAMES: f32 = 30.0;
 /// The `key` atlas' − glyph
-const MINUS_GLYPH: u8 = 15;
+const SAVE_GLYPH: u8 = 13;
 
 pub struct Exporter {
     font: Arc<GpuFontLazy>,
@@ -79,7 +76,7 @@ impl Exporter {
         }
     }
 
-    /// The Save key: − (the keyboard's -) or F5, both unused by the galleries
+    /// The Save action (F5, P, ZR by default); − (the keyboard's -), unused by the galleries, also still saves
     pub fn pressed(state: &EnumMap<AppAction, ActionState>) -> bool {
         state[AppAction::Minus].is_clicked || state[AppAction::Save].is_clicked
     }
@@ -184,13 +181,16 @@ impl Exporter {
             BORDER.with_alpha(color.a),
         );
         let x = text_x - 52.0;
-        let (u, v) = (
-            (MINUS_GLYPH & 7) as f32 * 0.125,
-            (MINUS_GLYPH >> 3) as f32 * 0.5,
+        let rect = [x, y, x + 48.0, y + 48.0];
+        ui::prompts::draw(
+            pass,
+            ui::builder(),
+            projection,
+            keys,
+            SAVE_GLYPH,
+            rect,
+            color,
         );
-        let mut icon = Sprite::new(keys, [x, y, x + 48.0, y + 48.0]).uv([u, v, u + 0.125, v + 0.5]);
-        icon.color = color;
-        icon.draw(pass, ui::builder(), projection);
         self.hit.set([x, y, right, y + 48.0]);
         x - 16.0
     }

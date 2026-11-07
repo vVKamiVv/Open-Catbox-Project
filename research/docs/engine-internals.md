@@ -1139,8 +1139,8 @@ Nothing in this section exists in the Switch release; it records what the port a
 the file given by `--savedata`), JSON, read at startup and rewritten whenever a value changes; `SAVEDATA` keeps the
 original's format untouched. Fields: `window_mode` (`windowed`, `borderless`, `exclusive`), `window_size` (logical
 pixels while windowed: 1280x720, 1600x900, 1920x1080, 2560x1440 or 3840x2160 from the menu), `vsync`, `frame_cap`
-(0 = none, 30/60/120/144/240), `supersampling` (1, 1.5, 2) and `bindings` (an empty map, reserved for remappable
-controls). Missing fields take their defaults. `--fullscreen` forces borderless fullscreen for the run without
+(0 = none, 30/60/120/144/240), `supersampling` (1, 1.5, 2), `button_prompts` (`auto`, `xbox`, `playstation`,
+`switch`, `keyboard`) and `bindings` (the remapped controls, below). Missing fields take their defaults. `--fullscreen` forces borderless fullscreen for the run without
 writing it; F11 toggles windowed/borderless and is saved. The touch effects stay the save's own setting (v17, the
 Miscellaneous tab). Code: `shin/src/port_settings.rs`, applied by `shin-window` (`DisplaySettings`).
 
@@ -1148,9 +1148,42 @@ Miscellaneous tab). Code: `shin/src/port_settings.rs`, applied by `shin-window` 
 `960 - 150 * 4 + 300 * page`), the PC tab is the first tab's art with its plain middle stretched and its label in
 the system font, and the items' labels are drawn in the system font (English, or Japanese when the executable's
 texts are Japanese). Window mode and supersampling are rows of the existing buttons with font labels, V-Sync uses the
-art's Off/On, window size and frame cap are one wide button stepped by left/right or by tapping its halves, and
-"Controls…" is a dimmed placeholder. Sounds, keys, pad and touch behave as on the other tabs; Reset also resets
-these (not `bindings`).
+art's Off/On, window size, frame cap and button prompts are one wide button stepped by left/right or by tapping its
+halves, and "Controls…" (A or a tap) opens the Controls screen. The PC tab is taller than the 666 px view, so its
+list is clipped and scrolls to the cursor. Sounds, keys, pad and touch behave as on the other tabs; Reset also
+resets these (not `bindings`).
+
+**Bindings.** Every `AppAction` reads a list of inputs (`shin/src/bindings.rs`; `AppAction::lower` goes through
+it): keys by winit's names (`KeyS`, `F5`, `Space`), `MouseRight`/`MouseMiddle`/`WheelUp`/`WheelDown` (the left
+button is the pointer), pad buttons by position (`PadSouth` = Switch B, `PadEast` = A, `PadWest` = Y, `PadNorth` =
+X, `PadL1`/`PadR1` = L/R, `PadL2`/`PadR2` = ZL/ZR, `PadStart`/`PadSelect` = +/−, `PadL3`, `PadR3`, `PadUp`...)
+and stick directions (`LStickUp`, `RStickDown`...). The defaults are the bindings the port always had, plus Save
+on P and ZR (F5 kept) and a separate Roll back action (the story's up, defaulting to the menus' up). `bindings` in
+`settings.json` maps an action (`confirm`, `cancel`, `system_menu`, `backlog`, `auto`, `skip`, `hold_skip`,
+`next_chapter`, `previous_chapter`, `save`, `roll_back`, `page_up`, `page_down`, `fullscreen`) to its whole input
+list; unknown names are skipped with a warning, and an action left with no valid input, or sharing an input with
+another action read in the same place (story or menus), keeps its defaults. Menu navigation (arrows, d-pad, left
+stick) and the `--dev` keys are fixed. The galleries' Save is the Save action; − still saves there too.
+
+**The Controls screen** (`config_menu/controls.rs`) replaces the Config window's list and tabs: column headers in
+the system font where the tabs are, one 88 px row per remappable action with its keyboard/mouse inputs (short names)
+and its controller buttons (glyphs in the pad style) in two stretched `button_on`/`button_off` cells. Up/down pick
+the row, left/right the cell, A or a tap waits for the new input (the game sees no input meanwhile and until it is
+released): a quick Escape or B binds it, held half a second it gives up, as do a click and 5 s without input. The
+new input replaces the action's inputs of that kind; one that another action reads in the same place is refused with
+"Already used by: …" under the list. Y or the Default button asks and resets every binding; B or the close button
+goes back. Every change is written to `settings.json` at once.
+
+**Button prompts** (`shin/src/ui/prompts.rs`). Every key-help glyph the screens draw from their `key` atlas goes
+through `prompts::draw`: the Switch glyph stands for an action (A confirm, B cancel, X backlog, Y system menu, L/R
+auto/skip, + −, ZR the galleries' Save), and the button or key bound to it now is drawn in the active style. The
+style is the PC tab's choice, or with Auto the device a button was last pressed on (keyboard and mouse, or the pad
+family from gilrs: vendor 0x057E Nintendo, 0x054C Sony, 0x045E Microsoft, else the name; unknown pads count as
+Xbox). Switch pads use the game's own glyphs; Xbox and PlayStation glyphs (coloured A/B/X/Y circles; ✕ ○ □ △ on
+grey; LB/RB/LT/RT or L1/R1/L2/R2; menu/view or options/create; d-pads; LS/RS, L3/R3) are painted at startup into a
+96 px-per-cell atlas from distance fields, in the game's grey with a dark outline; the keyboard shows a key cap
+with the key's short name in the system font, or arrow caps for the d-pad glyphs. The buttons keep mapping by
+position, so a pad plays the same whatever the prompts say (Xbox B and PlayStation ○ confirm, as the Switch's A).
 
 **Rendering.** The canvas is the largest 16:9 area of the window at its native resolution. With supersampling the
 canvas (and every render texture, which follow its size) is rendered at the factor times that size, capped by the
@@ -1168,6 +1201,8 @@ once per update were changed so 144 or 240 Hz look like 60 Hz:
 | Star spawning | a drag segment of 10 px per update | 10 px per 60 Hz frame, at most once a frame on average |
 | Ghosting trails (`layer/new_drawable_layer`) | fed back every update | fed back once a 60 Hz frame |
 | Skip mode (`adv/mod.rs`) | a fast-forward per update | once a 60 Hz frame (debug seeking still every update) |
+| Held right-stick scrolling in the Picture and Music Box | 32 px per update | 32 px per 60 Hz frame |
+| Flick coasting of the Picture Box viewer and the Character Box camera | the speed per update | the 60 Hz sum `v (1 - 0.95^dt) / 0.05` |
 
 Measured: the title's 90-frame fade took 1489 ms over 359 updates with V-Sync off and a 240 cap, 1501 ms over 91
 updates with a 60 cap (debug log `A 90-frame scene fade took ...`).

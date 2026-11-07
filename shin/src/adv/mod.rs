@@ -770,7 +770,7 @@ impl Adv {
                 }
             }
         }
-        if state[AppAction::AnyUp].is_clicked_or_repeated && self.load_request.is_none() {
+        if state[AppAction::RollBack].is_clicked_or_repeated && self.load_request.is_none() {
             self.roll_back(context);
             return;
         }

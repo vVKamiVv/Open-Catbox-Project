@@ -9,7 +9,9 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
 };
 
-use crate::inputs::{GamepadAxis, GamepadButton, MouseButton, VirtualGamepadButton};
+use crate::inputs::{
+    GamepadAxis, GamepadButton, GamepadFamily, InputDevice, MouseButton, VirtualGamepadButton,
+};
 
 #[derive(Clone)]
 pub struct MouseState {
@@ -136,6 +138,7 @@ impl RawInputAccumulator {
                 if let PhysicalKey::Code(keycode) = event.physical_key {
                     match event.state {
                         ElementState::Pressed => {
+                            state.last_device = InputDevice::KeyboardMouse;
                             state.keyboard.insert(keycode);
                         }
                         ElementState::Released => {
@@ -158,6 +161,7 @@ impl RawInputAccumulator {
                     winit::event::MouseScrollDelta::PixelDelta(p) => (p.y / 120.0) as f32, /* this value is windows-specific */
                 };
 
+                state.last_device = InputDevice::KeyboardMouse;
                 if amount > 0.0 {
                     state.mouse.buttons[MouseButton::WheelUp] = true;
                 } else {
@@ -166,6 +170,9 @@ impl RawInputAccumulator {
                 state.mouse.scroll_amount = amount;
             }
             &WindowEvent::MouseInput { button, state, .. } => {
+                if state == ElementState::Pressed {
+                    self.state.last_device = InputDevice::KeyboardMouse;
+                }
                 if let Some(button) = convert_winit_mouse_button(button) {
                     self.state.mouse.buttons[button] = match state {
                         ElementState::Pressed => true,
@@ -183,6 +190,22 @@ impl RawInputAccumulator {
         if let Some(gilrs) = &mut self.gilrs {
             let gamepads = &mut self.state.gamepads;
             while let Some(event) = gilrs.next_event() {
+                // a press, or a stick pushed past halfway, makes this pad the device the prompts follow
+                let active = match event.event {
+                    EventType::ButtonPressed(..) => true,
+                    EventType::AxisChanged(axis, value, _) => {
+                        GamepadAxis::from_gilrs(axis).is_some() && value.abs() > 0.5
+                    }
+                    _ => false,
+                };
+                if active {
+                    let pad = gilrs.gamepad(event.id);
+                    self.state.last_device = InputDevice::Gamepad(GamepadFamily::detect(
+                        pad.name(),
+                        pad.vendor_id(),
+                        pad.product_id(),
+                    ));
+                }
                 let gamepad = gamepads.gamepads.entry(event.id).or_default();
                 match event.event {
                     EventType::ButtonPressed(button, _) => {
@@ -258,6 +281,8 @@ pub struct RawInputState {
     pub keyboard: PetitSet<KeyCode, 16>,
     pub mouse: MouseState,
     pub gamepads: GamepadsState,
+    /// The device a button was last pressed on
+    pub last_device: InputDevice,
     // TODO: touchscreen
     // need to figure out how exactly the game handles it first though
 }
@@ -268,6 +293,7 @@ impl RawInputState {
             keyboard: PetitSet::new(),
             mouse: MouseState::new(),
             gamepads: GamepadsState::new(),
+            last_device: InputDevice::default(),
         }
     }
 }
