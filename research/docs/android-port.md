@@ -1,8 +1,7 @@
 # Android: the plan
 
-Whether the port can run on Android phones and tablets, what is in the way, and the order to do it in. Written
-2026-11-08; nothing has been done yet. File references are as of v0.3.1. The decisions for the maintainer are at the
-end.
+Whether the port can run on Android phones, tablets and Chromebooks, what is in the way, and the order to do it in.
+Written 2026-11-08, when work started. File references are as of v0.3.1. The decisions are at the end.
 
 ## Where it stands
 
@@ -87,9 +86,12 @@ The risk is phone-specific behaviour, so it needs testing on more than the emula
 The MediaCodec decoder, with the same test as on Linux and macOS: decode the ffmpeg B-frame movie and check the frame
 count and order.
 
-### 5. Setup on the phone
+### 5. The launcher on the phone
 
-See decision 1.
+See decision 1. Tauri's Android project for the launcher, with the game's native library in the same APK. The
+launcher's setup reads the NSPs and `prod.keys` the player picks through Android's file picker, and writes the game
+data into the app's folder. Before setup it shows the storage warning above. Windows-only parts (installing itself,
+the updater) are left out on Android, as on Linux and macOS where they differ.
 
 ### 6. Packages, updates and CI
 
@@ -103,9 +105,10 @@ See decision 1.
 
 - **Builds:** CI can build the APK, but it cannot run it.
 - **Emulator:** Android Studio's emulator runs on the maintainer's PC. Driving it needs the screen, so only when the
-  maintainer agrees.
-- **A real phone:** touch, speed, movies and GPU drivers need one, ideally a few different ones. The maintainer's own,
-  or players willing to test.
+  maintainer agrees. The PC has the SDK (platforms 35 to 37, build-tools 36), NDK 28.2, the emulator and system
+  images; the Rust Android targets and `cargo-ndk` are not installed yet.
+- **A real phone:** touch, speed, movies and GPU drivers need one. The Honor X7b is the test phone; players with
+  other phones can report through the issue forms.
 
 ## Risks
 
@@ -117,17 +120,19 @@ See decision 1.
 - **Distribution:** a Play Store listing is unlikely for a port that needs the player's own dump, so the APK is
   installed directly ("install unknown apps").
 
-## Decisions (for the maintainer)
+## Decisions (2026-11-08)
 
-1. **Setup on the phone.**
-   - (a) None at first: the player copies a data folder set up by the PC launcher. Least work, but needs a PC.
-   - (b) The existing launcher UI, built with Tauri 2's Android support, and the game as a second screen of the same
-     app. It reuses everything, but needs a small Kotlin part to switch between the two, and two UI stacks in one app.
-   - (c) Setup screens drawn by the game itself. One app, but a second setup UI to maintain.
+1. **Setup on the phone: our launcher.** The existing launcher UI, built with Tauri 2's Android support, with the
+   game as a second screen (a native activity) of the same app. A small Kotlin part starts the game's activity; the
+   launcher hands it the paths and the language in a file in the app's folder. Copying a PC-made data folder by
+   hand stays a fallback for testing only.
+2. **The oldest Android supported: Android 9 (API 28).** AAudio, the NDK media API and Vulkan 1.1 on most phones of
+   that age are available; wgpu falls back to OpenGL ES where Vulkan is missing or broken.
+3. **Phones, tablets and Chromebooks.** One APK for all; the layout must work from a phone in landscape up to a
+   Chromebook window, which can also be resized.
+4. **Package name: `io.github.vvkamivv.opencatbox`.** Fixed from the first release, with the signing key.
 
-   Suggested: (a) first, then (b).
-2. **The oldest Android supported.** Suggested: Android 8.0 (API 26), where AAudio and the NDK media API are
-   available; wgpu falls back to OpenGL ES where Vulkan is missing or broken.
-3. **Phones only, or tablets and Chromebooks too.** Same APK; mostly a question of what gets tested.
-4. **The package name and signing key.** Changing either later breaks updates for installed copies, so they are fixed
-   once. Tauri's Android name, `io.github.vvkamivv.opencatbox`, would fit.
+**Storage:** accepted as it is. The Android launcher warns before setup that the game data needs about 11 GB, and
+that uninstalling the app deletes it together with the saves, so saves worth keeping should be exported first.
+
+**Testing device:** an Honor X7b (Android, arm64) for real-device tests; the emulator covers the rest.
