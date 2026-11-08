@@ -117,6 +117,6 @@ The private key never goes into the repository; without it (and its password) no
 
 ## Not done yet
 
-- Linux and macOS: the installer (`install.rs`, the registry), the `shin.exe` path, the home under `%APPDATA%`, the
-  updater's Setup handoff and the packaging are Windows-only so far. The plan: `research/docs/linux-macos-port.md`.
+- Android: the launcher starts the game as a separate program, which Android does not allow, so setup has to move
+  into the app. The plan: `research/docs/android-port.md` (Linux and macOS: `research/docs/linux-macos-port.md`).
 - Code signing (Authenticode) of the Setup, so SmartScreen stops warning about it.

@@ -2,7 +2,7 @@
 
 Where the port stands on Linux and macOS, what is in the way, and the order to do it in. The decisions are at the end;
 work started on 2026-11-07.
-File references are as of v0.2.7.
+File references are as of v0.2.7. Android has its own plan: [android-port.md](android-port.md).
 
 ## Where it stands
 
