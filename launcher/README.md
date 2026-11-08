@@ -111,7 +111,7 @@ The private key never goes into the repository; without it (and its password) no
 | Installed apps entry | `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\Open Catbox` |
 | settings | `<home>\launcher.json` |
 | game data | `<home>\data`, or `data_dir` in the settings (absolute, or relative to the home) |
-| saves | `<home>\saves\SAVEDATA` and `settings.json` (home in `%APPDATA%`: `%APPDATA%\shin`) |
+| saves | `<home>\saves\SAVEDATA` (the main save) and `settings.json` (home in `%APPDATA%`: `%APPDATA%\shin`); other saves in `profiles\<name>\`, backups in `backups\` beside each save |
 | web view data | `<home>\webview` |
 | game log | `<data>\logs\shin.log` |
 
