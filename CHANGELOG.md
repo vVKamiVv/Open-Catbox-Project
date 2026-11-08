@@ -2,7 +2,7 @@
 
 What changed in each release.
 
-## Unreleased
+## v0.3.1 — 2026-11-07
 
 - **Several saves:** pick which save to play with on the Play screen. **New save…** starts the game from the
   beginning without touching your other saves. Window and control settings are shared by all of them.

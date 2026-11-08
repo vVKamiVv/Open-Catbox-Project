@@ -4732,7 +4732,7 @@ dependencies = [
 
 [[package]]
 name = "open-catbox-launcher"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aes",
  "chrono",
