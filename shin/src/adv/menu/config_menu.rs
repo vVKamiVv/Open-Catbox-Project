@@ -666,6 +666,11 @@ impl ConfigMenu {
         minigame::tween_now(&mut self.tabs[page].0, 1.0, 0.25);
         let cursor = self.cursor();
         self.pages[page][cursor].set_focus(settings, true, false);
+        // port-only: one scroll serves every tab and only the PC tab scrolls, so a new tab starts at its top (still
+        // showing its remembered cursor) rather than at the PC tab's offset
+        self.coast.stop();
+        self.scroll = 0.0;
+        self.reveal(cursor);
     }
 
     /// `0x710005d120`
