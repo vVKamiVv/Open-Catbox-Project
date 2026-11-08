@@ -114,10 +114,8 @@ bound to slot 0 and 1 appear as `tcb_8` and `tcb_A`.
 ### Adding a shader to the port
 
 `shin-render-shaders/build.rs` turns every `wgsl/*.wgsl` into a program (`wiper_whirl.wgsl` → `WiperWhirl`,
-`WiperWhirlBindings`; textures/samplers are paired by their `*_texture`/`*_sampler` names). It only registers
-`rerun-if-changed` for files that already exist, so after **adding** a new `.wgsl` file, touch `build.rs` once to
-make Cargo regenerate the bindings. (Watching the whole folder instead would rebuild every time, because the script
-rewrites `types.wgsl` on each run.)
+`WiperWhirlBindings`; textures/samplers are paired by their `*_texture`/`*_sampler` names). It watches each shader
+and the `wgsl/` folder itself, so adding or removing a `.wgsl` file regenerates the bindings on the next build.
 
 ## Finding the same moment in the port and the original
 

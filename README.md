@@ -98,8 +98,9 @@ How the launcher works: [`launcher.md`](research/docs/launcher.md).
 cargo build --release -p shin
 ```
 
-Put the `assets` folder next to `shin.exe`, or set `SHIN_ASSETS` to its path. On Linux and macOS, movies need
-**ffmpeg**. More options: `shin --help`.
+Put the `assets` folder next to `shin.exe` (`shin` on Linux and macOS), or set `SHIN_ASSETS` to its path. Movies use
+the system's own decoder: Media Foundation on Windows, GStreamer with an H.264 plugin on Linux (building needs its dev
+packages), VideoToolbox on macOS; ffmpeg on the PATH is the fallback. More options: `shin --help`.
 
 ## 🎮 Moving the pieces
 

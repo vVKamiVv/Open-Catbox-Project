@@ -261,7 +261,8 @@ example while the game is running), nothing is half replaced: the launcher start
 
 **Uninstall.** From Installed apps, or **Settings → Uninstall…**. The Uninstall screen asks whether to **Also delete the
 game data, languages and saves** (off by default). If ticked, only known files are deleted (`data.rom`, the languages,
-the logs, `SAVEDATA*`, `settings.json`, `launcher.json`, `music.json`) and folders only when left empty, so other files in a data
+the logs, `.setup`, `SAVEDATA*`, `settings.json`, the save backups and the other saves (`backups/`, `profiles/`),
+`launcher.json`, `music.json`) and folders only when left empty, so other files in a data
 folder of your own survive. Uninstalling then removes the shortcuts and the Installed apps entry, closes, and a hidden PowerShell then deletes
 `Open Catbox.exe` and `shin.exe` (a running program cannot delete itself), the web view's data
 (`<home>\webview`, and the older `%LOCALAPPDATA%\io.github.vvkamivv.opencatbox`) and the program folder if nothing else

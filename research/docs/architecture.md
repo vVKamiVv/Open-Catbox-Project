@@ -15,7 +15,7 @@ original engine's behaviour is in [engine-internals.md](engine-internals.md); th
 | `shin-render-shaders` | The WGSL programs (`wgsl/`). Its build script writes `types.wgsl` from the Rust types of `shin-render-shader-types`, validates every shader with naga, compiles it to SPIR-V and generates typed bindings (`shaders.rs`); the WGSL source is the fallback where SPIR-V is not supported |
 | `shin-render-shader-types` | Uniform, vertex, buffer and texture types shared by Rust and the shaders, and `RenderClone` (deep copies that duplicate GPU buffers and textures, used to copy layers) |
 | `shin-audio` | Audio over kira (cpal output): NXA streams with loop points, volume/pan/stop tweens, the original's linear pan balance, the wait status bits, and each stream's peak level for lip-sync |
-| `shin-video` | Movies: MP4 demuxing, AAC through symphonia, H.264 through Media Foundation (Windows), an ffmpeg pipe (elsewhere, and the Windows fallback) or GStreamer (feature), frames uploaded as NV12 textures |
+| `shin-video` | Movies: MP4 demuxing, AAC through symphonia, H.264 through each system's own decoder (Media Foundation on Windows, GStreamer on Linux, VideoToolbox on macOS), an ffmpeg pipe when that cannot start, else no movies; frames uploaded as NV12 textures |
 | `shin-input` | Raw input (winit keyboard and mouse, gilrs gamepads), per-action states (held, clicked, repeats), the pointer on the 1920x1080 canvas, the "Confirm button" swap |
 | `shin-window` | The winit event loop and wgpu setup, the `ShinApp` trait the game implements, the frame loop (frame cap, update, render, supersampling, present), display settings, tracing |
 | `shin-tasks` | The thread pools: a rayon compute pool and an async I/O executor (`compute::spawn`, `async_io::spawn`, `block_on`) |
@@ -23,10 +23,10 @@ original engine's behaviour is in [engine-internals.md](engine-internals.md); th
 | `shin-derive` | Procedural macros: the VM command types (`Command`), typed texture archives (`TextureArchive`), vertices, `RenderClone`, `rat!` rationals, and the syntax-tree helpers of `shin-asm` |
 | `shin-asm` | A work-in-progress assembler for a text form of SNR bytecode (lexer, parser, HIR, SNR writer) |
 | `sdu` | Command-line tool: extract and convert every format (`rom`, `scenario`, `picture`, `mask`, `font`, `bustup`, `texture-archive`, `audio`, `savedata`, `sysse`, `assembler`) |
-| `launcher` | The Open Catbox launcher (Tauri 2, Windows): setup from the player's NSPs, translation downloads, starting the game, installing and updating itself. Separate from the engine; see [launcher.md](launcher.md) |
+| `launcher` | The Open Catbox launcher (Tauri 2; Windows, Linux, macOS): setup from the player's NSPs, translation downloads, the saves, starting the game, installing (on Windows) and updating itself. Separate from the engine; see [launcher.md](launcher.md) |
 
 `shin` uses every engine crate and nothing depends on it; the lower crates share `shin-primitives`. The launcher
-does not link the engine: it only starts `shin.exe`.
+does not link the engine: it only starts `shin` (`shin.exe` on Windows).
 
 ## Start-up
 
@@ -112,7 +112,7 @@ The port's own settings live apart in `settings.json` (`port_settings.rs`).
 | Compute pool (rayon, one thread per core) | Picture, bustup, mask, texture-archive and glyph decoding; voice lip-sync tables; save-list thumbnails' replays; gallery export; restarting looping movies |
 | Async I/O (one thread, `async-io`) | Asset loads spawned by commands and the restore; the ffmpeg pipes' readers and writers |
 | Audio (kira's cpal stream) | Mixing; game code only sends commands to it through `AudioManager` |
-| Video (`media-foundation-h264`, one per movie on Windows) | H.264 decoding, up to 8 frames ahead; elsewhere an `ffmpeg` child process per movie |
+| Video (`media-foundation-h264` on Windows, `video-toolbox-h264` on macOS, one per movie; GStreamer's own threads on Linux) | H.264 decoding, up to 8 frames ahead; with the ffmpeg fallback, an `ffmpeg` child process per movie |
 | Watchdog | Every 10 s, logs `parking_lot` deadlocks with backtraces |
 
 Game state is only touched on the main thread; the other threads hand results back through tasks

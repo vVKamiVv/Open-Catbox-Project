@@ -44,8 +44,9 @@ licence) and LibHac by Alex Barney, which document the NCA, PFS0, RomFS and BKTR
 ## Fonts
 
 The port's own menu texts use [Gelasio](https://github.com/SorkinType/Gelasio) by Eben Sorkin and
-[Cinzel](https://github.com/NDISCOVER/Cinzel) by Natanael Gama, both under the SIL Open Font License 1.1
-(`shin/fonts`, `launcher/ui/fonts`).
+[Cinzel](https://github.com/NDISCOVER/Cinzel) by Natanael Gama (`shin/fonts`); the launcher and the website use Cinzel
+and [Cormorant Garamond](https://github.com/CatharsisFonts/Cormorant) by Christian Thalmann (`launcher/ui/fonts`). All
+three are under the SIL Open Font License 1.1.
 
 ## The game
 

@@ -42,8 +42,9 @@ permissions:
 # Open Catbox: disabled for releases. Pushing a version tag no longer starts it (nor do pull
 # requests); it only runs when started by hand (workflow_dispatch). Releases are the launcher's
 # self-installing OpenCatbox-Setup.exe (shin.exe inside), built and signed locally with
-# launcher/scripts/release.ps1 together with the updater's latest.json, so this cargo-dist
-# release must not create a competing GitHub release for the same tag.
+# launcher/scripts/release.ps1 together with the updater's latest.json, plus the Linux and macOS
+# packages that release-unix.yml adds, so this cargo-dist release must not create a competing
+# GitHub release for the same tag.
 on:
   workflow_dispatch:
 

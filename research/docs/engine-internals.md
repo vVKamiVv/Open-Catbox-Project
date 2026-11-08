@@ -67,7 +67,7 @@ its Accuracy section gives the port's measured likeness to the original.
 
 | Area | Original | shin | Missing or stubbed in shin |
 |---|---|---|---|
-| Script commands | 61 | all 49 that Umineko uses | SHOWCHARS (1 use, Episode 5) opens the Characters screen and waits for it, as the original; compared with Eden. TROPHY does nothing, as on the Switch. The commands Umineko never uses (TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET) finish at once. SYSCALL 0 does not fade the touch screen's buttons, which the port does not draw |
+| Script commands | 61 | all 49 that Umineko uses | SHOWCHARS (1 use, Episode 5) opens the Characters screen and waits for it, as the original; compared with Eden. TROPHY does nothing, as on the Switch. The commands Umineko never uses (TRANSSET, TRANSWAIT, VOICESTOP, BGMWAIT, MSGSYNC, LAYERSWAP, MASKUNLOAD, RESUME, RESUMESET) finish at once. SYSCALL 0 slides the touch buttons out and turns skip and auto off, as the original |
 | Layer types | 10 | 7, all that Umineko loads | Animation (4), Effect (5), FocusLine (7), none used by Umineko. Quiz (9) has all four minigames (§13); the culprit game's texts come from the player's executable (§3) |
 | Wipers | 11 | 5, all that Umineko uses (Whirl and Glass compared with the original, §7) | Ripple, Scanline, Scroll, Turn, Wave, Zoom (none used by Umineko) |
 | Systems | all menus and modes | all: adventure screen, saving and loading (§14), every scene and menu (§15), voices (§16), touch gestures and the touch effect (§17) | – |
@@ -404,8 +404,10 @@ four at once, and checks every run gets every frame.
 Port note (**confirmed**, the port's decoders): `shin-video` demuxes the MP4 itself (`mp4.rs`), decodes AAC with
 symphonia and picks the H.264 decoder at build time (`shin-video/src/h264_decoder/mod.rs`): on Windows, Media
 Foundation's own decoder on one thread per movie, up to 8 frames ahead (`media_foundation.rs`), falling back to the
-ffmpeg pipe when Media Foundation cannot be set up (the "N" editions without the Media Feature Pack); elsewhere the
-ffmpeg pipe (`spawn_ffmpeg.rs`, Annex B in, y4m out); with the `gstreamer` feature, GStreamer everywhere. Frames
+ffmpeg pipe when Media Foundation cannot be set up (the "N" editions without the Media Feature Pack); on Linux,
+GStreamer when it has an H.264 decoder (`gstreamer.rs`, `linux.rs`); on macOS, VideoToolbox (`video_toolbox.rs`,
+pictures put in display order). Each falls back to the ffmpeg pipe (`spawn_ffmpeg.rs`, Annex B in, y4m out), and
+without ffmpeg the movies are skipped (`none.rs`). Frames
 arrive as NV12 and are drawn by the `movie` / `movie_alpha` programs; the alpha of transparent movies is read from
 the bottom half of the frame (§15).
 
@@ -417,7 +419,8 @@ the bottom half of the frame (§15).
 - The exact blend mode table used by the particle renderer (`0x7100226840` / `0x7100226838`).
 - `SYSCALL` (`shin::ADV::SYSCALL`, execute `0x7100007c10`): ids other than 0 do nothing; id 0 (`FUN_7100012550`) tweens
   an ADV context value at `+0x500` to 0 over the shared constant 0.1 if the flag at `+0x4f8` is set, then clears that
-  flag and `+0x47c`. What those context fields are is **open**; the port currently finishes the command immediately.
+  flag and `+0x47c`. Answered: `+0x500` is the touch buttons' slide and `+0x47c` the skip/auto mode; the port slides
+  the buttons out and turns skip and auto off, and the command never waits (`adv/command/syscall.rs`).
 - Answered: chapter titles (e.g. "Letter and Umbrella") are the AUTOSAVE scene-title banner
   ([audit/commands.md](audit/commands.md), AUTOSAVE), drawn by the port. The quiz layers are in §13; `EVBEGIN`/`EVEND`,
   `NOTIFYSET`, `CHARS` and `TIPSGET` are in the audit and the port. `FocusLineLayer` and `AnimationLayer` remain
@@ -488,12 +491,11 @@ voice status (`0x710011a980`) is 3 if any voice is in state 0, otherwise 2 if an
 - `WIPEWAIT` (`0x7100006b30`): done when the page layer has no running transition (`0x71000e66e0`).
 - `SYSSE` (`0x71000077d0`): id 0 plays the built-in sound named "horror" (string at `0x710015d64e`) from `sysse.bin`
   at the given volume (`0x71000272b0`); any other id does nothing; never waits.
-- `EXIT` (`0x7100004b10`): first frame: the SYSCALL 0 fade, clear the layer banks, close the message box, stop the
+- `EXIT` (`0x7100004b10`): first frame: the SYSCALL 0 fade, hide the banners, close the message box, stop the
   voice, fade and stop all sound effects, and start a 30-frame uninterruptible wait (`0x71000138d0`). Then, once the
   wait, the fade and the task pool are done, it leaves for the menus (`0x710000fab0`, `0x71000147e0`). The music is
-  not stopped. The port does the same and returns to the title, except that it does not clear the layer banks (the
-  title fades in over the last scene). (An earlier version of these notes read the 30-frame wait as a music
-  fade-out.)
+  not stopped. The port does the same and returns to the title. (Earlier notes read the banner calls `0x71000643c0` and `0x710009e4a0`
+  as clearing the layer banks; see audit/commands.md, EXIT. An earlier version of these notes also read the 30-frame wait as a music fade-out.)
 - The **ADV wait timer** (context `+0x490` interruptible flag, `+0x494` frames left as a float): `0x71000138d0`
   starts it with `(interruptible, frames)`, `0x71000138f0` cancels it (skip mode), `0x7100013900` reports it active
   while frames > 0. `WAIT` (`0x7100005090`) is just "start it, cancel it while skipping, done when inactive"; `EXIT`
@@ -885,7 +887,8 @@ changed settings, and on a manual save or delete (`0x71000d52f0`). A version-0 f
 
 In the port: `adv/vm_state/save.rs` (counter, route, pending SSETs, snapshot), `adv/command/mod.rs`
 (`replay_command`), `Adv::new` (the replay and its fallback), `adv/restore.rs` (the scene rebuild: layers, masks,
-group properties, BGM, looping sounds) and `savedata.rs` (the file, by default `%APPDATA%\shin\SAVEDATA`).
+group properties, BGM, looping sounds) and `savedata.rs` (the file, by default `SAVEDATA` in `shin` in the user's data folder: `%APPDATA%` on Windows,
+`~/.local/share` on Linux, `~/Library/Application Support` on macOS).
 The save and load screens (section 15) save and load; F5 still saves to the slot the menu would open at, and
 `--load auto` or `--load <1-100>` loads at start. The new screen crossfades from the old one over 30 frames (mode 0;
 rollback cuts). shortcuts: the crossfade starts at once instead of once the scene has loaded, and the rebuild does
@@ -1175,7 +1178,8 @@ option moves the cursor as a press does, without the flash.
 Nothing in this section exists in the Switch release; it records what the port adds on top.
 
 **The settings file.** `settings.json` next to the save file (`%APPDATA%\shin\settings.json` on Windows, or beside
-the file given by `--savedata`), JSON, read at startup and rewritten whenever a value changes; `SAVEDATA` keeps the
+the file given by `--savedata`), or the file given by `--settings` (the launcher passes one shared by all its saves),
+JSON, read at startup and rewritten whenever a value changes; `SAVEDATA` keeps the
 original's format untouched. Fields: `window_mode` (`windowed`, `borderless`, `exclusive`), `window_size` (logical
 pixels while windowed: 1280x720, 1600x900, 1920x1080, 2560x1440 or 3840x2160 from the menu), `vsync`, `frame_cap`
 (0 = none, 30/60/120/144/240), `supersampling` (1, 1.5, 2), `button_prompts` (`auto`, `xbox`, `playstation`,
@@ -1326,6 +1330,7 @@ All behind command-line flags (`shin --help`, `shin/src/cli.rs`); without them a
 | `--fast-forward-to <addr>` | runs the script to an address, choices picked automatically | `adv/mod.rs` |
 | `--unsafe-entry-point <addr>` | starts the VM at an address (the start-up block is skipped, so sprites and the box come out wrong) | `adv/mod.rs` |
 | `--savedata <file>` | another save file; `settings.json` then sits beside it | `savedata.rs`, `port_settings.rs` |
+| `--settings <file>` | another settings file (the launcher passes one shared by all its saves) | `cli.rs`, `app.rs` (`initial_display`) |
 | `--fullscreen` | borderless fullscreen for this run, not saved (§18) | `app.rs` |
 
 `RUST_LOG` (for example `warn,shin=debug,shin_video=debug`) sets the log level. A background thread checks every

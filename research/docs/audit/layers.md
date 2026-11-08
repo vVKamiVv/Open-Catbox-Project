@@ -22,7 +22,7 @@ Logs, decompiles and extracted shaders: `$S\audit\layers\` (`d1.c`–`d9.c`, `sh
 | 12/13 scale | 336 / 348 | | ok |
 | 56–60 ghosting | 289 / 108 / 28 / 20 / 14 | 268 on the screen layer `-2` | ok |
 | 23 blend type | 251 | always 1 (additive), 238 on movies | ok |
-| 32–39 wobble X/Y | ~580 | mode 4 (sine), 1 (random); 76+76 on screen `-2` (screen shake) | ok; random-mode seed inferred |
+| 32–39 wobble X/Y | ~580 | mode 4 (sine), 1 (random); 76+76 on screen `-2` (screen shake) | ok; random-mode seed from `shin::randomSeed`, as the original |
 | 66 blur | 86 | | ok |
 | 82–84 ripple | 84 / 41 / 41 | 78 on screen `-2` | ok |
 | 22 show | 71 | | ok |
@@ -45,7 +45,7 @@ Other counts: LAYERLOAD flags only 0, 2 (keep properties) and 3 (rain); LAYERUNL
 | Transform `0x7100074d80` | `get_transform` | matches | same order T(−scale origin)·S·T(so−ro)·R·T(t+ro); flip p26 bits 1/2; translation p0+p3−p20, p1+p4−p21, z p2 | none | – |
 | Wobbler slots `+0x1f18..+0x1f68`, update `0x71000c7270` | `properties.rs` wobblers, `shin-core` `LayerProperty` | matches | props 44–47 drive **rotation**, 48–51 **scale X**, 52–55 **scale Y** (amp/bias 46/47, 50/51, 54/55); a test pins the slots. Scale-bias defaults (1000) are assumed, the original's initialiser was not found | none (44–55 never used) | – |
 | Wobbler update `0x71000c7270` | `wobbler/mod.rs::update` | matches | phase resets only when the **mode** changes (invalid mode → 0); any non-zero period runs, a negative one backwards | none | – |
-| Wobbler value `0x71000c7370` | `Wobbler::value`, `wobbler/prng.rs` | matches (modes 2–8); random mode inferred | random: mt19937 seeded `int(t)+seed` (0 → `0x12345678`) and `+1`, lerped by frac(t), 0 for the first period; seed is wobbler `+0`, source unknown; shin seed 0 (`TODO`) | low (13 random-mode uses) | S |
+| Wobbler value `0x71000c7370` | `Wobbler::value`, `wobbler/prng.rs` | matches (modes 2–8); random mode inferred | random: mt19937 seeded `int(t)+seed` (0 → `0x12345678`) and `+1`, lerped by frac(t), 0 for the first period; seed is wobbler `+0`, filled from `shin::randomSeed` (`0x71000c7220`), as the port (`random::random_seed`) | low (13 random-mode uses) | S |
 | Blend states (`setBlend` `0x71000cf700`, table filled by `0x71000ce600`) | `pipelines/conversions.rs` | matches | ids: 0 no colour, 1 opaque, 2/3/4 straight normal/add/sub, 5/6/7 premultiplied normal/add/sub; alpha channel always (1−dst α, 1). Id 4 is reverse-subtract (dst − src·α); shin `Layer3` and `LayerPremultiplied3` both use `ReverseSubtract` | none | – |
 | Blend lookup tables `0x7100226840` = {2,3,4}, `0x7100226d58` → {5,6,7} | `from_regular_layer` / `from_premultiplied_layer` | matches | tile and movie direct draws use 2–4, picture blocks and effect composites 5–7 | none | – |
 | Program tables by fragment shader: blocks `0x7100170dc0` {20,23,21,22,24,25}, composite-transparent `0x7100170dd8` {14,17,15,16,18,19}, composite-opaque/movie `0x7100170da8` {8,11,9,10,12,13} | `layer.wgsl` output kinds `LayerPremultiply` / `LayerDiscard` / `Layer` | matches | decompiled 8–25: 20–25 premultiply output, 14–19 discard below `c1.x` without premultiply, 8–13 plain | none | – |
@@ -55,12 +55,12 @@ Other counts: LAYERLOAD flags only 0, 2 (keep properties) and 3 (rain); LAYERUNL
 | `PictureLayer::renderDirect/renderIndirect` `0x71000c5fa0` / `0x71000c6040` | `picture_layer.rs`, `NewDrawableLayer::render_drawable_indirect` | matches, 1 shortcut | indirect always returns the transparent pass (`coversScreen` `0x7100072c80` not ported, marked `shortcut:`); block culling `TODO` | none | S |
 | Effect chain `NewDrawableLayer::preRender` `0x71000762e0` | `new_drawable_layer/mod.rs`, `effect_passes.rs` | matches (doc §11) | blur, mosaic, raster, ripple, dissolve, ghosting confirmed; ghosting transform `0x7100075220` = shin's | none | – |
 | Prop 70 effect (program `0x2c`) | `pre_render` | **stub** | Logged once and skipped if ever > 0 (the effect is not decoded) | none (never set) | M |
-| Dissolve seed (layer `+0x58`) | `NewDrawableLayerState::dissolve_seed` | inferred | shin seeds from the clock (marked `shortcut:`); source in the original still open | low | S |
+| Dissolve seed (layer `+0x58`) | `NewDrawableLayerState::dissolve_seed` | inferred | the port seeds it with `random::random_seed()` (marked `shortcut:`); source in the original still open | low | S |
 | Effect composite `0x7100078af0` | `try_finish_indirect_render` | matches | transparent pass programs 14–19 + blends 5–7, opaque pass 8–13 + blend 1; colour premultiplied (inferred from `0x71000566f0` multiply) | none | – |
 | Clip mode props 61–65 (read in `0x71000788e0`) | not drawn: a set clip mode is logged once (`layer::warn_unsupported_clip`) | stub | would panic | none (never set) | M |
-| `LayerGroup` render `0x710007d5e0` | `layer_group.rs::render` | matches | opaque pass children back to front, then fill quad (program 0, stencil greater, (0,0,0,0)), transparent pass front to back | none | – |
+| `LayerGroup` render `0x710007d5e0` | `LayerGroup::render` → `LayerStack::render` (`layer/stack.rs`) | matches | opaque pass children back to front, then fill quad (program 0, stencil greater, (0,0,0,0)), transparent pass front to back | none | – |
 | `LayerGroup` child sort, comparator `0x7100081110` | `layer_group.rs::pre_render` sort | matches | higher RenderPosition first (|Δ| ≥ ε); ties: lower layer id first (key = Properties `+0x20`, set by LAYERLOAD from the record field `+0x58` = layer id). equal ids (the port's id-less screen and message layers) fall back to the layer bank | none | – |
-| `LayerGroup` indirect `vfunc_16` `0x710007e2c0`, fill colour `0x7100226c88` | `LayerGroupNewDrawableDelegate::render_drawable_indirect`, `render` opaque fill | matches | effect texture cleared and uncovered pixels filled with (0,0,0,0) | none | – |
+| `LayerGroup` indirect `vfunc_16` `0x710007e2c0`, fill colour `0x7100226c88` | `LayerGroupNewDrawableDelegate::render_drawable_indirect`, `stack.rs` `fill_uncovered` | matches | effect texture cleared and uncovered pixels filled with (0,0,0,0) | none | – |
 | `LayerGroup` delayed removal (`vfunc_3` `0x710007bc00`) | `remove_layer` | diverges | A delay is logged and the layer removed at once | none (delay always 0) | M |
 | `LayerGroup::TransitionLayer`, LAYERLOAD auto-wipe (flag 4) | none | missing | | none (flag never used) | L |
 | LayerGroup mask (MASKLOAD) `0x710007df80`, `0x710007d8d0` | `prepare_mask_*`, `finish_render_with_mask` | matches (structure, flag bits) | flip 1/2, invert 4, scale **0x10** in both; mask programs `0x7100226da8` unverified (not compared) | unknown (169 uses; the mask wiper has since been seen to match Eden in the scenario select's curtain wipe) | – |
@@ -86,8 +86,8 @@ Everything the player could see from this audit is fixed. What is left is unused
 releases: no LAYERCTRL sets props 61–65 or 70 or the delta flag, every LAYERUNLOAD delay is 0, PAGEBACK takes no
 argument, WIPE uses types 0, 1, 8 and 9 only, and LAYERLOAD types 4, 5, 7 and flag 4 never appear.)
 
-1. **Wobbler random seed.** Random mode (13 uses) runs with seed 0; the original reads wobbler `+0`, source unknown.
-2. **Dissolve seed.** Seeded from the clock; the original reads layer `+0x58`, source unknown.
+1. **Wobbler random seed.** Answered: each wobbler's seed comes from `shin::randomSeed`, as in the port.
+2. **Dissolve seed.** Seeded with `random::random_seed()`; the original reads layer `+0x58`, source unknown.
 3. **Back layer group** (`create_back_layer_group_if_needed`): a no-op. Implement once its behaviour is confirmed
    (snapshot the root group when a layer command starts while animations are blocked; render the snapshot until
    animations run again).
@@ -102,7 +102,8 @@ argument, WIPE uses types 0, 1, 8 and 9 only, and LAYERLOAD types 4, 5, 7 and fl
   drift (double transform, clear colours, returned pass) was fixed in each one by hand. The original shares
   `NewDrawableLayer::preRender` (`0x71000762e0`) and the composite `0x7100078af0`; each container only supplies slot 16
   (indirect: clear colour, child iteration, returned pass) and slot 9 (direct). A shared container type that always
-  passes the parent transform and fills with (0,0,0,0) would stop them drifting again. Not done.
+  passes the parent transform and fills with (0,0,0,0) would stop them drifting again. Now `LayerStack`,
+  `needs_offscreen_pass` and `fill_uncovered`, used by all three.
 - **One property table.** Done since: the defaults are checked against the original's table (alignment-plan
   structural 6). Before: Property roles are still spread over `LayerProperty` names, `initial_value()`, and reads in
   `properties.rs` and the layers (prop 27 in bustup and rain). The wobble slots now have a test; a single table (id →

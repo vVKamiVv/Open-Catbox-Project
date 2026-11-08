@@ -7,7 +7,7 @@ Written 2026-11-08, when work started. File references are as of v0.3.1. The dec
 
 **Some groundwork came from upstream shin:**
 
-- **Window:** winit is built with `android-native-activity` (`shin-window/Cargo.toml:37`). `run_winit` already takes the
+- **Window:** winit is built with `android-native-activity` (`shin-window/Cargo.toml:37`). `run_window` already takes the
   `AndroidApp` and hands it to the event loop (`shin-window/src/lib.rs:1055-1064`), and the desktop-only window
   attributes are skipped there (`lib.rs:203`).
 - **Rendering:** wgpu uses Vulkan, or OpenGL ES where a phone has no usable Vulkan.

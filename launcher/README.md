@@ -1,7 +1,9 @@
 # Open Catbox launcher
 
-A small Windows app that sets the game up from the player's own Switch dump, downloads the translations,
-and starts `shin.exe`. It installs, updates and uninstalls itself: a release is one `OpenCatbox-Setup.exe`. Built with [Tauri 2](https://tauri.app); the front end is plain HTML/CSS/JS in `ui/`
+A small app for Windows, Linux and macOS that sets the game up from the player's own Switch dump, downloads the
+translations, manages the saves and starts the game (`shin`). On Windows it installs, updates and uninstalls itself: a
+release there is one `OpenCatbox-Setup.exe`. On Linux and macOS a package installs it (AppImage, `.deb`, `.rpm`,
+`.dmg`), and it updates itself in place. Built with [Tauri 2](https://tauri.app); the front end is plain HTML/CSS/JS in `ui/`
 (no npm, no bundler). Setup is fully native Rust: no external tools are needed or started.
 
 How it works, step by step (for players and contributors): [`research/docs/launcher.md`](../research/docs/launcher.md).
@@ -11,8 +13,9 @@ How it works, step by step (for players and contributors): [`research/docs/launc
 ```
 launcher/
   src/main.rs      Tauri commands: state, settings, setup, downloads, launching the game, moving the data folder,
-                   installing, uninstalling, updating, version history
-  src/install.rs   installing the launcher itself: copy, shortcuts, Installed apps entry, update, uninstall
+                   the saves, installing, uninstalling, updating, version history
+  src/install/     installing the launcher itself: windows.rs (copy, shortcuts, Installed apps entry, update,
+                   uninstall), other.rs (Linux and macOS, where the package installs it), mod.rs (which one)
   src/home.rs      where things live (the portable home), the one-time move in from %APPDATA%, checked copy/move,
                    using an existing game folder, deleting the player's data on uninstall
   src/setup.rs     first-run setup: finds the program NCAs, extracts and hash-checks data.rom, main, patch.rom
@@ -23,6 +26,7 @@ launcher/
     romfs.rs         IVFC level lookup, RomFS file table
     bktr.rs          update RomFS as a patch over the base: IndirectStorage + per-range CTR (AesCtrEx)
   src/langs.rs     translation downloads from the translators' GitHub releases
+  src/saves.rs     the save manager: the save's slots, backups, restore/import/export, several saves (profiles)
   src/music.rs     the music player: the Music Box's tracks from the game data, as Ogg Opus for the page; its settings
                    (music.json)
   src/history.rs   the Version history tab: CHANGELOG.md embedded at build time, plus newer GitHub releases
@@ -37,11 +41,11 @@ launcher/
 ## Running from source
 
 ```
-cargo build --release -p shin                 # the game, found at target/release/shin.exe
+cargo build --release -p shin                 # the game, found at target/release/shin(.exe)
 cargo run -p open-catbox-launcher             # the launcher (debug)
 ```
 
-A debug launcher only uses `target\release\shin.exe` (a debug `shin.exe` overflows its stack at startup). The
+A debug launcher only uses `target/release/shin(.exe)` (a debug `shin` overflows its stack at startup). The
 front end is embedded at compile time, so rebuild after editing `ui/`.
 
 With the Tauri CLI (`cargo install tauri-cli --version "^2" --locked`), from this folder:
@@ -83,7 +87,10 @@ and exits.
 
 ## Releases
 
-To make a release `X.Y.Z`:
+The Windows half is built and signed on this PC; publishing the GitHub release then starts
+`.github/workflows/release-unix.yml`, which builds the Linux and macOS packages, uploads them and adds them to
+`latest.json` (it needs the updater key as the secrets `TAURI_SIGNING_PRIVATE_KEY` and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`). To make a release `X.Y.Z`:
 
 1. Set the version in `Cargo.toml` (the only place: `tauri.conf.json` has none, so Tauri uses Cargo's) and add a
    `## vX.Y.Z — <date>` section to the root `CHANGELOG.md`.
@@ -98,11 +105,14 @@ To make a release `X.Y.Z`:
    `cargo tauri signer sign` and the key in `%USERPROFILE%\.open-catbox\updater.key` (+ `.password`), and writes
    `OpenCatbox-Setup.exe`, `OpenCatbox-Setup.exe.sig`, `latest.json` and `SHA256SUMS.txt`. Needs the Tauri CLI
    (`cargo install tauri-cli --version "^2" --locked`).
-3. Create the GitHub release `vX.Y.Z` and upload those four files.
+3. Create the GitHub release `vX.Y.Z` and upload those four files. The Linux and macOS packages follow a few minutes
+   later, from the workflow above.
 
 The private key never goes into the repository; without it (and its password) no update can be published.
 
 ## Where things are
+
+On Windows:
 
 | What | Where |
 | --- | --- |
@@ -114,6 +124,10 @@ The private key never goes into the repository; without it (and its password) no
 | saves | `<home>\saves\SAVEDATA` (the main save) and `settings.json` (home in `%APPDATA%`: `%APPDATA%\shin`); other saves in `profiles\<name>\`, backups in `backups\` beside each save |
 | web view data | `<home>\webview` |
 | game log | `<data>\logs\shin.log` |
+
+On Linux and macOS there is no portable home: the home is `OpenCatbox` in the user's data folder
+(`$XDG_DATA_HOME`, else `~/.local/share`, on Linux; `~/Library/Application Support` on macOS), and the saves are in
+`shin` next to it, as with a Windows home in `%APPDATA%`. `shin` sits next to the launcher in the package.
 
 ## Not done yet
 

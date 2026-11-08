@@ -68,7 +68,7 @@ line by line.
 | Voice volume 0 stops the voice (`settings[+0xb2]`, `0x71000b1ff0`), v6 keeps the voice across a click | `message_layer/mod.rs` (`set_settings`, `try_advance`, update) | matches | `v2_voicevol == 0` skips/stops the voice, `v6` keeps it past a click; settings arrive each frame from `AdvState::apply_settings` | none | – |
 | Message window opacity v13 (default 85) (`MessageLayer::vfunc_9` `0x71000b2890`) | `messagebox.rs` | matches | reads `settings.v13_msgwinalpha` | none | – |
 | Voice playback from `@v` (MessageLayer → `VoicePlayer`) | `audio/voice_player.rs`, `adv/command/voiceplay.rs` | matches except segments | voices play through the scenario's voice mapping, `get_wait_status` reports PLAYING, `stop` works; `@x` segments are played whole (logged) | none in Umineko (`@x` never appears) | M |
-| Lip-sync hook (flag `ENABLE_CHARACTER_LIPSYNC`, helper `0x7100014eb0` per spec_save §7) | `voice_player.rs` `lipsync_level` (window levels `0x71000f55d0`), `bustup_layer.rs` update (`0x7100036a00`) | matches | mouth level 0–2 per 50 ms window with the original's thresholds drives `mouth_state` while property 27 is set (a stale TODO remains in `layerload.rs`) | none | – |
+| Lip-sync hook (flag `ENABLE_CHARACTER_LIPSYNC`, helper `0x7100014eb0` per spec_save §7) | `voice_player.rs` `lipsync_level` (window levels `0x71000f55d0`), `bustup_layer.rs` update (`0x7100036a00`) | matches | mouth level 0–2 per 50 ms window with the original's thresholds drives `mouth_state` while property 27 is set | none | – |
 | Click-wait icon (`0x71000b2890`: `sin(t/60·π)·0.4+0.6`, 30×30, `keywait` atlas halves by wait kind, at cursor + (210, y − 30); NoText at (1870, 1030)) | `message_layer/mod.rs` `render` | matches | all constants equal | none | – |
 | Message box placement (`0x71000b2890`: types < 4 and 5: `(1 − slide)·64 + (1080 − h) − 32`; Novel: `max(32, (1080 − size.y)·0.35)`) | `message_layer/mod.rs` `render` | matches | constants `0x710015a8e0`=64, `a5c8`=−32, `a40c`=0.35 | none | – |
 | Click-to-advance during a voice block (`try_advance`) | `message_layer/mod.rs` `try_advance` | matches | Past the wait checks, a click stops (or, at a voice sync, continues) the voice when one plays, as `0x71000b1b10` (`+0x6c`) | none | - |
@@ -90,8 +90,8 @@ line by line.
 
 - **TextObject parameters.** The original has one `TextObject` (`0x7100100ea0`) used by ~15 screens with a param
   block `(width, size, line spacing, outline mode, soft-breaks, always-rubi, padding above, padding below)` and one
-  font. shin's `TextBlock::new` now takes one font, but still takes a full `LayoutParams` plus a separate outline, so
-  callers build the params by hand (`hud::text_layout` is shared by some). The rules `0x7100101360` applies:
+  font. shin's `TextBlock::new` takes one font, a `LayoutParams` and an outline; the params come from
+  `text_block::object_layout(width, size)` (with `OUTLINE`), the rules `0x7100101360` applies:
   alignment Justify, rubi 0 → 0.4·size, h-scale 1.0, kinsoku on, width − pad where pad = 6 for mode 1 / 3 for
   mode 2, outline 3 / 1.5 / none.
 - **Backlog**: the original models it as a `MessageBrowser::Layouter` third subclass of the message layouter (slots
@@ -104,9 +104,9 @@ line by line.
 - Tween flag `0x1000` (the banner's hold step `0x1080`): per `0x71000bb470`, skipping stops at that step until it
   has played (`hud.rs` `Step::stop`).
 - The original's click handler for MessageLayer (where it handles a click during `@/` and `@x`) was not decompiled;
-  the fix in §2 item 2 is inferred from shin's own control flow.
+  the port's click-to-advance (`try_advance`, in the table) is inferred from shin's own control flow.
 - `0x7100107960` is the tips screen's cursor tip (title 48, text 32, width 1222; `adv/menu/tips.rs`) and
   `0x71000223d0` the shared Yes/No dialog (`adv/menu/dialog.rs`).
 - Message-layer quad overdraw (shin: 2 px) and the v8 outline variant (`MessageLayer` checks `settings[+0xb8] == 1`
-  and uses `_UNK_710015a5a0` for the outline distance) not compared; the port does not support v8 (TODO in
-  `message_layer/layout.rs`).
+  and uses `_UNK_710015a5a0` for the outline distance) not compared; v8 stays 0 in the port, as no config item sets it
+  (`message_layer/layout.rs`).

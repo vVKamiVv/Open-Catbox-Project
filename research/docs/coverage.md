@@ -2,7 +2,8 @@
 
 Is all of the engine documented? This table lists every crate and subsystem of the repository and where it is
 described. "Before" is the state at v0.2.0 (November 2026), "Now" after the documentation pass that added
-[architecture.md](architecture.md), engine-internals §19-§22 and the module docs listed here.
+[architecture.md](architecture.md), engine-internals §19-§22 and the module docs listed here; rows added for later
+parts have "–" before.
 
 - **documented**: what it does and how it fits is written down (doc section, README, or module doc comment).
 - **partial**: mentioned, or only part of it is described.
@@ -86,10 +87,13 @@ comments at the top of the named file.
 | Switch dump reader: PFS0, NCA, keys, RomFS, BKTR (`nx/`) | launcher.md; module docs | documented | documented |
 | Translations and languages (`langs.rs`) | launcher.md; module doc | documented | documented |
 | Starting the game (`main.rs` `launch`) | launcher.md (now with `--fullscreen`) | partial (stale) | documented |
-| Install, update, uninstall, v0.1.0 migration (`install.rs`) | launcher.md; launcher/README.md; module doc | documented | documented |
+| Install, update, uninstall (`install/`), the move in from `%APPDATA%` (`home.rs`) | launcher.md; launcher/README.md; module docs | documented | documented |
 | Auto-updater (signature check, `latest.json`) | launcher.md; launcher/README.md | documented | documented |
 | Version history tab (`history.rs`) | launcher.md (Version history); launcher/README.md; module doc | missing | documented |
 | Releases (`scripts/`) | launcher/README.md | documented | documented |
+| Music player (`music.rs`, `ui/music.js`, v0.2.7) | launcher.md (Music); launcher/README.md; module doc | – | documented |
+| Saves: slots, backups, several saves (`saves.rs`, v0.3.1) | launcher.md (Settings and logs); launcher/README.md; module doc | – | documented |
+| Linux and macOS: packages, home, updates (`install/other.rs`, `release-unix.yml`, v0.3.0) | launcher.md (Linux and macOS); [linux-macos-port.md](linux-macos-port.md); launcher/README.md | – | documented |
 | UI (`ui/`) and design | launcher.md (Design); README ("Wanted: a designer") | documented | documented |
 
 ## Research tooling
@@ -103,10 +107,11 @@ comments at the top of the named file.
 
 | | Documented | Partial | Missing |
 |---|---|---|---|
-| Before | 42 | 20 | 7 |
-| Now | 68 | 1 | 0 |
+| Before | 42 | 20 | 6 |
+| Now | 70 | 1 | 0 |
 
-69 rows; the launcher's "Starting the game" counts as partial before (its fullscreen note was stale).
+71 rows, 68 of them at v0.2.0; the launcher's "Starting the game" counts as partial before (its fullscreen note was
+stale).
 
 ## Not implemented, and documented as such
 

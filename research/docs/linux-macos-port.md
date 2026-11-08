@@ -101,7 +101,7 @@ it anyway. Linux needs nothing like this.
 
 ## Status (2026-11-07)
 
-Done, in this order of the plan:
+Shipped in v0.3.0 (2026-11-07). Done, in this order of the plan:
 
 1. **The game on Linux:** builds and passes every test on Ubuntu (CI on 22.04, and 24.04 in WSL). GStreamer is
    always built there (`shin-video/src/h264_decoder/linux.rs`: GStreamer when it has an H.264 decoder, else ffmpeg,
@@ -126,8 +126,6 @@ Left:
 - **Playing it through on real machines.** WSL could not press Play in the launcher (WebKit gets no clicks through
   WSLg) and renders in software; macOS has only been built and tested on CI. A first play on real Linux and macOS
   computers is the next check.
-- **The release workflow's secrets** (`TAURI_SIGNING_PRIVATE_KEY`, `_PASSWORD`) must be added to the repository
-  before the first release with these packages.
 
 ## Decisions (2026-11-07)
 

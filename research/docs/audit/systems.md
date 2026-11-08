@@ -47,7 +47,7 @@ Evidence found in this audit:
   (`0x71000f2b30`) always fade over at least 4 frames (`max(fade, 4)`).
 - **SE status bit 1** (`0x71000f2fd0`): set while the channel's `+0xc` state is 0 = "stream not started yet" (the
   update `0x71000f3210` sets it to 1 when the stream is ready). The doc's guess "not looping" is wrong; shin's
-  `AudioWaitStatus::FADING` (still so named) should be `LOADING`. Behaviour matches: shin starts sounds synchronously.
+  `AudioWaitStatus::FADING` is now named `LOADING`. Behaviour matches: shin starts sounds synchronously.
 - **VoicePlayer** (`0x710011ab70` update, `0x710011a6b0` stop, `0x710011a980` status): a list of voices with state 0
   loading / 1 playing / 2 stopping. All loading voices start together once all are ready; stop moves them to state 2,
   a fade of 0.2 per frame (5 frames, `0x710015a954`); state 2 at 0 or a finished stream is removed.
@@ -137,13 +137,13 @@ Sounds go through `SysSePlayer::play` with names from pointers: "decide" `*0x710
 | `StreamSound` (vtable `0x7100222f80`; set gain `0x71000f5390`) | `shin-audio` `AudioSound` (kira) | matches | Linear gain; loop from the file's loop point; bit 1 "not started" never set because shin starts synchronously (equivalent) | none | - |
 | `Audio::Delegate`, `Audio::Voice`, `Audio::Voice::Delegate`, `Audio::VoiceImpl` (slot 8 `0x710002bb40` = set gain) | `shin-audio` + kira/cpal | matches | Linear gain clamp >= 0 matches `Volume` (0..1000 -> 0..1 linear) | none | - |
 | `AudioDecoder` / `AudioDecoderImpl` | `shin-core/src/format/audio` | matches | Plays every BGM/SE in use | none | - |
-| `Movie`, `MovieImpl` (vtable `0x71001dd4c0..`), `MovieImpl::StreamReader`, `movie::ClientStreamReader`, `MovieLayer::Shared` (`0x71000c29c0`) | `shin-video`, `shin/src/layer/user/movie_layer.rs` | matches | Settings gain by volume source, repeat and transparency are in. Open: the movie layer's fast-forward does nothing and AAC seek is a `todo!` (`shin-video/src/audio.rs`); whether either is ever reached is unverified. 758 movie loads pass volume 0 (silent in both) and 69 pass 1000 | low | S |
+| `Movie`, `MovieImpl` (vtable `0x71001dd4c0..`), `MovieImpl::StreamReader`, `movie::ClientStreamReader`, `MovieLayer::Shared` (`0x71000c29c0`) | `shin-video`, `shin/src/layer/user/movie_layer.rs` | matches | Settings gain by volume source, repeat and transparency are in. Skipping ends a movie that does not repeat (`0x71000c33d0`, `movie_layer.rs` `fast_forward`). Open: AAC seek is a `todo!` (`shin-video/src/audio.rs`); whether it is ever reached is unverified. 758 movie loads pass volume 0 (silent in both) and 69 pass 1000 | low | S |
 
 ### 1d. Data, files and assets (20 RTTI classes)
 
 | Original | shin counterpart | Status | Evidence | Impact | Fix |
 |---|---|---|---|---|---|
-| `SourceMedia`, `MountableSourceMedia(Impl)`, `DataSource`, `FileDataSourceImpl`, `File::Handle(Impl)` | `asset/system/locate.rs` (`LayeredAssetIo`), `shin-core/src/format/rom.rs` | matches | patch dir, patch.rom, data dir, data.rom in that order; engine-internals section 3 (patch.rom first) and section 4 (ROM2 confirmed) | none | - |
+| `SourceMedia`, `MountableSourceMedia(Impl)`, `DataSource`, `FileDataSourceImpl`, `File::Handle(Impl)` | `asset/system/server/mod.rs` (`LayeredAssetIo`), `asset/system/locate.rs`, `shin-core/src/format/rom.rs` | matches | patch dir, patch.rom, data dir, data.rom in that order; engine-internals section 3 (patch.rom first) and section 4 (ROM2 confirmed) | none | - |
 | `CachedAssets::CacheDataSource(Impl)`, `RangedCacheDataSourceImpl`, `Data`, `DataImpl`, `MutableData(Impl)`, `RangedDataImpl` | `asset/system/cache.rs`, `server/accessor.rs` | matches (different shape) | Caching and ranged reads; shin's accessor reads synchronously (TODO async) | none | - |
 | `TXA4` | `asset/texture_archive.rs` | matches | used by the minigames, messagebox and menus | none | - |
 | `Font` | `asset/font.rs` | matches | text area audit | none | - |
@@ -181,7 +181,7 @@ Sounds go through `SysSePlayer::play` with names from pointers: "decide" `*0x710
 
 1. **LoadGame's dialogs** show on the title rather than before the opening movie.
 2. Small shortcuts noted in the module docs: thumbnails without movie layers, galleries without left-stick panning,
-   synchronous loads in the Character Box, movie fast-forward and AAC seek not done.
+   synchronous loads in the Character Box, AAC seek not done.
 
 ---
 
