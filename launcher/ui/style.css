@@ -305,6 +305,18 @@ select {
 .prose p { margin: 0 0 14px; max-width: 70ch; }
 .prose h3 { margin-top: 22px; }
 
+/* Saves */
+.save-picker { display: grid; gap: 8px; margin: 0 0 22px; max-width: 360px; }
+.save-picker label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3em; color: var(--ink-faint); }
+.profile-row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.profile-row select { flex: 1; max-width: 360px; }
+.name-form { max-width: 420px; margin-top: 8px; }
+.slots { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; }
+.slots li { padding: 5px 10px; border: 1px solid rgba(226, 182, 90, 0.2); border-radius: var(--radius); background: rgba(4, 6, 18, 0.45); font-size: 0.9em; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.slots b { color: var(--gold-light); font-weight: 600; margin-right: 8px; }
+.card .card-side.row { flex-direction: row; align-items: center; grid-row: 1 / span 2; min-width: 0; }
+.card h4 .auto { font-family: var(--font-body); font-weight: 500; letter-spacing: 0; color: var(--ink-dim); }
+
 /* Version history */
 .history { display: grid; gap: 14px; margin-top: 8px; }
 .release { padding: 14px 18px; border: 1px solid rgba(226, 182, 90, 0.2); border-radius: var(--radius); background: rgba(4, 6, 18, 0.45); }

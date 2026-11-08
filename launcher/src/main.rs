@@ -9,12 +9,14 @@ mod install;
 mod langs;
 mod music;
 mod nx;
+mod saves;
 mod setup;
 
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -35,6 +37,9 @@ pub struct Settings {
     pub fullscreen: bool,
     /// Game log at debug level for shin's own crates instead of warnings only.
     pub debug_logging: bool,
+    /// The save to play with: a profile's name (see `saves.rs`), or the main save when `None`
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub save_profile: Option<String>,
     /// The `%APPDATA%\OpenCatbox` this portable home's settings, data and saves were brought in from (once).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub migrated_from: Option<PathBuf>,
@@ -290,6 +295,17 @@ fn launch(lang: String) -> Result<u32, String> {
         return Err("This language is not installed yet.".into());
     }
     let shin = find_shin().ok_or("The game (shin) was not found next to the launcher.")?;
+    if game_running() {
+        return Err("The game is already running.".into());
+    }
+    // the picked save (the main one if it was deleted meanwhile), and a backup of it when it changed since the last
+    let main = home::get().savedata();
+    let savedata =
+        saves::profile_save(&main, settings.save_profile.as_deref()).unwrap_or_else(|_| {
+            settings.save_profile = None;
+            main.clone()
+        });
+    saves::back_up(&savedata, true)?;
     // shin.exe is a console app: it runs hidden, so its output goes to a log for diagnosing problems
     let logs = data.join("logs");
     fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
@@ -308,7 +324,10 @@ fn launch(lang: String) -> Result<u32, String> {
         .arg("--exefs")
         .arg(lang_dir.join("exefs"))
         .arg("--savedata")
-        .arg(home::get().savedata());
+        .arg(&savedata)
+        // one settings file for all the saves
+        .arg("--settings")
+        .arg(main.with_file_name("settings.json"));
     if settings.fullscreen {
         cmd.arg("--fullscreen");
     }
@@ -321,9 +340,11 @@ fn launch(lang: String) -> Result<u32, String> {
     let child = cmd
         .spawn()
         .map_err(|e| format!("Cannot start the game: {e}"))?;
+    let id = child.id();
+    *GAME.lock().unwrap() = Some(child);
     settings.language = Some(lang);
     store_settings(&settings)?;
-    Ok(child.id())
+    Ok(id)
 }
 
 /// Moves the data folder (rename, or copy + check + delete across drives) and remembers the new place.
@@ -380,10 +401,100 @@ fn save_music_settings(settings: music::Settings) -> Result<(), String> {
     settings.store(&home::get().settings())
 }
 
-/// Replaces the game's save with a file the player picked (a Switch SAVEDATA), backing up the current one.
+// --- The save manager (see saves.rs) ---
+
+/// The game this launcher started, while it runs: the save is not replaced under it (it would write its own back)
+static GAME: Mutex<Option<Child>> = Mutex::new(None);
+
+fn game_running() -> bool {
+    let mut game = GAME.lock().unwrap();
+    let running = matches!(game.as_mut().map(|child| child.try_wait()), Some(Ok(None)));
+    if !running {
+        *game = None;
+    }
+    running
+}
+
+fn not_while_playing() -> Result<(), String> {
+    if game_running() {
+        return Err("Close the game first.".into());
+    }
+    Ok(())
+}
+
+/// The save file of `profile` (`None`: the main one)
+fn save_of(profile: Option<String>) -> Result<PathBuf, String> {
+    saves::profile_save(&home::get().savedata(), profile.as_deref())
+}
+
 #[tauri::command]
-fn import_save(file: PathBuf) -> Result<(), String> {
-    home::import_save(&file, &home::get().savedata())
+fn saves_state(profile: Option<String>) -> Result<saves::State, String> {
+    Ok(saves::state(&save_of(profile)?))
+}
+
+/// `None` when there was nothing new to back up
+#[tauri::command]
+fn back_up_save(profile: Option<String>) -> Result<Option<String>, String> {
+    saves::back_up(&save_of(profile)?, false)
+}
+
+#[tauri::command]
+fn restore_save(profile: Option<String>, name: String) -> Result<(), String> {
+    not_while_playing()?;
+    saves::restore(&save_of(profile)?, &name)
+}
+
+/// Replaces a save with a file the player picked (a Switch SAVEDATA), backing up the current one.
+#[tauri::command]
+fn import_save(profile: Option<String>, file: PathBuf) -> Result<(), String> {
+    not_while_playing()?;
+    saves::import(&save_of(profile)?, &file)
+}
+
+/// A save (`name: None`) or one of its backups, to a file the player picked
+#[tauri::command]
+fn export_save(profile: Option<String>, name: Option<String>, to: PathBuf) -> Result<(), String> {
+    saves::export(&save_of(profile)?, name.as_deref(), &to)
+}
+
+#[tauri::command]
+fn delete_backup(profile: Option<String>, name: String) -> Result<(), String> {
+    saves::delete(&save_of(profile)?, &name)
+}
+
+#[tauri::command]
+fn save_profiles() -> Vec<saves::Profile> {
+    saves::profiles(&home::get().savedata())
+}
+
+/// Each returns the profile's name as stored (trimmed); the picked save in launcher.json follows a rename or delete
+#[tauri::command]
+fn create_profile(name: String) -> Result<String, String> {
+    saves::create(&home::get().savedata(), &name)
+}
+
+#[tauri::command]
+fn rename_profile(name: String, to: String) -> Result<String, String> {
+    not_while_playing()?;
+    let new = saves::rename(&home::get().savedata(), &name, &to)?;
+    let mut settings = load_settings();
+    if settings.save_profile.as_deref() == Some(name.as_str()) {
+        settings.save_profile = Some(new.clone());
+        store_settings(&settings)?;
+    }
+    Ok(new)
+}
+
+#[tauri::command]
+fn delete_profile(name: String) -> Result<(), String> {
+    not_while_playing()?;
+    saves::remove(&home::get().savedata(), &name)?;
+    let mut settings = load_settings();
+    if settings.save_profile.as_deref() == Some(name.as_str()) {
+        settings.save_profile = None;
+        store_settings(&settings)?;
+    }
+    Ok(())
 }
 
 /// Installs the launcher (this program) and starts the installed copy, which takes over from here.
@@ -528,7 +639,16 @@ fn main() {
             version_history,
             launch,
             move_data_dir,
+            saves_state,
+            back_up_save,
+            restore_save,
             import_save,
+            export_save,
+            delete_backup,
+            save_profiles,
+            create_profile,
+            rename_profile,
+            delete_profile,
             music_tracks,
             music_track,
             music_settings,

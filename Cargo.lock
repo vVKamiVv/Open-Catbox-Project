@@ -4735,6 +4735,7 @@ name = "open-catbox-launcher"
 version = "0.3.0"
 dependencies = [
  "aes",
+ "chrono",
  "ctr",
  "fs4",
  "serde",

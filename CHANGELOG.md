@@ -2,6 +2,14 @@
 
 What changed in each release.
 
+## Unreleased
+
+- **Several saves:** pick which save to play with on the Play screen. **New save…** starts the game from the
+  beginning without touching your other saves. Window and control settings are shared by all of them.
+- **Saves** in the launcher: each save's slots and play time, backups you can restore, export or delete, and an
+  automatic backup each time you press Play. Import a save from there too; files the game cannot read are refused.
+- Config menu: switching tabs after scrolling the PC tab no longer leaves the other tabs scrolled down.
+
 ## v0.3.0 — 2026-11-07
 
 - **Linux and macOS:** the game and the launcher run there too. Linux: an AppImage, a `.deb` and an `.rpm`, with movies

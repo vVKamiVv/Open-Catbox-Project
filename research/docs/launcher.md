@@ -86,7 +86,9 @@ for builds from source) `%APPDATA%\OpenCatbox`.
   launcher.json              the launcher's settings
   music.json                 the music player's settings and playlists
   data/                      the game data (below); data_dir in launcher.json can point elsewhere
-  saves/SAVEDATA             the game's saves, and its settings.json
+  saves/SAVEDATA             the main save, and settings.json (the PC settings, shared by all saves)
+  saves/backups/<time>/      the save manager's backups of SAVEDATA (`… auto` for the automatic ones)
+  saves/profiles/<name>/     the other saves, each a SAVEDATA with its own backups/
   webview/                   the window's WebView2 data
 ```
 
@@ -133,7 +135,7 @@ The English translations are never bundled; they are downloaded from their autho
 The launcher runs, from `shin.exe`'s own folder:
 
 ```
-shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs --savedata <home>\saves\SAVEDATA [--fullscreen]
+shin.exe --assets-dir <data> --patch-dir <data>\languages\<lang> --exefs <data>\languages\<lang>\exefs --savedata <the picked save> --settings <home>\saves\settings.json [--fullscreen]
 ```
 
 `--fullscreen` is added when the launcher's Fullscreen setting is on: the game then starts in borderless fullscreen
@@ -145,10 +147,16 @@ puts it), then, in builds from source, in `target\release\` of the checkout.
 
 - Settings are stored in `<home>\launcher.json`: the last language, fullscreen, debug logging, an optional `data_dir`
   (absolute, or relative to the home) and `migrated_from` after the one-time move below.
-- **Settings → Import save…** copies a `SAVEDATA` you pick (for example one backed up from the Switch) over the
-  game's save, keeping the current one as `SAVEDATA.bak` next to it. Only its size is checked (empty or over 1 MB is
-  refused); a file the game cannot decode is moved aside to `SAVEDATA.unreadable` and a fresh save starts, so
-  `SAVEDATA.bak` is the way back.
+- **Saves** (`src/saves.rs`): several saves can be kept, one picked on the Play screen (`save_profile` in
+  launcher.json, none for the main one); **New save…** makes an empty one, with which the game starts from the
+  beginning, and the Saves view renames or deletes the others. Each is its own `SAVEDATA`; the PC settings stay one
+  file for all of them (shin's `--settings`). For the picked save, the Saves view shows its slots (the automatic one and the numbered ones, with their dates, read with
+  shin-core's `SaveData`) and play time, and its backups, each a folder under `saves/backups` named by when it was
+  made. A backup is made before every start of the game when the save changed since the newest backup; the newest 10
+  of those automatic ones are kept, the player's own (**Back up now**) until deleted. **Restore** and **Import…** (for
+  example a `SAVEDATA` backed up from the Switch) first back up the current save, refuse a file shin-core cannot decode,
+  and write through a temporary file renamed over the save; both are refused while the game the launcher started is
+  still running, since it would write its own save back. **Export…** copies the save or a backup to a file.
 - The game's output goes to `<data>\logs\shin.log`, overwritten on each start. By default it is run with
   `RUST_LOG=warn`; **Settings → Debug logging** raises shin's own crates to `debug`, which is what a bug report
   needs.

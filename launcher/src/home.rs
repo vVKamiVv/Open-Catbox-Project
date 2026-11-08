@@ -190,22 +190,6 @@ pub fn migrate(home: &Home, mut plan: Plan, progress: Progress) -> Result<Vec<St
     Ok(said)
 }
 
-/// Puts `file` in place as the save at `to`, keeping the current one as `SAVEDATA.bak`.
-// shortcut: only the size is checked (a Switch SAVEDATA is ~15 KB); decoding it would need shin-core here
-pub fn import_save(file: &Path, to: &Path) -> Result<(), String> {
-    let len = fs::metadata(file).map_err(|e| format!("Cannot read {}: {e}", file.display()))?.len();
-    if len == 0 || len > 1 << 20 {
-        return Err("This is not a save file.".into());
-    }
-    let dir = to.parent().unwrap();
-    fs::create_dir_all(dir).map_err(|e| format!("Cannot create {}: {e}", dir.display()))?;
-    if to.is_file() {
-        fs::copy(to, dir.join("SAVEDATA.bak")).map_err(|e| format!("Cannot back up your save: {e}"))?;
-    }
-    fs::copy(file, to).map_err(|e| format!("Cannot import the save: {e}"))?;
-    Ok(())
-}
-
 pub fn is_empty(dir: &Path) -> bool {
     fs::read_dir(dir).map_or(true, |mut d| d.next().is_none())
 }
@@ -382,6 +366,10 @@ pub fn delete_user_data(home: &Home, data: &Path) -> Result<(), String> {
                 "SAVEDATA",
                 "SAVEDATA.tmp",
                 "SAVEDATA.unreadable",
+                "SAVEDATA.launcher.tmp",
+                "SAVEDATA.bak",
+                "backups",
+                "profiles",
                 "settings.json",
             ][..],
         ),
@@ -617,22 +605,4 @@ mod tests {
         assert!(!home.dir.join("music.json").exists());
         fs::remove_dir_all(root).unwrap();
     }
-
-    #[test]
-    fn importing_a_save_keeps_the_old_one() {
-        let dir = std::env::temp_dir().join(format!("oc-import-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let (new, to) = (dir.join("new"), dir.join("saves").join("SAVEDATA"));
-        fs::write(&new, b"new").unwrap();
-        import_save(&new, &to).unwrap();
-        fs::write(&new, b"newer").unwrap();
-        import_save(&new, &to).unwrap();
-        assert_eq!(fs::read(&to).unwrap(), b"newer");
-        assert_eq!(fs::read(dir.join("saves").join("SAVEDATA.bak")).unwrap(), b"new");
-        fs::write(&new, b"").unwrap();
-        assert!(import_save(&new, &to).is_err());
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
 }

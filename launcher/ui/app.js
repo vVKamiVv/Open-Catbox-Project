@@ -49,6 +49,7 @@ function say(el, text, kind = "") {
 async function refresh() {
   state = await invoke("get_state");
   render();
+  if (state.data_ready) loadProfiles();
 }
 
 function selectedLanguage() {
@@ -243,16 +244,217 @@ $("#move-data").addEventListener("click", async () => {
 
 $("#rerun-setup").addEventListener("click", () => { showSetup = true; render(); });
 
-$("#import-save").addEventListener("click", async () => {
-  const file = await dialog.open({ title: "Choose your SAVEDATA file" });
-  if (!file) return;
-  const msg = $("#settings-msg");
+// --- Saves (see src/saves.rs) ---
+
+function played(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  return h ? `${h} h ${m} min` : `${m} min`;
+}
+
+// "12 saves · 34 h 5 min played · last saved 2026-11-07 22:41"
+function describe(summary) {
+  if (!summary) return "Cannot be read.";
+  const count = summary.slots.filter((s) => s.number != null).length;
+  const last = summary.slots.map((s) => s.date).sort().pop();
+  return [
+    count === 1 ? "1 save" : `${count} saves`,
+    `${played(summary.play_seconds)} played`,
+    last && `last saved ${last}`,
+  ].filter(Boolean).join(" · ");
+}
+
+let savesFolder = null;
+let profiles = [];
+const NEW_SAVE = "\u0000new"; // the "New save…" entry; no save can have this name
+const profile = () => state.settings.save_profile ?? null;
+const profileName = (name) => name ?? "Main save";
+
+// both pickers (Play and Saves): every save with its play time, then "New save…"
+async function loadProfiles() {
+  profiles = await invoke("save_profiles");
+  if (profile() !== null && !profiles.some((p) => p.name === profile())) state.settings.save_profile = null;
+  for (const select of $$(".profile-select")) {
+    select.replaceChildren(
+      ...profiles.map((p) => new Option(
+        `${profileName(p.name)} · ${p.summary ? played(p.summary.play_seconds) : "not started"}`, p.name ?? "")),
+      new Option("New save…", NEW_SAVE),
+    );
+    select.value = profile() ?? "";
+  }
+  $("#profile-rename").hidden = $("#profile-delete").hidden = profile() === null;
+}
+
+async function pickProfile(name) {
+  state.settings.save_profile = name;
+  await saveSettings();
+  if (!$("#view-saves").hidden) loadSaves();
+}
+
+// a small name form (new save, rename): `submit(name)` runs on Enter or its button; Cancel or Escape hides it
+function nameForm(form, submit) {
+  const input = $("input", form);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (await submit(input.value)) form.hidden = true;
+  });
+  const cancel = () => { form.hidden = true; loadProfiles(); };
+  $("[data-cancel]", form).addEventListener("click", cancel);
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") cancel(); });
+}
+
+function openForm(form, value = "") {
+  form.hidden = false;
+  const input = $("input", form);
+  input.value = value;
+  input.focus();
+  input.select();
+}
+
+for (const select of $$(".profile-select")) {
+  const form = $(`#${select.dataset.newForm}`);
+  const msg = select.id === "play-profile" ? $("#play-msg") : $("#saves-msg");
+  select.addEventListener("change", () => {
+    say(msg, "");
+    if (select.value === NEW_SAVE) openForm(form, `Save ${profiles.length + 1}`);
+    else pickProfile(select.value || null);
+  });
+  nameForm(form, async (name) => {
+    try {
+      const made = await invoke("create_profile", { name });
+      say(msg, `"${made}" is ready. The game starts from the beginning with it.`, "ok");
+      await pickProfile(made);
+      return true;
+    } catch (e) {
+      say(msg, String(e), "error");
+      return false;
+    }
+  });
+}
+
+nameForm($("#rename-form"), async (to) => {
   try {
-    await invoke("import_save", { file });
-    say(msg, "Save imported. The old one was kept as SAVEDATA.bak.", "ok");
+    await invoke("rename_profile", { name: profile(), to });
+    say($("#saves-msg"), "Renamed.", "ok");
+    await refresh(); // launcher.json follows the new name
+    loadSaves();
+    return true;
+  } catch (e) {
+    say($("#saves-msg"), String(e), "error");
+    return false;
+  }
+});
+$("#profile-rename").addEventListener("click", () => openForm($("#rename-form"), profile()));
+$("#profile-delete").addEventListener("click", async () => {
+  const name = profile();
+  const sure = await dialog.ask(`Delete the save "${name}" and its backups? This cannot be undone.`,
+    { title: "Delete save", kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" });
+  if (!sure) return;
+  try {
+    await invoke("delete_profile", { name });
+    say($("#saves-msg"), `"${name}" was deleted. The main save is picked now.`, "ok");
+  } catch (e) {
+    say($("#saves-msg"), String(e), "error");
+  }
+  await refresh();
+  loadSaves();
+});
+
+async function loadSaves() {
+  const saves = await invoke("saves_state", { profile: profile() });
+  savesFolder = saves.folder;
+  $("#save-summary").textContent = saves.exists ? describe(saves.current) : "No save yet. It appears once you play.";
+  $("#save-export").disabled = $("#save-backup").disabled = !saves.exists;
+  $("#save-slots").replaceChildren(...(saves.current?.slots ?? []).map((slot) => {
+    const li = document.createElement("li");
+    const b = document.createElement("b");
+    b.textContent = slot.number == null ? "Auto" : `${slot.number}.`;
+    li.append(b, slot.date);
+    return li;
+  }));
+
+  const list = $("#backup-list");
+  list.replaceChildren(...saves.backups.map((backup) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    const title = document.createElement("h4");
+    title.textContent = backup.made;
+    if (backup.auto) {
+      const tag = document.createElement("small");
+      tag.className = "auto";
+      tag.textContent = " · automatic";
+      title.append(tag);
+    }
+    const text = document.createElement("p");
+    text.textContent = describe(backup.summary);
+    const side = document.createElement("div");
+    side.className = "card-side row";
+    const button = (label, action) => {
+      const b = document.createElement("button");
+      b.className = "btn ghost small";
+      b.textContent = label;
+      b.addEventListener("click", action);
+      return b;
+    };
+    side.append(
+      button("Restore", () => restoreBackup(backup)),
+      button("Export…", () => exportSave(backup.name)),
+      button("Delete", () => deleteBackup(backup)),
+    );
+    card.append(title, side, text);
+    return card;
+  }));
+  if (!saves.backups.length) {
+    const none = document.createElement("p");
+    none.className = "note";
+    none.textContent = "No backups yet.";
+    list.append(none);
+  }
+}
+
+// runs `action`, says `done` (or done(result)) or the error, and shows the new state
+async function savesAction(action, done) {
+  const msg = $("#saves-msg");
+  try {
+    const result = await action();
+    say(msg, typeof done === "function" ? done(result) : done, "ok");
   } catch (e) {
     say(msg, String(e), "error");
   }
+  await loadSaves();
+}
+
+async function restoreBackup(backup) {
+  const sure = await dialog.ask(`Replace your save with the backup from ${backup.made}?\n\nYour current save is backed up first.`,
+    { title: "Restore backup", kind: "warning", okLabel: "Restore", cancelLabel: "Cancel" });
+  if (sure) savesAction(() => invoke("restore_save", { profile: profile(), name: backup.name }), "Backup restored.");
+}
+
+async function deleteBackup(backup) {
+  const sure = await dialog.ask(`Delete the backup from ${backup.made}? This cannot be undone.`,
+    { title: "Delete backup", kind: "warning", okLabel: "Delete", cancelLabel: "Cancel" });
+  if (sure) savesAction(() => invoke("delete_backup", { profile: profile(), name: backup.name }), "Backup deleted.");
+}
+
+async function exportSave(name = null) {
+  const to = await dialog.save({ title: "Export the save", defaultPath: "SAVEDATA" });
+  if (to) savesAction(() => invoke("export_save", { profile: profile(), name, to }), "Exported.");
+}
+
+$("#save-backup").addEventListener("click", () => savesAction(() => invoke("back_up_save", { profile: profile() }),
+  (made) => (made ? "Backed up." : "Nothing changed since the last backup.")));
+$("#save-export").addEventListener("click", () => exportSave());
+$("#import-save").addEventListener("click", async () => {
+  const file = await dialog.open({ title: "Choose a SAVEDATA file" });
+  if (file) savesAction(() => invoke("import_save", { profile: profile(), file }), "Save imported. The old one is in the backups.");
+});
+$("#saves-open").addEventListener("click", () =>
+  opener.revealItemInDir(savesFolder).catch((e) => say($("#saves-msg"), String(e), "error")));
+// the game may have saved meanwhile
+window.addEventListener("focus", () => {
+  if (!state?.data_ready) return;
+  loadProfiles();
+  if (!$("#view-saves").hidden) loadSaves();
 });
 
 // --- Launcher updates ---
@@ -570,6 +772,7 @@ $$(".nav button").forEach((btn) => btn.addEventListener("click", () => {
   $$(".nav button").forEach((b) => b.classList.toggle("active", b === btn));
   $$(".view").forEach((v) => (v.hidden = v.id !== `view-${btn.dataset.view}`));
   if (btn.dataset.view === "history") loadHistory();
+  if (btn.dataset.view === "saves") loadSaves();
 }));
 
 // links open in the browser, never inside the launcher window
@@ -583,6 +786,7 @@ invoke("get_state").then(async (first) => {
   state = first;
   if (first.migration && !first.program.uninstall) await moveIn();
   else render();
+  if (state.data_ready) loadProfiles();
   if (state.program.update_error) {
     $("#update-title").textContent = "The update did not finish";
     say($("#update-msg"), state.program.update_error, "error");

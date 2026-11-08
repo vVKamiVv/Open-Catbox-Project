@@ -360,10 +360,14 @@ impl ShinApp for App {
         })
     }
 
-    /// Loads the PC settings (`settings.json` next to the save file), which the window is created with
+    /// Loads the PC settings (`--settings`, else `settings.json` next to the save file), which the window is created
+    /// with
     fn initial_display(cli: &Cli) -> DisplaySettings {
-        let savedata = cli.savedata.clone().or_else(savedata::default_path);
-        port_settings::load(savedata.as_deref().map(port_settings::path_next_to));
+        let settings = cli.settings.clone().or_else(|| {
+            let savedata = cli.savedata.clone().or_else(savedata::default_path);
+            savedata.as_deref().map(port_settings::path_next_to)
+        });
+        port_settings::load(settings);
         if cli.fullscreen {
             port_settings::override_for_run(|s| {
                 s.window_mode = port_settings::WindowMode::Borderless

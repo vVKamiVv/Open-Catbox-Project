@@ -45,6 +45,10 @@ pub struct Cli {
     /// (`%APPDATA%\\shin` on Windows)
     #[clap(long)]
     pub savedata: Option<PathBuf>,
+    /// The PC settings file; by default `settings.json` next to the save file (the launcher passes one shared by all
+    /// its saves)
+    #[clap(long)]
+    pub settings: Option<PathBuf>,
     /// Skip the title and start Episode 1 at once
     #[clap(long)]
     pub new_game: bool,

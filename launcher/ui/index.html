@@ -151,6 +151,7 @@
       <nav class="nav" aria-label="Launcher sections">
         <button data-view="play" class="active">Play</button>
         <button data-view="languages">Languages</button>
+        <button data-view="saves">Saves</button>
         <button data-view="settings">Settings</button>
         <button data-view="history">Version history</button>
         <button data-view="about">About</button>
@@ -165,6 +166,15 @@
         <fieldset class="lang-picker" id="lang-picker">
           <legend>Language</legend>
         </fieldset>
+        <div class="save-picker">
+          <label for="play-profile">Save</label>
+          <select id="play-profile" class="profile-select" data-new-form="play-new-form"></select>
+        </div>
+        <form class="playlist-form name-form" id="play-new-form" hidden>
+          <input type="text" maxlength="40" placeholder="Name of the new save" aria-label="Name of the new save">
+          <button class="btn ghost small">Create</button>
+          <button class="btn ghost small" type="button" data-cancel>Cancel</button>
+        </form>
         <button id="play" class="btn play">Play</button>
         <div id="play-msg" class="message" role="status"></div>
       </div>
@@ -231,6 +241,48 @@
       </div>
     </div>
 
+    <div class="view" id="view-saves" hidden>
+      <div class="panel scroll">
+        <div class="panel-head">
+          <h2 class="display">Saves</h2>
+          <button class="btn ghost small" id="saves-open">Show folder</button>
+        </div>
+
+        <section class="group">
+          <div class="profile-row">
+            <select id="saves-profile" class="profile-select" data-new-form="saves-new-form" aria-label="Save"></select>
+            <button class="btn ghost small" id="profile-rename">Rename…</button>
+            <button class="btn ghost small" id="profile-delete">Delete…</button>
+          </div>
+          <form class="playlist-form name-form" id="saves-new-form" hidden>
+          <input type="text" maxlength="40" placeholder="Name of the new save" aria-label="Name of the new save">
+          <button class="btn ghost small">Create</button>
+          <button class="btn ghost small" type="button" data-cancel>Cancel</button>
+        </form>
+          <form class="playlist-form name-form" id="rename-form" hidden>
+          <input type="text" maxlength="40" placeholder="New name" aria-label="New name">
+          <button class="btn ghost small">Rename</button>
+          <button class="btn ghost small" type="button" data-cancel>Cancel</button>
+        </form>
+          <p class="note" id="save-summary"></p>
+          <ol class="slots" id="save-slots"></ol>
+          <div class="actions start">
+            <button class="btn ghost" id="save-backup">Back up now</button>
+            <button class="btn ghost" id="save-export">Export…</button>
+            <button class="btn ghost" id="import-save">Import…</button>
+          </div>
+          <div id="saves-msg" class="message" role="status"></div>
+        </section>
+
+        <section class="group">
+          <h3>Backups</h3>
+          <p class="note">One is made each time you press Play. The last 10 of those are kept; the ones you make
+            stay until you delete them.</p>
+          <div class="cards" id="backup-list"></div>
+        </section>
+      </div>
+    </div>
+
     <div class="view" id="view-settings" hidden>
       <div class="panel scroll">
         <h2 class="display">Settings</h2>
@@ -244,7 +296,6 @@
           </div>
           <div class="actions start">
             <button class="btn ghost" id="rerun-setup">Run setup again</button>
-            <button class="btn ghost" id="import-save">Import save…</button>
           </div>
         </section>
 

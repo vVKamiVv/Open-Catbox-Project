@@ -28,6 +28,8 @@ ctr = "0.9"
 xts-mode = "0.5"
 # the game's own formats, for the music player (read from the player's game data)
 shin-core = { path = "../shin-core" }
+# the save manager's backup names and dates
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [target.'cfg(windows)'.dependencies]
 # the installer's Installed apps entry (src/install/windows.rs)
